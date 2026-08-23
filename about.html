@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About - Faradaem</title>
+<meta name="description" content="What Faradaem is, how it works, and where it is going: ngspice for truth, an optimizer for search, an LLM for strategy.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2314181D'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%23B87333'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/">
+      <span class="wordmark-name">FARADAEM</span>
+      <span class="wordmark-version"></span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="/">Simulator</a></li>
+        <li><a href="/changelog">Changelog</a></li>
+        <li><a href="/about" aria-current="page">About</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="wrap">
+
+    <div class="page-head">
+      <h1 class="page-title">About</h1>
+      <p class="page-sub">What this is and how it works.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-body">
+
+        <section class="section prose">
+          <h2>What Faradaem is</h2>
+          <p>
+            Faradaem is an AI-assisted analog IC design tool. You give it a specification —
+            gain, bandwidth, phase margin, power budget — and it returns a verified
+            transistor-level design.
+          </p>
+          <p>
+            Verified means the numbers were measured, not asserted. Every value Faradaem
+            reports about a circuit was produced by simulating that circuit.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2>How it works</h2>
+          <p>
+            The work is split three ways so each part does only what it is good at.
+          </p>
+          <p>
+            ngspice is the sole source of numerical truth. Every operating point, gain and
+            margin comes out of a real simulator run. Nothing else in the system is
+            permitted to produce a circuit value.
+          </p>
+          <p>
+            A numerical optimizer does the search through component and bias space. It is
+            the part that actually finds sizings that meet a spec, because that is a
+            numerical problem and numerical methods solve it well.
+          </p>
+          <p>
+            An LLM handles strategy only: choosing a topology, framing trade-offs, deciding
+            what to try next, and explaining the result. It never computes a circuit value.
+            When you see a voltage on this site, a simulator measured it.
+          </p>
+        </section>
+
+        <section class="section">
+          <h2 class="prose">Roadmap</h2>
+          <ul class="roadmap">
+            <li class="done"><span class="mark">[x]</span><span class="ver">V0.0</span><span>resistor divider via ngspice</span></li>
+            <li class="done"><span class="mark">[x]</span><span class="ver">V0.1</span><span>RC circuit + AC sweep + Bode plot</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.2</span><span>SKY130 MOSFET simulates</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.3</span><span>auto-measurement of gain/BW/PM/power</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.4</span><span>hand-designed two-stage op-amp</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.5</span><span>parameterized netlist</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.6</span><span>numerical optimizer hits spec</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.7</span><span>LLM layer with tool calling</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.8</span><span>topology selection</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V0.9</span><span>PVT + Monte Carlo</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V1.0</span><span>spec in, verified schematic out</span></li>
+          </ul>
+        </section>
+
+        <section class="section prose">
+          <h2>Who</h2>
+          <p>
+            Faradaem is built by Tommy, an electrical and computer engineering student at
+            UIUC, as a long-term project in AI-assisted analog design. Source and progress
+            live at <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">github.com/tommysl8/faradaem</a>.
+          </p>
+        </section>
+
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <span>ngspice is the source of truth</span>
+      <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+    </div>
+    <p class="foot-note">every number on this site comes from an ngspice simulation</p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog - Faradaem</title>
+<meta name="description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2314181D'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%23B87333'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/">
+      <span class="wordmark-name">FARADAEM</span>
+      <span class="wordmark-version"></span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="/">Simulator</a></li>
+        <li><a href="/changelog" aria-current="page">Changelog</a></li>
+        <li><a href="/about">About</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="wrap">
+
+    <div class="page-head">
+      <h1 class="page-title">Changelog</h1>
+      <p class="page-sub">Newest first.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-body">
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.1.6</span>
+            <span class="entry-date">2026-08-22</span>
+          </header>
+          <ul>
+            <li>Design system tightening: one spacing scale, five type steps, one radius, one hairline, one shadow. Every margin and font size now comes from a token.</li>
+            <li>Preset chips load a worked example for each circuit in one click.</li>
+            <li>Bode plots read out any point on hover, snapping to the nearest swept sample.</li>
+            <li>Keyboard support throughout: arrow keys move between circuits and step component values, Enter runs, Esc dismisses an error.</li>
+            <li>About page says who builds this.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.1.5</span>
+            <span class="entry-date">2026-08-22</span>
+          </header>
+          <ul>
+            <li>Circuit registry: every circuit is one catalogue entry describing its parameters, netlist, measurement and analytic checks. The page builds its forms from that catalogue.</li>
+            <li>RC high-pass filter, with the corner measured from the passband down.</li>
+            <li>Series RLC band-pass, with resonance found by quadratic interpolation and Q from the two −3 dB skirts.</li>
+            <li>Inverting amplifier on a single-pole op-amp macromodel, showing gain-bandwidth as a real trade rather than a formula.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.1.0</span>
+            <span class="entry-date">2026-08-22</span>
+          </header>
+          <ul>
+            <li>RC low-pass circuit, selectable alongside the DC divider from a mode switcher.</li>
+            <li>AC sweep through ngspice: 20 points per decade, three decades either side of the corner, read back with wrdata.</li>
+            <li>Bode plot on the paper panel — magnitude and phase over log frequency, with the corner marked.</li>
+            <li>-3 dB extraction by interpolation in log frequency, checked against 1/(2&#960;RC).</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.0.1</span>
+            <span class="entry-date">2026-08-22</span>
+          </header>
+          <ul>
+            <li>Visual identity: dark instrument chrome, paper datasheet figure, copper accent, monospace numerics.</li>
+            <li>Added the About and Changelog pages behind a shared nav and footer.</li>
+            <li>Live SVG schematic that redraws as you type and annotates the out node after a run.</li>
+            <li>Static asset routing: GET is served from a strict whitelist, and request paths never touch the filesystem.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.0.0</span>
+            <span class="entry-date">2026-08-22</span>
+          </header>
+          <ul>
+            <li>Resistor divider simulated through real ngspice, with the analytic value shown only as a check.</li>
+            <li>Standard-library web server and a single-page interface.</li>
+            <li>74 tests covering netlist construction, output parsing, request validation, and a live simulator run.</li>
+          </ul>
+        </article>
+
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <span>ngspice is the source of truth</span>
+      <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+    </div>
+    <p class="foot-note">every number on this site comes from an ngspice simulation</p>
+  </div>
+</footer>
+
+</body>
+</html>

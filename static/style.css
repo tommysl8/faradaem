@@ -1,0 +1,1082 @@
+/* Faradaem 0.1.6 -- a bench instrument displaying a datasheet.
+ *
+ * The chrome is a dark precision instrument: ink, panel, hairlines, one copper
+ * accent, monospace numerics. The figures inside it are light paper datasheet
+ * plates. That contrast is the design; nothing else competes.
+ *
+ * Everything measurable comes from a token. Spacing is --s1..--s7, type is the
+ * five --t-* steps, and there is one radius, one hairline and one shadow. If a
+ * value is not on a scale it is a bug, not a decision.
+ *
+ * Zero dependencies: system font stacks only, no imports, no remote assets.
+ */
+
+:root {
+  /* ---- colour ---- */
+  --ink: #14181D;
+  --panel: #1B2129;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-hover: rgba(255, 255, 255, 0.18);
+  --text: #E8E6E1;
+  --muted: #8B9199;
+  --copper: #B87333;
+  --copper-bright: #D98E4A;
+  --paper: #F5F2EA;
+  --schematic-ink: #232323;
+  --ok: #6FBF8E;
+  --err: #C6685C;
+
+  /* ---- spacing scale ---- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 40px;
+  --s7: 64px;
+
+  /* ---- type scale: five steps, each with its own metrics ---- */
+  --t-label: 11px;
+  --lh-label: 1.4;
+  --ls-label: 0.08em;
+
+  --t-small: 13px;
+  --lh-small: 1.5;
+  --ls-small: 0.01em;
+
+  --t-body: 15px;
+  --lh-body: 1.6;
+  --ls-body: 0;
+
+  --t-section: 20px;
+  --lh-section: 1.3;
+  --ls-section: 0.06em;
+
+  --t-numeral: 34px;
+  --lh-numeral: 1.05;
+  --ls-numeral: -0.01em;
+
+  /* ---- everything else ---- */
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --radius: 5px;
+  --hairline: 1px solid var(--line);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+
+  --shell: 1040px;
+  --control-height: 36px;
+  --step: 140ms;
+
+  /* The version is written once, here, and rendered wherever it is needed. */
+  --app-version: "v0.1.6";
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 0 var(--s5);
+}
+
+/* Numerals never reflow as their digits change. */
+.metric-value,
+.stat-value,
+.stat-check,
+.field-echo,
+input {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 0;
+  border-radius: var(--radius);
+}
+
+.hidden {
+  display: none;
+}
+
+.placeholder {
+  color: var(--muted);
+}
+
+/* ---- top nav ------------------------------------------------------- */
+
+.nav {
+  border-bottom: var(--hairline);
+  background: var(--panel);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s5);
+  min-height: 56px;
+}
+
+.wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.wordmark-name {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.wordmark-version {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  color: var(--muted);
+}
+
+.wordmark-version::after {
+  content: var(--app-version);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-links a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  padding: var(--s1) 0;
+  border-bottom: 1px solid transparent;
+  transition: color var(--step) ease;
+}
+
+.nav-links a:hover {
+  color: var(--text);
+}
+
+.nav-links a[aria-current="page"] {
+  color: var(--copper);
+  border-bottom-color: var(--copper);
+}
+
+/* ---- page frame ---------------------------------------------------- */
+
+.page {
+  flex: 1 0 auto;
+  padding: var(--s6) 0;
+}
+
+.page-head {
+  margin-bottom: var(--s5);
+}
+
+.page-title {
+  margin: 0;
+  font-size: var(--t-section);
+  line-height: var(--lh-section);
+  letter-spacing: var(--ls-section);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.page-sub {
+  margin: var(--s1) 0 0;
+  color: var(--muted);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+}
+
+/* ---- panels -------------------------------------------------------- */
+
+.panel {
+  background: var(--panel);
+  border: var(--hairline);
+  border-radius: var(--radius);
+}
+
+.panel-head {
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border-bottom: var(--hairline);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panel-body {
+  padding: var(--s4);
+}
+
+/* ---- simulator layout ---------------------------------------------- */
+
+.sim {
+  display: grid;
+  grid-template-columns: minmax(300px, 348px) 1fr;
+  gap: var(--s5);
+  align-items: start;
+}
+
+/* ---- circuit tabs --------------------------------------------------- */
+
+.modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  padding: 0 var(--s4);
+  border-bottom: var(--hairline);
+}
+
+.mode {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 88px;
+  padding: var(--s3) var(--s1);
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--step) ease;
+}
+
+.mode:hover {
+  color: var(--text);
+}
+
+.mode[aria-selected="true"] {
+  color: var(--copper);
+}
+
+/* The active underline grows in rather than appearing. Transform only. */
+.mode::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--copper);
+  transform: scaleX(0);
+  transition: transform 120ms ease-out;
+}
+
+.mode[aria-selected="true"]::after {
+  transform: scaleX(1);
+}
+
+/* ---- preset chips --------------------------------------------------- */
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  margin-bottom: var(--s4);
+}
+
+.chip {
+  padding: var(--s1) var(--s2);
+  background: none;
+  border: var(--hairline);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  cursor: pointer;
+  transition: color var(--step) ease, border-color var(--step) ease;
+}
+
+.chip:hover {
+  color: var(--text);
+  border-color: var(--line-hover);
+}
+
+.chip:active {
+  transform: translateY(1px);
+}
+
+/* ---- form ----------------------------------------------------------- */
+
+.field + .field {
+  margin-top: var(--s3);
+}
+
+.field label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The live engineering rendering of whatever is typed. */
+.field-echo {
+  color: var(--copper);
+  letter-spacing: var(--ls-small);
+  text-transform: none;
+}
+
+.input-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-shell input {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-height);
+  background: var(--ink);
+  border: var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  padding: 0 var(--s6) 0 var(--s3);
+  transition: border-color var(--step) ease;
+}
+
+.input-shell input:hover {
+  border-color: var(--line-hover);
+}
+
+.input-shell input:focus {
+  border-color: var(--copper);
+  outline: 2px solid var(--copper);
+  outline-offset: 0;
+}
+
+.field.is-invalid .input-shell input {
+  border-color: var(--err);
+}
+
+/* Native spinners fight the monospace alignment; arrow keys replace them. */
+.input-shell input::-webkit-outer-spin-button,
+.input-shell input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.input-shell input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.unit {
+  position: absolute;
+  right: var(--s3);
+  color: var(--muted);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  pointer-events: none;
+}
+
+.field-error {
+  margin: var(--s1) 0 0;
+  color: var(--err);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-small);
+}
+
+/* ---- run button ------------------------------------------------------ */
+
+.run {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--control-height);
+  margin-top: var(--s5);
+  padding: 0 var(--s4);
+  background: var(--copper);
+  color: #12161A;
+  border: 1px solid var(--copper);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--step) ease, border-color var(--step) ease;
+}
+
+.run:hover:enabled {
+  background: var(--copper-bright);
+  border-color: var(--copper-bright);
+}
+
+.run:active:enabled {
+  transform: translateY(1px);
+}
+
+.run:disabled {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: default;
+}
+
+.run-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--s2);
+}
+
+.run-dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: dot-pulse 900ms ease-in-out infinite;
+}
+
+.run-dots i:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.run-dots i:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.hint {
+  margin: var(--s3) 0 0;
+  color: var(--muted);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-small);
+}
+
+/* ---- the paper figures ----------------------------------------------- */
+
+.figure {
+  margin: 0;
+  background: var(--paper);
+  border: var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--s4) var(--s4) var(--s3);
+  box-shadow: var(--shadow);
+  /* ~8px datasheet graph paper, plus one soft vertical fade. */
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(35, 35, 35, 0.035)),
+    linear-gradient(to right, rgba(35, 35, 35, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(35, 35, 35, 0.055) 1px, transparent 1px);
+  background-size: 100% 100%, 8px 8px, 8px 8px;
+}
+
+.figure + .figure {
+  margin-top: var(--s3);
+}
+
+.figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.figure figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  padding-top: var(--s2);
+  border-top: 1px solid rgba(35, 35, 35, 0.16);
+  color: var(--schematic-ink);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-small);
+}
+
+.caption-state {
+  color: rgba(35, 35, 35, 0.5);
+}
+
+/* A run in flight dims the stale reading instead of blanking it. */
+.is-loading {
+  opacity: 0.6;
+  transition: opacity var(--step) ease;
+}
+
+/* ---- schematic ink ---------------------------------------------------- */
+
+.figure svg .sch-stroke {
+  fill: none;
+  stroke: var(--schematic-ink);
+  stroke-width: 2;
+}
+
+.figure svg .sch-fill {
+  fill: var(--schematic-ink);
+  stroke: none;
+}
+
+.figure svg .sch-text {
+  fill: var(--schematic-ink);
+  stroke: none;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ls-small);
+}
+
+.figure svg .sch-text.is-strong {
+  font-weight: 600;
+}
+
+/* Component values crossfade as they change rather than snapping. */
+.figure svg .sch-text.is-value {
+  animation: value-fade 100ms ease-out;
+}
+
+@keyframes value-fade {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
+}
+
+.figure svg .sch-tag-box {
+  fill: var(--copper);
+  stroke: none;
+}
+
+.figure svg .sch-tag-text {
+  fill: var(--paper);
+  stroke: none;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ---- Bode plot -------------------------------------------------------- */
+
+.figure svg .bode-grid {
+  stroke: rgba(35, 35, 35, 0.18);
+  stroke-width: 1;
+  fill: none;
+}
+
+.figure svg .bode-axis {
+  stroke: rgba(35, 35, 35, 0.45);
+  stroke-width: 1;
+  fill: none;
+}
+
+.figure svg .bode-mag {
+  stroke: var(--copper);
+  stroke-width: 2;
+  fill: none;
+}
+
+.figure svg .bode-phase {
+  stroke: var(--schematic-ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+  fill: none;
+}
+
+/* Traces draw themselves in once, on arrival. */
+.figure svg .is-drawing {
+  animation: trace-draw 240ms ease-out 1;
+}
+
+@keyframes trace-draw {
+  from { stroke-dashoffset: var(--trace-length); }
+  to { stroke-dashoffset: 0; }
+}
+
+.figure svg .bode-marker {
+  stroke: var(--copper);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  fill: none;
+}
+
+.figure svg .bode-text,
+.figure svg .bode-title,
+.figure svg .bode-marker-text,
+.figure svg .bode-label-mag,
+.figure svg .bode-placeholder,
+.figure svg .bode-readout-text {
+  fill: var(--schematic-ink);
+  stroke: none;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.figure svg .bode-title {
+  font-size: var(--t-label);
+  letter-spacing: 0.12em;
+  fill: rgba(35, 35, 35, 0.55);
+}
+
+.figure svg .bode-marker-text,
+.figure svg .bode-label-mag {
+  fill: var(--copper);
+  font-weight: 600;
+}
+
+.figure svg .bode-placeholder {
+  fill: rgba(35, 35, 35, 0.45);
+}
+
+/* ---- Bode hover readout ------------------------------------------------ */
+
+.figure svg .bode-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.figure svg .bode-crosshair {
+  stroke: rgba(35, 35, 35, 0.55);
+  stroke-width: 1;
+  fill: none;
+}
+
+.figure svg .bode-dot-mag {
+  fill: var(--copper);
+  stroke: var(--paper);
+  stroke-width: 1.5;
+}
+
+.figure svg .bode-dot-phase {
+  fill: var(--schematic-ink);
+  stroke: var(--paper);
+  stroke-width: 1.5;
+}
+
+.figure svg .bode-tip-box {
+  fill: var(--paper);
+  stroke: rgba(35, 35, 35, 0.5);
+  stroke-width: 1;
+}
+
+/* ---- result strip -------------------------------------------------------- */
+
+.result {
+  margin-top: var(--s3);
+  padding: var(--s4);
+  background: var(--panel);
+  border: var(--hairline);
+  border-radius: var(--radius);
+}
+
+.result-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s5);
+  flex-wrap: wrap;
+}
+
+.metric-label {
+  display: block;
+  margin-bottom: var(--s1);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.metric-primary .metric-value {
+  font-size: var(--t-numeral);
+  line-height: var(--lh-numeral);
+  letter-spacing: var(--ls-numeral);
+  font-weight: 600;
+}
+
+.metric-check .metric-value {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: auto;
+  padding: var(--s1) var(--s2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.badge.is-ok {
+  color: var(--ok);
+}
+
+.badge.is-warn {
+  color: var(--err);
+}
+
+.result-note {
+  margin: var(--s3) 0 0;
+  padding-top: var(--s3);
+  border-top: var(--hairline);
+  color: var(--err);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+}
+
+/* Stat cells share a baseline grid: label row, value row, check row. */
+.stat-row {
+  display: flex;
+  gap: var(--s5);
+  flex-wrap: wrap;
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: var(--hairline);
+}
+
+.stat-row > div {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: var(--s1);
+}
+
+.stat-label {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stat-value {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+}
+
+.stat-check {
+  color: var(--muted);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-small);
+}
+
+.badge-small {
+  margin-left: 0;
+  justify-self: start;
+}
+
+/* ---- errors -------------------------------------------------------------- */
+
+.error-panel {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--err);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: rgba(198, 104, 92, 0.07);
+  color: var(--text);
+}
+
+.error-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin: 0 0 var(--s1);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--err);
+}
+
+.error-dismiss {
+  color: var(--muted);
+  font-size: var(--t-label);
+  letter-spacing: var(--ls-small);
+  text-transform: none;
+  font-weight: 400;
+}
+
+.error-panel p {
+  margin: 0;
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- prose ---------------------------------------------------------------- */
+
+.prose {
+  font-family: var(--sans);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  max-width: 68ch;
+}
+
+.prose h2 {
+  margin: 0 0 var(--s2);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.prose p {
+  margin: 0 0 var(--s3);
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose a,
+.foot a,
+.entry a {
+  color: var(--copper);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(184, 115, 51, 0.4);
+  transition: color var(--step) ease;
+}
+
+.prose a:hover,
+.foot a:hover,
+.entry a:hover {
+  color: var(--copper-bright);
+}
+
+.section + .section {
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: var(--hairline);
+}
+
+/* ---- roadmap ---------------------------------------------------------------- */
+
+.roadmap {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+}
+
+.roadmap li {
+  display: flex;
+  gap: var(--s2);
+  padding: var(--s1) 0;
+  color: var(--muted);
+}
+
+.roadmap .ver {
+  color: var(--text);
+  min-width: 3.4em;
+}
+
+.roadmap li.done,
+.roadmap li.done .mark,
+.roadmap li.done .ver {
+  color: var(--copper);
+}
+
+.roadmap li.done span:last-child {
+  color: var(--text);
+}
+
+/* ---- changelog ---------------------------------------------------------------- */
+
+.entry {
+  padding: var(--s5) 0;
+  border-top: var(--hairline);
+}
+
+.entry:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.entry-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.entry-version {
+  font-family: var(--mono);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  letter-spacing: var(--ls-small);
+  font-weight: 600;
+  color: var(--copper);
+}
+
+.entry-date {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-small);
+  color: var(--muted);
+}
+
+.entry ul {
+  margin: 0;
+  padding-left: var(--s4);
+  font-family: var(--sans);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+}
+
+.entry li {
+  margin-bottom: var(--s1);
+}
+
+.entry li::marker {
+  color: var(--muted);
+}
+
+/* ---- footer ---------------------------------------------------------------- */
+
+.foot {
+  flex-shrink: 0;
+  border-top: var(--hairline);
+  padding: var(--s3) 0;
+}
+
+.foot-inner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  color: var(--muted);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-small);
+}
+
+.foot a {
+  color: var(--muted);
+  border-bottom-color: transparent;
+}
+
+.foot-note {
+  margin: var(--s1) 0 0;
+  color: var(--muted);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-small);
+}
+
+.foot-note::before {
+  content: var(--app-version) " — ";
+}
+
+/* ---- narrow ---------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .sim {
+    grid-template-columns: 1fr;
+  }
+
+  /* Schematic first on a phone: the picture explains the form. */
+  .sim-figure {
+    order: -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .wrap {
+    padding: 0 var(--s4);
+  }
+
+  .nav-inner {
+    flex-wrap: wrap;
+    gap: var(--s2);
+    padding: var(--s2) 0;
+  }
+
+  .nav-links {
+    gap: var(--s4);
+  }
+
+  .foot-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .run-dots i {
+    opacity: 0.7;
+  }
+}

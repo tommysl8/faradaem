@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faradaem</title>
+<meta name="description" content="Simulate resistor dividers, RC and RLC filters, and an inverting amplifier with real ngspice, in the browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2314181D'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%23B87333'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/">
+      <span class="wordmark-name">FARADAEM</span>
+      <span class="wordmark-version"></span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="/" aria-current="page">Simulator</a></li>
+        <li><a href="/changelog">Changelog</a></li>
+        <li><a href="/about">About</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="wrap">
+
+    <div class="page-head">
+      <h1 class="page-title">Simulator</h1>
+      <p class="page-sub">Every number below comes from a real ngspice run.</p>
+    </div>
+
+    <div class="sim">
+
+      <form class="panel sim-controls" id="sim-form" novalidate>
+        <div class="modes" role="tablist" aria-label="Circuit" id="modes"></div>
+        <h2 class="panel-head" id="panel-title">Loading</h2>
+        <div class="panel-body">
+          <div class="presets" id="presets"></div>
+          <div id="inputs"></div>
+          <button class="run" id="run" type="submit"><span id="run-label">Run simulation</span></button>
+          <p class="hint">Press Enter to run. Use the arrow keys to step a value.</p>
+        </div>
+      </form>
+
+      <section class="sim-figure" aria-label="Schematic and result">
+
+        <figure class="figure">
+          <svg id="schematic" viewBox="0 0 420 300"></svg>
+          <figcaption>
+            <span id="caption"></span>
+            <span class="caption-state" id="caption-state">Run to measure.</span>
+          </figcaption>
+        </figure>
+
+        <figure class="figure hidden" id="bode-panel">
+          <svg id="bode" viewBox="0 0 520 360"></svg>
+        </figure>
+
+        <div class="result" id="result">
+          <div class="result-row">
+            <div class="metric metric-primary">
+              <span class="metric-label" id="headline-label">Result</span>
+              <span class="metric-value placeholder" id="headline-value">—</span>
+            </div>
+            <div class="metric metric-check hidden" id="headline-check">
+              <span class="metric-label" id="headline-check-label">Analytic check</span>
+              <span class="metric-value" id="headline-check-value">—</span>
+            </div>
+            <span class="badge hidden" id="headline-badge"></span>
+          </div>
+          <p class="result-note hidden" id="note"></p>
+          <div class="stat-row hidden" id="stats"></div>
+        </div>
+
+        <div class="error-panel hidden" id="error" role="alert">
+          <h2 class="error-head">
+            <span>Error</span>
+            <span class="error-dismiss">Esc to dismiss</span>
+          </h2>
+          <p id="error-text"></p>
+        </div>
+
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <span>ngspice is the source of truth</span>
+      <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+    </div>
+    <p class="foot-note">every number on this site comes from an ngspice simulation</p>
+  </div>
+</footer>
+
+<script src="/static/schematic.js"></script>
+<script src="/static/bodeplot.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
