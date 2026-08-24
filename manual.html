@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual - Faradaem</title>
+<meta name="description" content="How to run a simulation in Faradaem, how to read the result, what each circuit measures, and what to do when something goes wrong.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230A0E14'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%2322D3EE'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/">
+      <span class="wordmark-name">FARADAEM</span>
+      <span class="wordmark-version"></span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="/manual" aria-current="page">Manual</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/changelog">Changelog</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="wrap">
+
+    <div class="page-head">
+      <h1 class="page-title">Manual</h1>
+      <p class="page-sub">How to run a simulation and read what comes back.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-body">
+
+        <section class="section prose">
+          <h2>Before you start</h2>
+          <p>
+            Faradaem runs a real simulator on your machine. It does not estimate, and it
+            does not ask a model for a number. Every value it reports came out of an
+            ngspice process that ran while you waited.
+          </p>
+          <p>
+            You need ngspice 47 or later, console build. Put
+            <code>ngspice_con.exe</code> on your PATH, or set the environment variable
+            <code>FARADAEM_NGSPICE</code> to its full path. Faradaem never uses
+            <code>ngspice.exe</code>, because that build opens a window and never returns.
+          </p>
+          <p>
+            One circuit, the SKY130 NFET amplifier, also needs the SKY130 process design
+            kit. Set <code>PDK_ROOT</code> to the folder you installed it in. Every other
+            circuit runs without it. If the kit is missing, only that one circuit stops
+            working, and it tells you what to install.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2>Running a simulation</h2>
+          <p>
+            Pick a circuit from the tabs at the top of the form. Set the component values,
+            or click one of the examples to load a worked set. Then press
+            <strong>Run simulation</strong>, or just press Enter.
+          </p>
+          <p>
+            The schematic redraws as you type, so the picture always matches the values in
+            the form. Measured numbers behave differently: they appear only after a run
+            finishes, and while a run is in flight the previous reading dims instead of
+            disappearing. Nothing on the page is ever a guess at what the answer might be.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2>Keyboard</h2>
+          <p>
+            The whole simulator works without a mouse.
+          </p>
+          <dl class="manual-list">
+            <dt>Enter</dt>
+            <dd>Run the simulation.</dd>
+            <dt>Up, Down</dt>
+            <dd>Step the value in the focused field. Stepping down out of a decade steps finer, so 1000 goes to 900 rather than to zero.</dd>
+            <dt>Shift + Up, Down</dt>
+            <dd>Step by a full decade instead.</dd>
+            <dt>Left, Right</dt>
+            <dd>Move between circuit tabs when a tab has focus.</dd>
+            <dt>Home, End</dt>
+            <dd>Jump to the first or last circuit.</dd>
+            <dt>Esc</dt>
+            <dd>Dismiss an error message.</dd>
+          </dl>
+        </section>
+
+        <section class="section prose">
+          <h2>Reading the result</h2>
+          <dl class="manual-list">
+            <dt>Headline</dt>
+            <dd>The main measured value for this circuit, in large type. This is a simulator output.</dd>
+            <dt>Analytic check</dt>
+            <dd>A closed form evaluated separately and shown beside the headline, so you can see whether the two agree.</dd>
+            <dt>Badge</dt>
+            <dd>Reads <strong>agrees</strong> when the measurement and the closed form match within tolerance, or <strong>off by X%</strong> when they do not.</dd>
+            <dt>Stats row</dt>
+            <dd>Supporting measurements: bandwidth, drain current, power, and so on, depending on the circuit.</dd>
+            <dt>Bode plot</dt>
+            <dd>Magnitude above phase, plotted against log frequency. Hover anywhere on it to read the exact values at the nearest swept sample.</dd>
+            <dt>Schematic tag</dt>
+            <dd>The measured value pinned to the output node of the drawing, so the number and the place it was measured stay together.</dd>
+          </dl>
+        </section>
+
+        <section class="section prose">
+          <h2>What the analytic check is, and what it is not</h2>
+          <p>
+            The simulator produces the result. The closed form is only a check on it. When
+            the two disagree, Faradaem shows both and never quietly splits the difference
+            or hides one of them.
+          </p>
+          <p>
+            The two SKY130 circuits, the NFET amplifier and the op-amp, deliberately
+            ship no analytic check at all. Square
+            law does not describe a 150 nm short channel device, and its bandwidth is set
+            by the transistor's own output resistance, which no formula in this codebase
+            predicts. A check that was permanently tens of percent out would read as a
+            fault in the simulator rather than as the known limit of the formula. The
+            operating point is shown instead, and that also comes from ngspice.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2>When a badge says off by some percent</h2>
+          <p>
+            That is not automatically a bug. There are three honest reasons a measurement
+            and a closed form can disagree, and it is worth knowing which one you are
+            looking at.
+          </p>
+          <dl class="manual-list">
+            <dt>Real effect</dt>
+            <dd>The formula ignores something the simulator does not. Load the <strong>Low open-loop gain</strong> example on the inverting amplifier: the ideal gain formula assumes infinite open-loop gain, so at A0 = 100 the real closed-loop gain misses it by about 6 percent. The gain times bandwidth product still agrees, which tells you the simulator is right and the formula is incomplete.</dd>
+            <dt>Sweep resolution</dt>
+            <dd>The sweep runs at 20 points per decade. A very sharp resonance can fall between samples, so a measured peak can be slightly off even though the circuit is fine.</dd>
+            <dt>Outside the assumptions</dt>
+            <dd>The circuit is operating somewhere the formula was never meant to cover, such as a transistor pushed into triode.</dd>
+          </dl>
+        </section>
+
+        <section class="section prose">
+          <h2>Phase margin, and why it needs the loop opened</h2>
+          <p>
+            Every other measurement here comes from a closed loop response: drive the
+            input, read the output. Phase margin does not live there. It is a property
+            of the loop gain, which is what the signal is multiplied by on one trip
+            around the feedback path, and no amount of looking at the closed loop
+            response recovers it.
+          </p>
+          <p>
+            So Faradaem opens the loop. The two-pole amplifier netlist contains two
+            copies of the same circuit: one wired normally, and one with the loop cut
+            at the amplifier input and a test signal injected there. Both are swept at
+            once, so the closed loop numbers and the loop gain come from the same run
+            and the same frequency points.
+          </p>
+          <p>
+            The plot for that circuit shows the loop gain, not the closed loop
+            response, because that is where the headline number is read. Phase margin
+            is how far the phase still is from 180 degrees at the frequency where the
+            loop gain passes 0 dB. Less margin means a peakier, more ringing response,
+            and at zero the circuit oscillates.
+          </p>
+          <p>
+            Gain margin is deliberately not reported. A two-pole loop approaches 180
+            degrees of phase shift but never reaches it, so its gain margin is
+            infinite, and any number printed there would be an artifact of where the
+            sweep happened to stop.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2>Bias warnings on the SKY130 amplifier</h2>
+          <p>
+            A transistor amplifier only works over a range of gate bias. Outside it the
+            numbers stop meaning what you expect, so Faradaem says so rather than printing
+            them without comment.
+          </p>
+          <dl class="manual-list">
+            <dt>Bottomed out</dt>
+            <dd>The drain has been pulled down near ground and the device is in triode. The gain is far below what the stage can do. Lower Vgs, or lower RD.</dd>
+            <dt>Barely conducting</dt>
+            <dd>The drain is sitting almost at VDD and the device is close to off. Raise Vgs.</dd>
+            <dt>Not amplifying</dt>
+            <dd>The device is off. There is no bandwidth to measure, so the run is refused and the message reports the drain voltage and current ngspice actually settled at. Raise Vgs above the threshold, which is around 0.5 V for this device.</dd>
+          </dl>
+        </section>
+
+        <section class="section prose">
+          <h2>The circuits</h2>
+          <dl class="manual-list">
+            <dt>DC divider</dt>
+            <dd>Two resistors, one operating point. Measures the output voltage. The simplest possible check that the simulator path works end to end.</dd>
+            <dt>RC low-pass</dt>
+            <dd>Measures the 3 dB corner from an AC sweep. Try the two examples that share a corner at different impedances: every number comes back identical, because R and C trade off exactly.</dd>
+            <dt>RC high-pass</dt>
+            <dd>The same corner measured from the passband down instead of up.</dd>
+            <dt>RLC band-pass</dt>
+            <dd>Measures resonance, the two 3 dB skirts, and the Q that follows from them. The examples walk Q from 0.1 upward so you can watch the peak sharpen.</dd>
+            <dt>Inverting amp</dt>
+            <dd>An op-amp macromodel with a single pole. Measures midband gain, closed-loop bandwidth, and their product. This is where gain-bandwidth stops being a formula and becomes something you can watch trade off.</dd>
+            <dt>Two-pole amp</dt>
+            <dd>An op-amp with two poles instead of one, which is the point at which stability stops being automatic. Measures phase margin from a real loop gain sweep. Walk the examples and watch the margin fall as the second pole moves toward crossover.</dd>
+            <dt>NFET amp (SKY130)</dt>
+            <dd>A common-source amplifier built on a real process, not on ideal parts. Measures gain, bandwidth, drain voltage, drain current, and power. Needs the PDK. The first run after starting the server takes 10 to 30 seconds while the model library loads.</dd>
+            <dt>Op-amp (SKY130)</dt>
+            <dd>A two-stage Miller op-amp built from eight SKY130 transistors: an input pair under a mirror load, then a common-source second stage, compensated by Cc and its zero-nulling resistor Rz. Measures open-loop gain, unity-gain bandwidth, phase margin and power from one sweep. Needs the PDK. This is also the circuit the design iterator sizes for you.</dd>
+          </dl>
+        </section>
+
+        <section class="section prose">
+          <h2>Designing to a spec</h2>
+          <p>
+            Some circuits carry a <strong>Design to spec</strong> panel under their
+            input form. On the op-amp it offers the full story in one button:
+            <strong>Generate design from specs</strong>. Enter your targets, press
+            it, and a starting design is created for you, sized from the targets
+            themselves. That design is measured immediately. If it already meets
+            every target, you are done. If it falls short, the optimizer takes over
+            and iterates the key components until the spec is met, then loads the
+            result and confirms it with one final simulation.
+          </p>
+          <p>
+            The starting design comes from two simple scaling rules taken from the
+            hand-designed op-amp: the compensation capacitor tracks the load it
+            must drive, and the bias current tracks the power budget. Those rules
+            only pick where the search starts. Nothing they produce is ever shown
+            as a result; every number on the page still comes from a simulation.
+          </p>
+          <p>
+            <strong>Optimize from current values</strong> is the second path: it
+            keeps whatever is in the form as the starting point, so you can refine
+            a preset or your own sizing instead.
+          </p>
+          <p>
+            Every step of that search is a real ngspice simulation. Nothing is
+            predicted from formulas: the optimizer proposes values, the simulator
+            measures them, and the measurements decide the next move. On the SKY130
+            op-amp each step loads the model library, so expect the search to take
+            minutes rather than seconds. The progress line counts simulations as
+            they finish.
+          </p>
+          <p>
+            The search stops the moment every target is met, and reports the best
+            point it found if the budget runs out first. Press <strong>Apply
+            result</strong> to load the winning values into the form; the page then
+            runs one confirming simulation, so the numbers you see are measured,
+            not remembered from the search.
+          </p>
+          <p>
+            The score beside each step is the worst distance from any target, as a
+            fraction of that target. Zero or better means every goal is met.
+            Leaving the page does not stop a running search; the Stop button does.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2>If something goes wrong</h2>
+          <dl class="manual-list">
+            <dt>Could not reach the Faradaem server</dt>
+            <dd>The page loaded but the server is not answering. Start it with <code>python server.py</code> and run again.</dd>
+            <dt>Could not locate ngspice</dt>
+            <dd>The message lists every place it looked. Install ngspice, put <code>ngspice_con.exe</code> on your PATH, or set <code>FARADAEM_NGSPICE</code> to its full path.</dd>
+            <dt>Could not find the SKY130 model library</dt>
+            <dd>Only the SKY130 circuit needs this. Set <code>PDK_ROOT</code> to the folder holding the kit, then restart the server so it picks up the new value.</dd>
+            <dt>A value is refused before the run</dt>
+            <dd>Every parameter has a declared range, and the message names the limit it crossed. The form marks the field and says what to do.</dd>
+            <dt>The first SKY130 run is slow</dt>
+            <dd>That is the model library loading, and it is expected. Later runs on the same circuit are much faster.</dd>
+          </dl>
+        </section>
+
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
+      <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

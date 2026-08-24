@@ -284,17 +284,19 @@ def build_rc_lowpass_netlist(r, c, fstart, fstop, points_per_decade, out_path):
     return "\n".join(lines) + "\n"
 
 
-def run_ac_netlist(netlist, out_path, timeout_s=AC_TIMEOUT_S, with_stdout=False):
-    """Run an AC netlist and return the text of the wrdata file it produced.
+def run_ac_multi(netlist, out_paths, timeout_s=AC_TIMEOUT_S, with_stdout=False):
+    """Run one AC netlist that writes several data files, and read them all back.
 
-    The caller supplies out_path, which must live in the system temp dir.  Both
-    the netlist and the data file are removed in the finally block: ngspice
-    output data is a simulation temp file too, and none of it belongs in the
-    project folder.
+    One ngspice invocation, one sweep, several wrdata calls.  Circuits that need
+    two responses measured on the same frequency grid -- a closed loop and the
+    loop gain that produced it -- get them from a single run rather than from
+    two runs that could disagree about where the samples fell.
 
-    With with_stdout=True the return is (data, stdout) instead of just data, so
-    a control block that runs an operating point alongside the sweep can have
-    its printed values read back from the same invocation.
+    Every path in out_paths must live in the system temp dir.  The netlist and
+    all data files are removed in the finally block; simulator output is a temp
+    file too, and none of it belongs in the project folder.
+
+    With with_stdout=True the return is (texts, stdout) instead of just texts.
     """
     executable = find_ngspice()
     temp_dir = tempfile.gettempdir()
@@ -331,23 +333,37 @@ def run_ac_netlist(netlist, out_path, timeout_s=AC_TIMEOUT_S, with_stdout=False)
                 "--- stdout ---\n" + (completed.stdout or "").strip()
             )
 
-        if not os.path.isfile(out_path):
-            raise NgspiceRunError(
-                "ngspice finished but wrote no data file at " + str(out_path) + ".\n"
-                "The wrdata command may have failed.\n"
-                "--- stdout ---\n" + _tail(completed.stdout or "")
-            )
+        texts = []
+        for path in out_paths:
+            if not os.path.isfile(path):
+                raise NgspiceRunError(
+                    "ngspice finished but wrote no data file at " + str(path) + ".\n"
+                    "The wrdata command may have failed.\n"
+                    "--- stdout ---\n" + _tail(completed.stdout or "")
+                )
+            with open(path, encoding="utf-8", errors="replace") as data_file:
+                texts.append(data_file.read())
 
-        with open(out_path, encoding="utf-8", errors="replace") as data_file:
-            data = data_file.read()
-
-        return (data, completed.stdout or "") if with_stdout else data
+        return (texts, completed.stdout or "") if with_stdout else texts
     finally:
-        for leftover in (netlist_path, out_path):
+        for leftover in [netlist_path] + list(out_paths):
             try:
                 os.unlink(leftover)
             except OSError:
                 pass
+
+
+def run_ac_netlist(netlist, out_path, timeout_s=AC_TIMEOUT_S, with_stdout=False):
+    """Run an AC netlist that writes one data file, and return its text.
+
+    The single-output case, which is most of them.  Delegates to run_ac_multi so
+    there is still exactly one place that starts a simulator process.
+    """
+    result = run_ac_multi(netlist, [out_path], timeout_s, with_stdout)
+    if with_stdout:
+        texts, stdout = result
+        return texts[0], stdout
+    return result[0]
 
 
 def parse_wrdata_complex(text):
@@ -657,6 +673,46 @@ def measure_closedloop(bode):
         "corner is not bracketed. Swept " + ("%g" % freq[0]) + " Hz to "
         + ("%g" % freq[-1]) + " Hz, magnitude ran from " + ("%.4f" % mag_db[0])
         + " dB to " + ("%.4f" % mag_db[-1]) + " dB."
+    )
+
+
+def measure_loop(bode):
+    """Crossover and phase margin from a loop gain sweep.
+
+    The loop gain starts positive and real at DC, so its unwrapped phase starts
+    at zero and falls.  Crossover is where the magnitude passes through 0 dB,
+    interpolated in log frequency like every other crossing in this module, and
+    the phase margin is how far the phase still is from -180 degrees there.
+
+    A phase margin near zero means the circuit is close to oscillating.  This
+    function does not judge that; it reports it.
+    """
+    freq, mag_db, phase_deg = _require_series(bode)
+
+    if mag_db[0] <= 0.0:
+        raise NgspiceParseError(
+            "The loop gain is already at or below 0 dB at the bottom of the "
+            "sweep (" + ("%.4f" % mag_db[0]) + " dB at " + ("%g" % freq[0])
+            + " Hz), so there is no crossover to find. The loop needs gain "
+            "before it can have a phase margin."
+        )
+
+    for index in range(1, len(freq)):
+        if mag_db[index - 1] > 0.0 >= mag_db[index]:
+            crossover, fraction = _log_interpolate(freq, mag_db, index - 1, index, 0.0)
+            phase_at = _between(phase_deg, index - 1, index, fraction)
+            return {
+                "loop_gain_db": mag_db[0],
+                "f_crossover": crossover,
+                "phase_at_crossover": phase_at,
+                "phase_margin": 180.0 + phase_at,
+            }
+
+    raise NgspiceParseError(
+        "The loop gain never falls through 0 dB, so the crossover is not "
+        "bracketed. Swept " + ("%g" % freq[0]) + " Hz to " + ("%g" % freq[-1])
+        + " Hz, magnitude ran from " + ("%.4f" % mag_db[0]) + " dB to "
+        + ("%.4f" % mag_db[-1]) + " dB."
     )
 
 

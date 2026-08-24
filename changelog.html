@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Changelog - Faradaem</title>
 <meta name="description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2314181D'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%23B87333'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230A0E14'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%2322D3EE'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -18,9 +18,9 @@
     </a>
     <nav aria-label="Primary">
       <ul class="nav-links">
-        <li><a href="/">Simulator</a></li>
-        <li><a href="/changelog" aria-current="page">Changelog</a></li>
+        <li><a href="/manual">Manual</a></li>
         <li><a href="/about">About</a></li>
+        <li><a href="/changelog" aria-current="page">Changelog</a></li>
       </ul>
     </nav>
   </div>
@@ -39,6 +39,111 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">0.6.3</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>The op-amp schematic is laid out cleanly: strict columns, more room, rails that span only the columns they feed, and the bias bus running straight along the bottom row's gates instead of detouring under everything. The diode tie no longer cuts through the bias source symbol.</li>
+            <li>No label touches a wire or a component anywhere. Every figure is now checked programmatically for text against text and text against wires, and the whole set passes with zero overlaps.</li>
+            <li>One deliberate wire crossing remains in the op-amp figure, at the mirror gate tie, which is where textbooks put it.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.6.2</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>Schematics are now drawn directly on the dark ground, the way Kirchhoff draws them: light grey wires and symbols, cyan node dots, cyan net names, and the measured value as plain cyan text beside its node instead of a filled tag.</li>
+            <li>The Bode plot follows: cyan magnitude trace, grey phase trace, faint grid on the dark surface. The light paper figure is retired, and with it the second accent shade it required.</li>
+            <li>Not one drawing routine changed for the restyle. The figures take every colour from the stylesheet, so the whole change is tokens and classes.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.6.1</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>Spec-first generation on the op-amp: enter only the targets, press one button, and a design is created, measured, iterated if it falls short, and confirmed with a final simulation. No starting sizes needed.</li>
+            <li>The starting design is scaled from the hand-designed op-amp by two declared rules: compensation tracks the load, bias current tracks the power budget. Seeds are launch points, never results; across four spec profiles, two were met by the seed alone and the others within two iterations.</li>
+            <li>Optimizing from the form's current values remains available as the second path.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.6.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>The design iterator. Set targets for gain, bandwidth, phase margin and power, press Start, and a coordinate search sizes the circuit until every target is met. Each candidate is a full ngspice simulation; the measurements decide the next move, and nothing is ever predicted from a formula.</li>
+            <li>Verified end to end on the SKY130 op-amp: from a failing start at 28 degrees of phase margin, the search reached 73.4 dB gain, 6.8 MHz unity-gain bandwidth, 63 degrees of margin and 79 uW in nine simulations, and stopped the moment the spec was met.</li>
+            <li>The search runs as a server job. The page polls progress, shows the best point so far with a met or short verdict per target, and Stop actually stops it. Apply result loads the winning values and runs one confirming simulation, so what you see is measured, not remembered.</li>
+            <li>Candidates the simulator refuses, a bias that will not settle or a loop with no crossover, are recorded and skipped rather than ending the search.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.5.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>Circuits can now declare a design surface: which parameters an optimizer may move, and which measured numbers count as goals, each with a direction and a default target. The op-amp tunes its bias current, input pair, output driver and compensation network. The two-pole macromodel tunes its gain-bandwidth and second pole, and doubles as the fast test bed for the search itself.</li>
+            <li>The parameterized netlist the roadmap called for: every device size, current and capacitor in the op-amp is a form field with declared bounds, and the netlist is rebuilt from them on every run.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.4.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>A hand-designed two-stage Miller op-amp on SKY130: eight transistors, a mirror-loaded input pair, a common-source second stage, and compensation with a zero-nulling resistor. The shipped sizing measures 71.5 dB of open-loop gain, 13.6 MHz unity-gain bandwidth, 74.6 degrees of phase margin and 156 uW.</li>
+            <li>Measured open loop with the classic DC servo: an enormous inductor closes the loop at DC so the operating point is a stable unity buffer, and the AC drive arrives through an enormous capacitor whose zero-ohm source holds the input node, so the loop is open by impedance at every swept frequency.</li>
+            <li>One sweep yields the whole datasheet line: open-loop gain, unity-gain bandwidth, phase margin, power, and the servoed output voltage.</li>
+            <li>Removing the nulling resistor costs twenty degrees of phase margin on the measured device. That is the right-half-plane zero doing exactly what the textbooks say it does, and there is a preset for it.</li>
+            <li>A sizing that does not bias, with the output stuck at a rail, is refused with a message naming the measured voltage and which widths to rebalance.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.3.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>Phase margin, measured from a real loop gain sweep. Every measurement before this one came from a closed loop response, and phase margin is not in there: it is a property of the loop gain, so the loop has to be opened.</li>
+            <li>A two-pole op-amp macromodel to measure it on. A single-pole loop has a phase margin of about 90 degrees no matter what you do to it, so it cannot tell a correct measurement from one that always returns 90. This one has a phase margin that is a real closed form and moves over a wide range.</li>
+            <li>The netlist carries two electrically separate copies of the circuit, one closed and one with the loop cut at the amplifier input. They share only ground, so one sweep measures both and the two responses cannot disagree about where the samples fell.</li>
+            <li>Measured against the closed form: phase margin agrees to 0.001 degrees, crossover to 0.05 percent, loop gain to 0.03 dB.</li>
+            <li>Gain margin is deliberately not reported. A two-pole loop never reaches 180 degrees of phase shift, so its gain margin is infinite and any number there would be an artifact of where the sweep stopped.</li>
+            <li>A user manual at /manual, covering how to run a simulation, how to read the result, what every warning means, and what to do when something goes wrong. Its tests check it against the code it documents, so it fails if a circuit is added without being written up.</li>
+            <li>Parameter combinations that cannot be swept now return 400 with a message saying which way to move, instead of 500.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">0.2.1</span>
+            <span class="entry-date">2026-08-23</span>
+          </header>
+          <ul>
+            <li>Visual language aligned with Kirchhoff: cool dark chrome, one cyan accent, square corners, no shadows, and a sans body with a monospace lane kept for numerics and raw simulator output.</li>
+            <li>The accent exists at two lightnesses because it has to. Bright cyan sits at 1.6:1 on the light datasheet plate, so everything drawn on paper uses a darker cyan instead: the magnitude trace, the markers, and their labels.</li>
+            <li>Six worked examples per circuit, up from two or three, labelled as examples. Every one is verified against a real ngspice run.</li>
+            <li>Some examples are instructive rather than tidy: an op-amp with a finite open-loop gain misses its ideal closed-loop gain and says so, and a common-source stage biased into triode reports the caution alongside its real numbers.</li>
+            <li>Three contrast failures on the datasheet plate fixed in passing, and the focus ring now detaches from the filled Run button instead of fusing with it.</li>
+            <li>About page carries the full colophon and biography.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">0.2.0</span>
             <span class="entry-date">2026-08-23</span>
           </header>
@@ -47,7 +152,7 @@
             <li>PDK resolution from the PDK_ROOT environment variable, falling back to C:\pdk, with a message that says what to install when the model library is missing.</li>
             <li>The operating point is measured in the same ngspice run as the sweep, so the readout carries drain voltage, drain current and power beside the gain and bandwidth.</li>
             <li>A gate bias that leaves the device off is reported as a bias problem naming the measured Vds and Id, not as a failed measurement. A stage bottomed out in triode still measures, and says so.</li>
-            <li>This circuit ships no analytic check on purpose. Square law does not describe a 150 nm device, and its bandwidth is set by the transistor&#8217;s own output resistance &#8212; measured 10.5 MHz against an ideal 7.96 MHz. It is the first Faradaem result that cannot be obtained without a simulator.</li>
+            <li>This circuit ships no analytic check on purpose. Square law does not describe a 150 nm device, and its bandwidth is set by the transistor&#8217;s own output resistance, measured at 10.5 MHz against an ideal 7.96 MHz. It is the first Faradaem result that cannot be obtained without a simulator.</li>
           </ul>
         </article>
 
@@ -86,7 +191,7 @@
           <ul>
             <li>RC low-pass circuit, selectable alongside the DC divider from a mode switcher.</li>
             <li>AC sweep through ngspice: 20 points per decade, three decades either side of the corner, read back with wrdata.</li>
-            <li>Bode plot on the paper panel — magnitude and phase over log frequency, with the corner marked.</li>
+            <li>Bode plot on the paper panel: magnitude and phase over log frequency, with the corner marked.</li>
             <li>-3 dB extraction by interpolation in log frequency, checked against 1/(2&#960;RC).</li>
           </ul>
         </article>
@@ -125,10 +230,9 @@
 <footer class="foot">
   <div class="wrap">
     <div class="foot-inner">
-      <span>ngspice is the source of truth</span>
+      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
       <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
     </div>
-    <p class="foot-note">every number on this site comes from an ngspice simulation</p>
   </div>
 </footer>
 

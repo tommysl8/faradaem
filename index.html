@@ -5,22 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Faradaem</title>
 <meta name="description" content="Simulate resistor dividers, RC and RLC filters, and an inverting amplifier with real ngspice, in the browser.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2314181D'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%23B87333'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230A0E14'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%2322D3EE'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="wordmark" href="/">
+    <a class="wordmark" href="/" aria-current="page">
       <span class="wordmark-name">FARADAEM</span>
       <span class="wordmark-version"></span>
     </a>
     <nav aria-label="Primary">
       <ul class="nav-links">
-        <li><a href="/" aria-current="page">Simulator</a></li>
-        <li><a href="/changelog">Changelog</a></li>
+        <li><a href="/manual">Manual</a></li>
         <li><a href="/about">About</a></li>
+        <li><a href="/changelog">Changelog</a></li>
       </ul>
     </nav>
   </div>
@@ -36,18 +36,51 @@
 
     <div class="sim">
 
+      <div class="sim-left">
+
       <form class="panel sim-controls" id="sim-form" novalidate>
         <div class="modes" role="tablist" aria-label="Circuit" id="modes"></div>
         <h2 class="panel-head" id="panel-title">Loading</h2>
         <div class="panel-body">
-          <div class="presets" id="presets"></div>
+          <div class="presets-row">
+            <span class="presets-label" id="presets-label">Examples</span>
+            <div class="presets" id="presets" role="group" aria-labelledby="presets-label"></div>
+          </div>
           <div id="inputs"></div>
           <button class="run" id="run" type="submit"><span id="run-label">Run simulation</span></button>
           <p class="hint">Press Enter to run. Use the arrow keys to step a value.</p>
         </div>
       </form>
 
+      <section class="panel design-panel hidden" id="design" aria-label="Design to spec">
+        <h2 class="panel-head">Design to spec</h2>
+        <div class="panel-body">
+          <p class="design-intro">Set targets, then start the search. Every step is a
+          real ngspice run, so the SKY130 circuits take minutes, not seconds.</p>
+          <div id="design-goals"></div>
+          <div class="design-actions">
+            <button class="run hidden" id="design-generate" type="button"><span id="design-generate-label">Generate design from specs</span></button>
+            <button class="chip design-secondary" id="design-start" type="button"><span id="design-start-label">Optimize from current values</span></button>
+          </div>
+          <div class="design-progress hidden" id="design-progress">
+            <div class="design-statusline">
+              <span id="design-state">Running</span>
+              <span class="design-evals" id="design-evals"></span>
+              <button class="chip" id="design-stop" type="button">Stop</button>
+            </div>
+            <div class="design-best" id="design-best"></div>
+            <p class="design-reason hidden" id="design-reason"></p>
+            <button class="chip design-apply hidden" id="design-apply" type="button">Apply result and run</button>
+          </div>
+          <p class="field-error hidden" id="design-error"></p>
+        </div>
+      </section>
+
+      </div>
+
       <section class="sim-figure" aria-label="Schematic and result">
+
+        <h2 class="section-label">Schematic</h2>
 
         <figure class="figure">
           <svg id="schematic" viewBox="0 0 420 300"></svg>
@@ -60,6 +93,8 @@
         <figure class="figure hidden" id="bode-panel">
           <svg id="bode" viewBox="0 0 520 360"></svg>
         </figure>
+
+        <h2 class="section-label">Measurement</h2>
 
         <div class="result" id="result">
           <div class="result-row">
@@ -94,10 +129,9 @@
 <footer class="foot">
   <div class="wrap">
     <div class="foot-inner">
-      <span>ngspice is the source of truth</span>
+      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
       <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
     </div>
-    <p class="foot-note">every number on this site comes from an ngspice simulation</p>
   </div>
 </footer>
 

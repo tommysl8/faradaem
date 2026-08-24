@@ -398,7 +398,7 @@
 
       add(layer, "rect", {
         "class": "bode-tip-box",
-        x: boxX, y: boxY, width: width, height: height, rx: 3
+        x: boxX, y: boxY, width: width, height: height
       });
       lines.forEach(function (line, row) {
         text(layer, {

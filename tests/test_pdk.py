@@ -226,8 +226,8 @@ def test_a_drain_stuck_at_the_rail_says_which_way_to_move():
 # ---------------------------------------------------------------------------
 
 
-def test_the_circuit_is_registered_and_last_in_order():
-    assert circuits.CIRCUIT_ORDER[-1] == CIRCUIT_ID
+def test_the_circuit_is_registered():
+    assert CIRCUIT_ID in circuits.CIRCUIT_ORDER
     assert circuits.get_circuit(CIRCUIT_ID)["analysis"] == "ac"
 
 

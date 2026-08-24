@@ -22,7 +22,9 @@
     rc_highpass: "drawRCHighpass",
     rlc_bandpass: "drawRLCBandpass",
     inverting_amp: "drawInvertingAmp",
-    nfet_cs_amp: "drawNfetCsAmp"
+    twopole_amp: "drawTwopoleAmp",
+    nfet_cs_amp: "drawNfetCsAmp",
+    opamp_two_stage: "drawOpampTwoStage"
   };
 
   /* Which measured value the schematic tags its output node with, and the
@@ -33,7 +35,9 @@
     rc_highpass: "f3db",
     rlc_bandpass: "f0_measured",
     inverting_amp: "midband_db",
-    nfet_cs_amp: "midband_db"
+    twopole_amp: "phase_margin",
+    nfet_cs_amp: "midband_db",
+    opamp_two_stage: "phase_margin"
   };
 
   var TAG_ARG = {
@@ -42,7 +46,9 @@
     rc_highpass: "f3db",
     rlc_bandpass: "f0",
     inverting_amp: "gain_db",
-    nfet_cs_amp: "gain_db"
+    twopole_amp: "phase_margin",
+    nfet_cs_amp: "gain_db",
+    opamp_two_stage: "phase_margin"
   };
 
   /* Arrow keys step the leading digit: 1000 -> 2000, 1.5e-7 -> 2.5e-7.
@@ -115,6 +121,9 @@
 
   /* Values survive a trip to another circuit and back, for this session. */
   var memory = {};
+
+  /* The most recent successful measurement, for flows that act on it. */
+  var lastResult = null;
 
   /* ---- number presentation ------------------------------------------ */
 
@@ -561,6 +570,7 @@
         showError("The server did not return a usable measurement. Run it again.");
       } else {
         dismissError();
+        lastResult = payload;
         renderResult(payload);
         redraw(payload, true);
       }
@@ -571,6 +581,360 @@
       setPending(false);
     }
   }
+
+
+  /* ---- design to spec ---------------------------------------------------- */
+
+  var designPanel = id("design");
+  var designGoalsEl = id("design-goals");
+  var designGenerate = id("design-generate");
+  var designGenerateLabel = id("design-generate-label");
+  var designStart = id("design-start");
+  var designStartLabel = id("design-start-label");
+  var designStop = id("design-stop");
+  var designProgress = id("design-progress");
+  var designState = id("design-state");
+  var designEvals = id("design-evals");
+  var designBest = id("design-best");
+  var designReason = id("design-reason");
+  var designApply = id("design-apply");
+  var designError = id("design-error");
+
+  var designInputs = {};
+  var designJob = null;
+  var designTimer = null;
+  var designResult = null;
+
+  /* "generate" runs the whole story on its own: seed, confirm, iterate if
+   * short, apply. "manual" leaves apply to the user. */
+  var designMode = "manual";
+
+  function designIdle() {
+    if (designTimer) {
+      clearTimeout(designTimer);
+      designTimer = null;
+    }
+    designJob = null;
+    designResult = null;
+    designMode = "manual";
+    designGenerate.disabled = false;
+    designGenerateLabel.textContent = "Generate design from specs";
+    designStart.disabled = false;
+    designStartLabel.textContent = "Start optimization";
+    show(designProgress, false);
+    show(designApply, false);
+    show(designReason, false);
+    show(designError, false);
+    clear(designBest);
+  }
+
+  function renderDesignPanel() {
+    designIdle();
+    clear(designGoalsEl);
+    designInputs = {};
+
+    var block = current.design;
+    show(designPanel, Boolean(block));
+    if (!block) {
+      return;
+    }
+    show(designGenerate, Boolean(block.seeded));
+
+    block.goals.forEach(function (item) {
+      var field = el("div", "field");
+      var label = el("label", null,
+        item.label + " " + (item.op === ">=" ? "at least" : "at most") + " ");
+      label.htmlFor = "goal-" + item.key;
+      field.appendChild(label);
+
+      var shell = el("div", "input-shell");
+      var input = document.createElement("input");
+      input.id = "goal-" + item.key;
+      input.type = "number";
+      input.step = "any";
+      input.value = String(item.default);
+      input.inputMode = "decimal";
+      input.autocomplete = "off";
+      shell.appendChild(input);
+      if (item.unit) {
+        var unit = el("span", "unit", item.unit);
+        unit.setAttribute("aria-hidden", "true");
+        shell.appendChild(unit);
+      }
+      field.appendChild(shell);
+      designGoalsEl.appendChild(field);
+      designInputs[item.key] = input;
+    });
+  }
+
+  function designShowError(message) {
+    designError.textContent = message;
+    show(designError, true);
+  }
+
+  /* One row per goal: what the best point measures, what was asked, verdict. */
+  function renderDesignBest(snapshot) {
+    clear(designBest);
+    var best = snapshot.best;
+    (current.design.goals || []).forEach(function (item) {
+      var target = snapshot.targets[item.key];
+      var value = best && best.measured ? best.measured[item.key] : null;
+      var met = best && best.margins && best.margins[item.key] >= 0;
+
+      designBest.appendChild(el("span", "goal-label", item.label));
+      designBest.appendChild(el("span", "goal-value",
+        value === null || value === undefined
+          ? "\u2014"
+          : present(value, { format: item.unit === "dB" ? "db"
+              : item.unit === "deg" ? "deg" : "eng", unit: item.unit })));
+      designBest.appendChild(el("span", "goal-target",
+        (item.op === ">=" ? "\u2265 " : "\u2264 ") +
+        present(target, { format: item.unit === "dB" ? "db"
+          : item.unit === "deg" ? "deg" : "eng", unit: item.unit })));
+      var mark = el("span", "goal-mark", met ? "met" : "short");
+      if (met) {
+        mark.classList.add("is-met");
+      }
+      designBest.appendChild(mark);
+    });
+  }
+
+  function pollDesign() {
+    if (!designJob) {
+      return;
+    }
+    fetch("/api/design/status?job=" + encodeURIComponent(designJob))
+      .then(function (response) { return response.json(); })
+      .then(function (snapshot) {
+        if (!designJob) {
+          return;
+        }
+        designEvals.textContent =
+          snapshot.evals + " / " + snapshot.max_evals + " simulations";
+        renderDesignBest(snapshot);
+
+        if (snapshot.status === "running") {
+          designState.textContent = "Running";
+          designTimer = setTimeout(pollDesign, 1200);
+          return;
+        }
+
+        designState.textContent =
+          snapshot.status === "done"
+            ? (snapshot.feasible ? "Spec met" : "Finished")
+            : snapshot.status === "stopped" ? "Stopped" : "Failed";
+        designStart.disabled = false;
+        designStartLabel.textContent = "Optimize from current values";
+        designGenerate.disabled = false;
+        designGenerateLabel.textContent = "Generate design from specs";
+        show(designStop, false);
+
+        if (snapshot.status === "failed") {
+          designShowError(snapshot.error ||
+            "The search failed. Check the console running server.py.");
+          return;
+        }
+        if (snapshot.reason) {
+          designReason.textContent = snapshot.reason;
+          show(designReason, true);
+        }
+        if (snapshot.best && snapshot.best.params) {
+          designResult = snapshot.best.params;
+          if (designMode === "generate" && snapshot.feasible) {
+            // The generate flow finishes its own story: load the winning
+            // values and run the confirming simulation.
+            applyDesign();
+          } else {
+            show(designApply, true);
+          }
+        }
+      })
+      .catch(function () {
+        if (designJob) {
+          designTimer = setTimeout(pollDesign, 2500);
+        }
+      });
+  }
+
+  function collectTargets() {
+    var targets = {};
+    var bad = null;
+    Object.keys(designInputs).forEach(function (key) {
+      var value = Number(designInputs[key].value);
+      if (!isFinite(value) || value <= 0) {
+        bad = key;
+      }
+      targets[key] = value;
+    });
+    if (bad !== null) {
+      designShowError("Every target needs a positive number. Fix " + bad +
+                      " and start again.");
+      return null;
+    }
+    return targets;
+  }
+
+  /* Does a finished measurement satisfy every target? Plain comparison of
+   * measured numbers, the same arithmetic the badges already do. */
+  function meetsTargets(measured, targets) {
+    return (current.design.goals || []).every(function (item) {
+      var value = measured[item.key];
+      if (typeof value !== "number" || !isFinite(value)) {
+        return false;
+      }
+      return item.op === ">="
+        ? value >= targets[item.key]
+        : value <= targets[item.key];
+    });
+  }
+
+  function startDesign(mode) {
+    if (!current.design || !validate()) {
+      return;
+    }
+    show(designError, false);
+    show(designReason, false);
+    show(designApply, false);
+    designResult = null;
+    designMode = mode === "generate" ? "generate" : "manual";
+
+    var targets = collectTargets();
+    if (targets === null) {
+      return;
+    }
+
+    designGenerate.disabled = true;
+    designStart.disabled = true;
+    designStartLabel.textContent = "Searching";
+    designState.textContent = "Starting";
+    designEvals.textContent = "";
+    clear(designBest);
+    show(designProgress, true);
+    show(designStop, true);
+
+    fetch("/api/design", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        circuit: current.id,
+        params: values(),
+        targets: targets
+      })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload && payload.error
+              ? payload.error
+              : "The server refused the design request.");
+          }
+          designJob = payload.job;
+          pollDesign();
+        });
+      })
+      .catch(function (error) {
+        designIdle();
+        designShowError(String(error.message || error));
+      });
+  }
+
+  function stopDesign() {
+    if (!designJob) {
+      return;
+    }
+    fetch("/api/design/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: designJob })
+    }).catch(function () {});
+  }
+
+  function applyDesign() {
+    if (!designResult) {
+      return;
+    }
+    Object.keys(designResult).forEach(function (key) {
+      if (inputs[key]) {
+        inputs[key].value = String(designResult[key]);
+      }
+    });
+    onEdit();
+    // The confirming run: the numbers shown are measured, never remembered
+    // from the search.
+    run();
+  }
+
+
+  /* The whole story on one button: seed a design from the spec, measure it,
+   * and only if it falls short, iterate until it does not. */
+  function generateDesign() {
+    if (!current.design || !current.design.seeded || !validate()) {
+      return;
+    }
+    show(designError, false);
+    show(designReason, false);
+    show(designApply, false);
+
+    var targets = collectTargets();
+    if (targets === null) {
+      return;
+    }
+
+    designGenerate.disabled = true;
+    designStart.disabled = true;
+    designGenerateLabel.textContent = "Generating";
+
+    fetch("/api/design/seed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        circuit: current.id,
+        params: values(),
+        targets: targets
+      })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload && payload.error
+              ? payload.error
+              : "The server refused the seed request.");
+          }
+          // The generated circuit appears in the form and the schematic.
+          Object.keys(payload.params).forEach(function (key) {
+            if (inputs[key]) {
+              inputs[key].value = String(payload.params[key]);
+            }
+          });
+          onEdit();
+          designGenerateLabel.textContent = "Measuring the generated design";
+          return run();
+        });
+      })
+      .then(function () {
+        if (lastResult && meetsTargets(lastResult, targets)) {
+          designGenerate.disabled = false;
+          designStart.disabled = false;
+          designGenerateLabel.textContent = "Generate design from specs";
+          designReason.textContent =
+            "The generated design meets every target as measured. No " +
+            "iteration was needed.";
+          show(designReason, true);
+          return;
+        }
+        designGenerateLabel.textContent = "Iterating toward the spec";
+        startDesign("generate");
+      })
+      .catch(function (error) {
+        designIdle();
+        designShowError(String(error.message || error));
+      });
+  }
+
+  designGenerate.addEventListener("click", generateDesign);
+  designStart.addEventListener("click", function () { startDesign("manual"); });
+  designStop.addEventListener("click", stopDesign);
+  designApply.addEventListener("click", applyDesign);
 
   /* ---- selection --------------------------------------------------------- */
 
@@ -593,6 +957,7 @@
     renderTabs();
     renderPresets();
     renderInputs(memory[current.id]);
+    renderDesignPanel();
     validate();
     dismissError();
     clearResult();

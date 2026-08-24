@@ -1,7 +1,7 @@
 """Faradaem local web server -- standard library only.
 
-Serves three pages (simulator, changelog, about), their static assets, and the
-simulation API:
+Serves four pages (simulator, manual, about, changelog), their static assets, and
+the simulation API:
 
     GET  /api/circuits   the catalogue, so the UI renders its forms from data
     POST /api/simulate   run any catalogued circuit
@@ -30,12 +30,14 @@ from __future__ import annotations
 import json
 import math
 import sys
+import threading
 import traceback
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from spice import circuits
+from spice import circuits, design
 from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
@@ -47,9 +49,25 @@ SIMULATION_ERRORS = (
     ValueError,
 )
 
-#: A bias that leaves nothing to measure is a bad input, so it is a 400.
-#: It subclasses ValueError, so it must be caught before SIMULATION_ERRORS.
-INPUT_ERRORS = (circuits.BiasError,)
+#: Inputs the circuit cannot be run at map to 400, not 500: a bias that leaves
+#: nothing to measure, a combination that puts the sweep outside what ngspice
+#: can cover, a loop with no crossover. CircuitInputError is the base of all of
+#: them, and it subclasses ValueError, so it must be caught before
+#: SIMULATION_ERRORS.
+INPUT_ERRORS = (circuits.CircuitInputError,)
+
+#: Design jobs live in memory: id -> snapshot dict. A job survives its HTTP
+#: request because the search takes real simulator time; the browser polls.
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+
+#: How many finished jobs are kept before the oldest are dropped.
+MAX_JOBS = 12
+
+#: Iteration budget bounds for one design job.
+MIN_DESIGN_EVALS = 4
+MAX_DESIGN_EVALS = 120
+DEFAULT_DESIGN_EVALS = 40
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -65,6 +83,7 @@ SVG = "image/svg+xml"
 #: Values are literals.  Nothing derived from a request ever reaches the disk.
 ROUTES = {
     "/": ("index.html", HTML),
+    "/manual": ("manual.html", HTML),
     "/about": ("about.html", HTML),
     "/changelog": ("changelog.html", HTML),
     "/static/style.css": ("static/style.css", CSS),
@@ -230,6 +249,127 @@ def validate_api_request(payload):
     return circuit_id, values
 
 
+def validate_design_request(payload):
+    """Validate a /api/design body: circuit, start params, targets, budget.
+
+    Returns (circuit_id, params, targets, max_evals). The circuit must declare
+    a design block; the start parameters are validated exactly like a simulate
+    request; targets are validated by the design layer itself.
+    """
+    circuit_id, params = validate_api_request(payload)
+
+    try:
+        _, block = design.design_block(circuit_id)
+        targets = design.resolve_targets(block, payload.get("targets") or {})
+    except design.DesignError as exc:
+        raise ValidationError(str(exc)) from None
+
+    raw_evals = payload.get("max_evals", DEFAULT_DESIGN_EVALS)
+    if isinstance(raw_evals, bool) or not isinstance(raw_evals, int):
+        raise ValidationError(
+            "Field 'max_evals' must be a whole number of simulations to allow."
+        )
+    if not MIN_DESIGN_EVALS <= raw_evals <= MAX_DESIGN_EVALS:
+        raise ValidationError(
+            "Field 'max_evals' must be between " + str(MIN_DESIGN_EVALS)
+            + " and " + str(MAX_DESIGN_EVALS) + "."
+        )
+
+    return circuit_id, params, targets, raw_evals
+
+
+def _job_snapshot(job):
+    """A JSON-ready copy of one job, history capped to the recent past."""
+    return {
+        "job": job["job"],
+        "circuit": job["circuit"],
+        "status": job["status"],
+        "evals": job["evals"],
+        "max_evals": job["max_evals"],
+        "targets": job["targets"],
+        "best": job["best"],
+        "recent": job["recent"][-12:],
+        "feasible": job["feasible"],
+        "reason": job["reason"],
+        "error": job["error"],
+    }
+
+
+def _prune_jobs_locked():
+    """Drop the oldest finished jobs once the store is over its cap."""
+    if len(JOBS) <= MAX_JOBS:
+        return
+    finished = [
+        key for key, job in JOBS.items() if job["status"] != "running"
+    ]
+    for key in finished[: len(JOBS) - MAX_JOBS]:
+        del JOBS[key]
+
+
+def start_design_job(circuit_id, params, targets, max_evals):
+    """Spawn the search on a worker thread and return its job id."""
+    job_id = uuid.uuid4().hex[:12]
+    stop_event = threading.Event()
+    job = {
+        "job": job_id,
+        "circuit": circuit_id,
+        "status": "running",
+        "evals": 0,
+        "max_evals": max_evals,
+        "targets": targets,
+        "best": None,
+        "recent": [],
+        "feasible": False,
+        "reason": None,
+        "error": None,
+        "stop": stop_event,
+    }
+    with JOBS_LOCK:
+        JOBS[job_id] = job
+        _prune_jobs_locked()
+
+    def entry_view(entry):
+        return {
+            "evals": entry["evals"],
+            "params": entry["params"],
+            "measured": entry["measured"],
+            "margins": entry["margins"],
+            "score": entry["score"],
+            "feasible": entry["feasible"],
+            "error": entry["error"],
+        }
+
+    def on_eval(entry, best):
+        with JOBS_LOCK:
+            job["evals"] = entry["evals"]
+            job["recent"].append(entry_view(entry))
+            del job["recent"][:-24]
+            if best is not None:
+                job["best"] = entry_view(best)
+
+    def work():
+        try:
+            result = design.run_design(
+                circuit_id, params, targets, max_evals,
+                on_eval=on_eval, should_stop=stop_event.is_set,
+            )
+            with JOBS_LOCK:
+                job["feasible"] = result["feasible"]
+                job["reason"] = result["reason"]
+                job["evals"] = result["evals"]
+                if result["best"] is not None:
+                    job["best"] = entry_view(result["best"])
+                job["status"] = "stopped" if stop_event.is_set() else "done"
+        except Exception as exc:  # noqa: BLE001 - boundary of a worker thread
+            traceback.print_exc()
+            with JOBS_LOCK:
+                job["status"] = "failed"
+                job["error"] = str(exc)
+
+    threading.Thread(target=work, daemon=True).start()
+    return job_id
+
+
 def analytic_divider(vdd, r1, r2):
     """Ideal divider value. A sanity check on ngspice, never a substitute."""
     return vdd * r2 / (r1 + r2)
@@ -248,7 +388,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/0.2.0"
+    server_version = "Faradaem/0.6.3"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
@@ -260,9 +400,14 @@ class FaradaemHandler(BaseHTTPRequestHandler):
         self._guard(self._route_post)
 
     def _route_get(self):
-        path = urlsplit(self.path).path
+        parts = urlsplit(self.path)
+        path = parts.path
         if path == "/api/circuits":
             self._send_json(200, {"circuits": circuits.catalog()})
+            return
+
+        if path == "/api/design/status":
+            self._handle_design_status(parts.query)
             return
 
         route = resolve_route(path)
@@ -275,6 +420,12 @@ class FaradaemHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/simulate":
             self._handle_api_simulate()
+        elif path == "/api/design":
+            self._handle_design_start()
+        elif path == "/api/design/seed":
+            self._handle_design_seed()
+        elif path == "/api/design/stop":
+            self._handle_design_stop()
         elif path == "/simulate":
             self._handle_simulate()
         elif path == "/simulate_ac":
@@ -316,6 +467,60 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
         except SIMULATION_ERRORS as exc:
             self._send_json(500, {"error": str(exc)})
+
+    def _handle_design_start(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+
+        try:
+            circuit_id, params, targets, max_evals = validate_design_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
+        job_id = start_design_job(circuit_id, params, targets, max_evals)
+        self._send_json(200, {"job": job_id})
+
+    def _handle_design_seed(self):
+        """Turn a spec into a starting parameter set, without simulating."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+
+        try:
+            circuit_id, params = validate_api_request(payload)
+            seeded, targets = design.seed_params(
+                circuit_id, payload.get("targets") or {}, params
+            )
+        except (ValidationError, design.DesignError) as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
+        self._send_json(200, {"params": seeded, "targets": targets})
+
+    def _handle_design_status(self, query):
+        job_id = (parse_qs(query).get("job") or [""])[0]
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            snapshot = _job_snapshot(job) if job else None
+        if snapshot is None:
+            self._send_json(404, {"error": "Unknown design job " + repr(job_id) + "."})
+            return
+        self._send_json(200, snapshot)
+
+    def _handle_design_stop(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        job_id = payload.get("job") if isinstance(payload, dict) else None
+        with JOBS_LOCK:
+            job = JOBS.get(job_id or "")
+        if job is None:
+            self._send_json(404, {"error": "Unknown design job " + repr(job_id) + "."})
+            return
+        job["stop"].set()
+        self._send_json(200, {"job": job_id, "stopping": True})
 
     # ---- legacy endpoints ----------------------------------------------
     #

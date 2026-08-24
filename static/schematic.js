@@ -291,6 +291,48 @@
     return group;
   }
 
+  /* Enhancement-mode PMOS: the nmos mirrored top for bottom. Source and bulk
+   * sit at the top, toward the supply, drain leaves at the bottom, and the
+   * bulk arrow points away from the channel, which is what marks it p-type.
+   * (x, y) is the centre of the channel. */
+  function pmos(parent, options) {
+    var x = options.x;
+    var y = options.y;
+    var half = options.half || 24;
+    var gap = options.gap || 10;
+    var lead = options.lead || 26;
+    var group = add(parent, "g", {});
+
+    var gateX = x - gap;
+    var railX = x + lead;
+    var sourceY = y - half + 7;
+    var drainY = y + half - 7;
+
+    // Gate plate and its lead.
+    polyline(group, [[gateX, y - half], [gateX, y + half]]);
+    polyline(group, [[gateX - lead, y], [gateX, y]]);
+
+    // Channel: three dashes.
+    polyline(group, [[x, y - half], [x, y - half + 14]]);
+    polyline(group, [[x, y - 7], [x, y + 7]]);
+    polyline(group, [[x, y + half - 14], [x, y + half]]);
+
+    // Source lead: out to the rail column, then up toward the supply.
+    polyline(group, [[x, sourceY], [railX, sourceY]]);
+    polyline(group, [[railX, sourceY], [railX, y - half - 14]]);
+
+    // Drain lead: out to the rail column, then down.
+    polyline(group, [[x, drainY], [railX, drainY]]);
+    polyline(group, [[railX, drainY], [railX, y + half + 14]]);
+
+    // Bulk, tied into the source lead, arrow pointing away from the channel.
+    polyline(group, [[x, y], [railX, y]]);
+    polyline(group, [[railX, y], [railX, sourceY]]);
+    polyline(group, [[railX - 9, y - 5], [railX, y], [railX - 9, y + 5]]);
+
+    return group;
+  }
+
   function nodeDot(parent, options) {
     return add(parent, "circle", {
       "class": "sch-fill",
@@ -304,6 +346,7 @@
     var node = add(parent, "text", {
       "class": "sch-text"
         + (options.strong ? " is-strong" : "")
+        + (options.node ? " is-node" : "")
         + (options.value ? " is-value" : ""),
       x: options.x,
       y: options.y,
@@ -314,34 +357,19 @@
     return node;
   }
 
-  /* The measured-value annotation: a copper tag pinned beside a node.
+  /* The measured-value annotation: a filled accent tag pinned beside a node.
+   * Square, like every other box in the app.
    * options.x is the left edge, or the centre when anchor is "middle". */
   function valueTag(parent, options) {
-    var text = options.text;
-    var height = 20;
-    var width = Math.max(46, text.length * 7.2 + 16);
-    var left = options.anchor === "middle" ? options.x - width / 2 : options.x;
-    var group = add(parent, "g", {});
-
-    add(group, "rect", {
-      "class": "sch-tag-box",
-      x: left,
-      y: options.y,
-      width: width,
-      height: height,
-      rx: 3
-    });
-
-    var node = add(group, "text", {
+    var node = add(parent, "text", {
       "class": "sch-tag-text",
-      x: left + width / 2,
-      y: options.y + height / 2 + 4,
-      "text-anchor": "middle",
+      x: options.x,
+      y: options.y + 14,
+      "text-anchor": options.anchor === "middle" ? "middle" : "start",
       "font-size": 12
     });
-    node.textContent = text;
-
-    return group;
+    node.textContent = options.text;
+    return node;
   }
 
   var symbols = {
@@ -354,6 +382,7 @@
     inductor: inductor,
     opamp: opamp,
     nmos: nmos,
+    pmos: pmos,
     dcSource: dcSource,
     ground: ground,
     nodeDot: nodeDot,
@@ -426,8 +455,8 @@
     // Nodes.
     nodeDot(svg, { x: g.xDivider, y: g.yTop });
     nodeDot(svg, { x: g.xDivider, y: g.yOut });
-    label(svg, { x: g.xDivider - 12, y: g.yTop - 9, text: "in", anchor: "end", strong: true });
-    label(svg, { x: g.xDivider - 12, y: g.yOut + 4, text: "out", anchor: "end", strong: true });
+    label(svg, { x: g.xDivider - 12, y: g.yTop - 9, text: "in", anchor: "end", node: true });
+    label(svg, { x: g.xDivider - 12, y: g.yOut + 4, text: "out", anchor: "end", node: true });
 
     // Reference designators and live values.
     var leftEdge = g.xSource - g.sourceR - 13;
@@ -515,8 +544,8 @@
     // Nodes, labelled below the rail so the reference designators sit above.
     nodeDot(svg, { x: g.inDotX, y: g.yTop });
     nodeDot(svg, { x: g.outDotX, y: g.yTop });
-    label(svg, { x: g.inDotX, y: g.yTop + 20, text: "in", anchor: "middle", strong: true });
-    label(svg, { x: g.outDotX, y: g.yTop + 20, text: "out", anchor: "middle", strong: true });
+    label(svg, { x: g.inDotX, y: g.yTop + 20, text: "in", anchor: "middle", node: true });
+    label(svg, { x: g.outDotX, y: g.yTop + 20, text: "out", anchor: "middle", node: true });
 
     // Reference designators and live values.
     var leftEdge = g.xSource - g.sourceR - 13;
@@ -601,8 +630,8 @@
 
     nodeDot(svg, { x: g.inDotX, y: g.yTop });
     nodeDot(svg, { x: g.outDotX, y: g.yTop });
-    label(svg, { x: g.inDotX, y: g.yTop + 20, text: "in", anchor: "middle", strong: true });
-    label(svg, { x: g.outDotX, y: g.yTop + 20, text: "out", anchor: "middle", strong: true });
+    label(svg, { x: g.inDotX, y: g.yTop + 20, text: "in", anchor: "middle", node: true });
+    label(svg, { x: g.outDotX, y: g.yTop + 20, text: "out", anchor: "middle", node: true });
 
     var leftEdge = g.xSource - g.sourceR - 13;
     label(svg, { x: leftEdge, y: g.sourceCy - 2, text: "V1", anchor: "end", strong: true });
@@ -668,9 +697,9 @@
     nodeDot(svg, { x: g.inDotX, y: g.yTop });
     nodeDot(svg, { x: g.midDotX, y: g.yTop });
     nodeDot(svg, { x: g.outDotX, y: g.yTop });
-    label(svg, { x: g.inDotX, y: g.yTop + 20, text: "in", anchor: "middle", strong: true });
-    label(svg, { x: g.midDotX, y: g.yTop + 20, text: "nlc", anchor: "middle", strong: true });
-    label(svg, { x: g.outDotX, y: g.yTop + 20, text: "out", anchor: "middle", strong: true });
+    label(svg, { x: g.inDotX, y: g.yTop + 20, text: "in", anchor: "middle", node: true });
+    label(svg, { x: g.midDotX, y: g.yTop + 20, text: "nlc", anchor: "middle", node: true });
+    label(svg, { x: g.outDotX, y: g.yTop + 20, text: "out", anchor: "middle", node: true });
 
     var leftEdge = g.xSource - g.sourceR - 13;
     label(svg, { x: leftEdge, y: g.sourceCy - 2, text: "V1", anchor: "end", strong: true });
@@ -758,22 +787,22 @@
     nodeDot(svg, { x: g.inDotX, y: g.yIn });
     nodeDot(svg, { x: g.vmX, y: g.yIn });
     nodeDot(svg, { x: g.outDotX, y: g.ampY });
-    label(svg, { x: g.inDotX, y: g.yIn + 21, text: "in", anchor: "middle", strong: true });
-    label(svg, { x: g.vmX, y: g.yIn + 21, text: "vm", anchor: "middle", strong: true });
-    label(svg, { x: g.outDotX, y: g.ampY - 14, text: "out", anchor: "middle", strong: true });
+    label(svg, { x: g.inDotX, y: g.yIn + 21, text: "in", anchor: "middle", node: true });
+    label(svg, { x: g.vmX, y: g.yIn + 21, text: "vm", anchor: "middle", node: true });
+    label(svg, { x: g.outDotX, y: g.ampY - 14, text: "out", anchor: "middle", node: true });
 
     var leftEdge = g.xSource - g.sourceR - 13;
     label(svg, { x: leftEdge, y: g.sourceCy - 2, text: "V1", anchor: "end", strong: true });
     label(svg, { x: leftEdge, y: g.sourceCy + 14, text: "AC 1 V", anchor: "end" });
 
     var midRin = (g.rinLeft + g.rinRight) / 2;
-    label(svg, { x: midRin, y: g.yIn - 33, text: "Rin", anchor: "middle", strong: true });
+    label(svg, { x: midRin, y: g.yIn - 35, text: "Rin", anchor: "middle", strong: true });
     label(svg, { value: true,
       x: midRin, y: g.yIn - 19, text: formatEngineering(values.rin, "Ω"), anchor: "middle"
     });
 
     var midRf = (g.rfLeft + g.rfRight) / 2;
-    label(svg, { x: midRf, y: g.yFeedback - 33, text: "Rf", anchor: "middle", strong: true });
+    label(svg, { x: midRf, y: g.yFeedback - 35, text: "Rf", anchor: "middle", strong: true });
     label(svg, { value: true,
       x: midRf, y: g.yFeedback - 19, text: formatEngineering(values.rf, "Ω"),
       anchor: "middle"
@@ -794,6 +823,111 @@
       valueTag(svg, {
         x: g.outDotX, y: g.ampY + 20, anchor: "middle",
         text: gain.toFixed(2) + " dB"
+      });
+    }
+    return svg;
+  }
+
+  /* ---- Two-pole op-amp, drawn with its loop break shown -------------- */
+
+  /* Same inverting frame as the single-pole amp, plus the mark that matters
+   * here: where the loop is opened to measure its gain. The break is drawn
+   * because it is the whole method, not an implementation detail. */
+  function drawTwopoleAmp(svg, values) {
+    var g = AMP_GEOMETRY;
+    var pm = values.phase_margin === undefined ? null : values.phase_margin;
+
+    begin(svg, 470, 300,
+      "Two-pole op-amp in an inverting configuration: Rin " +
+      formatEngineering(values.rin, "\u03a9") + " from node in to the inverting " +
+      "node vm, Rf " + formatEngineering(values.rf, "\u03a9") +
+      " feeding back from vm to out, open-loop gain " +
+      formatEngineering(values.a0, "") + ", gain-bandwidth " +
+      formatEngineering(values.gbw, "Hz") + ", second pole at " +
+      formatEngineering(values.fp2, "Hz") +
+      (pm === null ? "." : ", measured phase margin " + pm.toFixed(1) + " degrees."));
+
+    // Source into the input rail.
+    wire(svg, g.xSource, g.yIn, g.rinLeft, g.yIn);
+    wire(svg, g.xSource, g.yIn, g.xSource, g.sourceCy - g.sourceR);
+    wire(svg, g.xSource, g.sourceCy + g.sourceR, g.xSource, g.yRail);
+    wire(svg, g.xSource, g.yRail, g.plusDropX, g.yRail);
+
+    resistor(svg, {
+      orientation: "horizontal", y: g.yIn, x1: g.rinLeft, x2: g.rinRight,
+      peaks: 6, amplitude: 10
+    });
+    wire(svg, g.rinRight, g.yIn, g.ampX, g.yIn);
+
+    wire(svg, g.ampX, g.yPlus, g.plusDropX, g.yPlus);
+    wire(svg, g.plusDropX, g.yPlus, g.plusDropX, g.yRail);
+
+    // Feedback over the top.
+    wire(svg, g.vmX, g.yIn, g.vmX, g.yFeedback);
+    wire(svg, g.vmX, g.yFeedback, g.rfLeft, g.yFeedback);
+    resistor(svg, {
+      orientation: "horizontal", y: g.yFeedback, x1: g.rfLeft, x2: g.rfRight,
+      peaks: 6, amplitude: 10
+    });
+    wire(svg, g.rfRight, g.yFeedback, g.xOutRail, g.yFeedback);
+    wire(svg, g.xOutRail, g.yFeedback, g.xOutRail, g.ampY);
+    wire(svg, g.ampX + g.ampWidth, g.ampY, g.xOutRail, g.ampY);
+
+    dcSource(svg, { cx: g.xSource, cy: g.sourceCy, radius: g.sourceR });
+    opamp(svg, { x: g.ampX, y: g.ampY, width: g.ampWidth, height: g.ampHeight });
+    ground(svg, { x: (g.xSource + g.plusDropX) / 2, y: g.yRail });
+
+    nodeDot(svg, { x: g.inDotX, y: g.yIn });
+    nodeDot(svg, { x: g.vmX, y: g.yIn });
+    nodeDot(svg, { x: g.outDotX, y: g.ampY });
+    label(svg, { x: g.inDotX, y: g.yIn + 21, text: "in", anchor: "middle", node: true });
+    label(svg, { x: g.vmX, y: g.yIn + 21, text: "vm", anchor: "middle", node: true });
+    label(svg, { x: g.outDotX, y: g.ampY - 14, text: "out", anchor: "middle", node: true });
+
+    var leftEdge = g.xSource - g.sourceR - 13;
+    label(svg, { x: leftEdge, y: g.sourceCy - 2, text: "V1", anchor: "end", strong: true });
+    label(svg, { x: leftEdge, y: g.sourceCy + 14, text: "AC 1 V", anchor: "end" });
+
+    var midRin = (g.rinLeft + g.rinRight) / 2;
+    label(svg, { x: midRin, y: g.yIn - 35, text: "Rin", anchor: "middle", strong: true });
+    label(svg, { value: true,
+      x: midRin, y: g.yIn - 19, text: formatEngineering(values.rin, "\u03a9"), anchor: "middle"
+    });
+
+    var midRf = (g.rfLeft + g.rfRight) / 2;
+    label(svg, { x: midRf, y: g.yFeedback - 35, text: "Rf", anchor: "middle", strong: true });
+    label(svg, { value: true,
+      x: midRf, y: g.yFeedback - 19, text: formatEngineering(values.rf, "\u03a9"), anchor: "middle"
+    });
+
+    // The model is a component, so it carries its three live values.
+    label(svg, { value: true,
+      x: g.ampX + 15, y: g.yRail - 31,
+      text: "A0 " + formatEngineering(values.a0, ""), size: 11
+    });
+    label(svg, { value: true,
+      x: g.ampX + 15, y: g.yRail - 17,
+      text: "GBW " + formatEngineering(values.gbw, "Hz"), size: 11
+    });
+    label(svg, { value: true,
+      x: g.ampX + 15, y: g.yRail - 3,
+      text: "fp2 " + formatEngineering(values.fp2, "Hz"), size: 11
+    });
+
+    // The loop break. Two short strokes across the feedback path, marking the
+    // point the loop gain is measured at.
+    var breakX = g.rfRight + 18;
+    polyline(svg, [[breakX - 5, g.yFeedback - 9], [breakX + 1, g.yFeedback + 9]]);
+    polyline(svg, [[breakX + 5, g.yFeedback - 9], [breakX + 11, g.yFeedback + 9]]);
+    label(svg, {
+      x: breakX + 3, y: g.yFeedback - 16, text: "loop", anchor: "middle", size: 11
+    });
+
+    if (pm !== null && isFinite(pm)) {
+      wire(svg, g.outDotX, g.ampY + 6, g.outDotX, g.ampY + 20);
+      valueTag(svg, {
+        x: g.outDotX, y: g.ampY + 20, anchor: "middle",
+        text: "PM " + pm.toFixed(1) + "\u00b0"
       });
     }
     return svg;
@@ -854,8 +988,8 @@
     // Nodes.
     nodeDot(svg, { x: g.xRail, y: g.yOut });
     nodeDot(svg, { x: g.gateDotX, y: g.yDev });
-    label(svg, { x: g.xRail - 12, y: g.yOut + 4, text: "out", anchor: "end", strong: true });
-    label(svg, { x: g.gateDotX, y: g.yDev - 12, text: "g", anchor: "middle", strong: true });
+    label(svg, { x: g.xRail - 12, y: g.yOut + 4, text: "out", anchor: "end", node: true });
+    label(svg, { x: g.gateDotX, y: g.yDev - 12, text: "g", anchor: "middle", node: true });
 
     // The supply is a rail, so it carries its label rather than a symbol.
     label(svg, { x: g.railEnd + 8, y: g.yVdd - 4, text: "VDD", strong: true });
@@ -908,12 +1042,183 @@
     return svg;
   }
 
+  /* ---- SKY130 two-stage op-amp -------------------------------------- */
+
+  /* The full eight-transistor amplifier, laid out in strict columns so that
+   * nothing overlaps anything: bias | input pair under its mirror | second
+   * stage. Every label sits in clear space, rails span only the columns they
+   * feed, and the one deliberate wire crossing in the figure is the mirror
+   * gate tie passing the M3 source. The DC servo that biases the open-loop
+   * measurement is instrumentation, not the design, and is not drawn. */
+  function drawOpampTwoStage(svg, values) {
+    var yVdd = 40, yGnd = 420;
+    var pY = 120;      // PMOS channel row
+    var nY = 240;      // input pair channel row
+    var bY = 352;      // bottom NMOS row; the bias bus runs along its gates
+    var pm = values.phase_margin === undefined ? null : values.phase_margin;
+
+    begin(svg, 760, 448,
+      "SKY130 two-stage op-amp: NMOS input pair of width " +
+      formatEngineering(values.wpair, "m") + " under a PMOS mirror load of width " +
+      formatEngineering(values.wload, "m") + ", tail and output currents set by " +
+      formatEngineering(values.ibias, "A") + " through a mirror, then a PMOS " +
+      "common-source second stage of width " + formatEngineering(values.w6, "m") +
+      " with an NMOS sink of width " + formatEngineering(values.w7, "m") +
+      ", compensated by " + formatEngineering(values.cc, "F") + " in series with " +
+      formatEngineering(values.rz, "\u03a9") + ", loaded by " +
+      formatEngineering(values.cl, "F") +
+      ". Measured open loop; the DC servo that sets the operating point is not drawn" +
+      (pm === null ? "." : ", measured phase margin " + pm.toFixed(1) + " degrees."));
+
+    // Rails span only the columns they feed.
+    wire(svg, 110, yVdd, 640, yVdd);
+    wire(svg, 110, yGnd, 680, yGnd);
+    ground(svg, { x: 375, y: yGnd });
+    label(svg, { x: 648, y: yVdd + 4, text: "VDD 1.8 V", size: 11, node: true });
+
+    // ---- bias branch: Ib into diode-connected M8 ----
+    wire(svg, 122, yVdd, 122, 158);
+    add(svg, "circle", { "class": "sch-stroke", cx: 122, cy: 180, r: 22 });
+    polyline(svg, [[122, 168], [122, 192]]);
+    polyline(svg, [[117, 185], [122, 192], [127, 185]]);
+    wire(svg, 122, 202, 122, 306);
+    wire(svg, 122, 306, 122, 314);
+    nmos(svg, { x: 96, y: bY });
+    // Diode tie, routed left so it clears the source circle entirely.
+    wire(svg, 122, 306, 60, 306);
+    wire(svg, 60, 306, 60, bY);
+    nodeDot(svg, { x: 122, y: 306 });
+    label(svg, { x: 130, y: 300, text: "nbias", size: 11, node: true });
+    label(svg, { x: 92, y: 176, text: "Ib", anchor: "end", strong: true });
+    label(svg, { value: true, x: 92, y: 192, anchor: "end",
+                 text: formatEngineering(values.ibias, "A"), size: 11 });
+    label(svg, { x: 134, y: 340, text: "M8", size: 11 });
+
+    // The bias bus: one straight run along the bottom row's gates. It ends at
+    // M7's gate and crosses nothing on the way.
+    wire(svg, 60, bY, 524, bY);
+    label(svg, { x: 262, y: 340, text: "M5", size: 11 });
+    label(svg, { x: 518, y: 344, text: "M7", anchor: "end", size: 11 });
+
+    // ---- first stage ----
+    // PMOS mirror above the pair: M3 diode on the left, M4 on the right.
+    pmos(svg, { x: 200, y: pY });
+    pmos(svg, { x: 300, y: pY });
+    wire(svg, 226, yVdd, 226, 82);
+    wire(svg, 326, yVdd, 326, 82);
+    label(svg, { x: 158, y: 116, text: "M3", anchor: "end", size: 11 });
+    label(svg, { x: 258, y: 116, text: "M4", anchor: "end", size: 11 });
+    label(svg, { value: true, x: 340, y: 104, size: 11,
+                 text: "W " + formatEngineering(values.wload, "m") });
+
+    // The gate tie: down from both gate leads, joined over the top. Its one
+    // crossing with the M3 source column is the figure's only crossing.
+    wire(svg, 164, pY, 164, 66);
+    wire(svg, 164, 66, 264, 66);
+    wire(svg, 264, 66, 264, pY);
+
+    // d1: mirror diode down to M1, tapping across to the gate tie.
+    wire(svg, 226, 158, 226, 202);
+    wire(svg, 226, 180, 164, 180);
+    wire(svg, 164, 180, 164, pY);
+    nodeDot(svg, { x: 226, y: 180 });
+
+    // The pair. M2 is mirrored so its gate faces the second stage.
+    nmos(svg, { x: 200, y: nY });
+    var flipped = add(svg, "g", { transform: "translate(600 0) scale(-1 1)" });
+    nmos(flipped, { x: 300, y: nY });
+    label(svg, { x: 158, y: 262, text: "M1", anchor: "end", size: 11 });
+    label(svg, { x: 266, y: 236, text: "M2", anchor: "end", size: 11 });
+
+    // Tail into M5.
+    wire(svg, 226, 278, 226, 292);
+    wire(svg, 274, 278, 274, 292);
+    wire(svg, 226, 292, 274, 292);
+    wire(svg, 250, 292, 250, 314);
+    nmos(svg, { x: 224, y: bY });
+    label(svg, { value: true, x: 258, y: 308, size: 11,
+                 text: "W " + formatEngineering(values.wpair, "m") });
+
+    // Inputs, pulled clear of the devices.
+    wire(svg, 164, nY, 140, nY);
+    nodeDot(svg, { x: 140, y: nY });
+    label(svg, { x: 140, y: 228, text: "inn", anchor: "middle", node: true });
+    wire(svg, 336, nY, 360, nY);
+    nodeDot(svg, { x: 360, y: nY });
+    label(svg, { x: 360, y: 258, text: "inp", anchor: "middle", node: true });
+
+    // d2: down from M4, forking right twice: the upper branch drives the
+    // second-stage gate, the lower branch is the compensation path.
+    wire(svg, 326, 158, 326, 196);
+    wire(svg, 326, 164, 492, 164);
+    wire(svg, 492, 164, 492, pY);
+    wire(svg, 492, pY, 524, pY);
+    wire(svg, 326, 196, 274, 196);
+    wire(svg, 274, 196, 274, 202);
+    nodeDot(svg, { x: 326, y: 164 });
+    nodeDot(svg, { x: 326, y: 196 });
+    label(svg, { x: 334, y: 158, text: "d2", size: 11, node: true });
+
+    // ---- second stage ----
+    pmos(svg, { x: 560, y: pY });
+    wire(svg, 586, yVdd, 586, 82);
+    nmos(svg, { x: 560, y: bY });
+    wire(svg, 586, 158, 586, 314);
+    label(svg, { x: 518, y: 112, text: "M6", anchor: "end", size: 11 });
+    label(svg, { value: true, x: 600, y: 104, size: 11,
+                 text: "W " + formatEngineering(values.w6, "m") });
+    label(svg, { value: true, x: 600, y: 344, size: 11,
+                 text: "W " + formatEngineering(values.w7, "m") });
+
+    // Compensation: Rz then Cc, from d2 across to the output.
+    wire(svg, 326, 196, 344, 196);
+    resistor(svg, { orientation: "horizontal", y: 196, x1: 344, x2: 400,
+                    peaks: 4, amplitude: 8 });
+    wire(svg, 400, 196, 416, 196);
+    capacitor(svg, { orientation: "horizontal", y: 196, x1: 416, x2: 472 });
+    wire(svg, 472, 196, 586, 196);
+    nodeDot(svg, { x: 586, y: 196 });
+    label(svg, { x: 372, y: 177, text: "Rz", anchor: "middle", strong: true });
+    label(svg, { value: true, x: 372, y: 226, anchor: "middle",
+                 text: formatEngineering(values.rz, "\u03a9"), size: 11 });
+    label(svg, { x: 444, y: 177, text: "Cc", anchor: "middle", strong: true });
+    label(svg, { value: true, x: 444, y: 226, anchor: "middle",
+                 text: formatEngineering(values.cc, "F"), size: 11 });
+
+    // Output node and load.
+    nodeDot(svg, { x: 586, y: 246 });
+    label(svg, { x: 596, y: 238, text: "out", node: true });
+    wire(svg, 586, 246, 668, 246);
+    wire(svg, 668, 246, 668, 300);
+    capacitor(svg, { x: 668, y1: 300, y2: 344, centre: 322 });
+    wire(svg, 668, 344, 668, yGnd);
+    label(svg, { x: 692, y: 316, text: "CL", strong: true });
+    label(svg, { value: true, x: 692, y: 332,
+                 text: formatEngineering(values.cl, "F"), size: 11 });
+
+    // Bottom-row sources to ground.
+    wire(svg, 122, 390, 122, yGnd);
+    wire(svg, 250, 390, 250, yGnd);
+    wire(svg, 586, 390, 586, yGnd);
+
+    // The measured phase margin, hung in the clear space under the load wire.
+    if (pm !== null && isFinite(pm)) {
+      wire(svg, 632, 246, 632, 268);
+      valueTag(svg, {
+        x: 632, y: 268, anchor: "middle", text: "PM " + pm.toFixed(1) + "\u00b0"
+      });
+    }
+    return svg;
+  }
+
   window.drawDivider = drawDivider;
   window.drawRCLowpass = drawRCLowpass;
   window.drawRCHighpass = drawRCHighpass;
   window.drawRLCBandpass = drawRLCBandpass;
   window.drawInvertingAmp = drawInvertingAmp;
+  window.drawTwopoleAmp = drawTwopoleAmp;
   window.drawNfetCsAmp = drawNfetCsAmp;
+  window.drawOpampTwoStage = drawOpampTwoStage;
   window.formatEngineering = formatEngineering;
   window.FaradaemSymbols = symbols;
 })(window, document);

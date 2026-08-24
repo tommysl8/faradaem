@@ -89,10 +89,11 @@ def test_every_route_target_exists_on_disk():
         assert (server.PROJECT_ROOT / relative_file).is_file(), path
 
 
-def test_the_three_pages_and_their_assets_are_served():
+def test_the_pages_and_their_assets_are_served():
     """The GET surface is exactly this. Adding to it is a deliberate act."""
     assert set(server.ROUTES) == {
         "/",
+        "/manual",
         "/about",
         "/changelog",
         "/static/style.css",
@@ -127,10 +128,10 @@ def test_favicon_is_served_as_svg(address):
     assert status == 200
     assert content_type == "image/svg+xml"
     assert body.startswith("<svg")
-    assert "B87333" in body  # the copper zigzag, not a default mark
+    assert "22D3EE" in body  # the accent zigzag, not a default mark
 
 
-@pytest.mark.parametrize("path", ["/", "/about", "/changelog"])
+@pytest.mark.parametrize("path", ["/", "/manual", "/about", "/changelog"])
 def test_pages_carry_the_inline_favicon(address, path):
     _, _, body = fetch(address, path)
     assert 'rel="icon"' in body
@@ -140,6 +141,7 @@ def test_pages_carry_the_inline_favicon(address, path):
 @pytest.mark.parametrize(
     "path,title",
     [("/", "<title>Faradaem</title>"),
+     ("/manual", "<title>Manual - Faradaem</title>"),
      ("/changelog", "<title>Changelog - Faradaem</title>"),
      ("/about", "<title>About - Faradaem</title>")],
 )
@@ -149,7 +151,7 @@ def test_pages_have_their_own_title_and_description(address, path, title):
     assert '<meta name="description"' in body
 
 
-@pytest.mark.parametrize("path", ["/", "/about", "/changelog"])
+@pytest.mark.parametrize("path", ["/", "/manual", "/about", "/changelog"])
 def test_pages_use_no_inline_style_attributes(address, path):
     _, _, body = fetch(address, path)
     assert "style=" not in body
@@ -167,17 +169,18 @@ def test_whitelisted_route_returns_200_with_expected_content_type(address, path)
     assert body.strip()
 
 
-@pytest.mark.parametrize("path", ["/", "/about", "/changelog"])
+@pytest.mark.parametrize("path", ["/", "/manual", "/about", "/changelog"])
 def test_pages_share_the_shell(address, path):
     _, _, body = fetch(address, path)
     assert "FARADAEM" in body
     assert '/static/style.css' in body
+    assert 'href="/manual"' in body
     assert 'href="/about"' in body
     assert 'href="/changelog"' in body
     assert "github.com/tommysl8/faradaem" in body
 
 
-@pytest.mark.parametrize("path", ["/", "/about", "/changelog"])
+@pytest.mark.parametrize("path", ["/", "/manual", "/about", "/changelog"])
 def test_pages_carry_no_inline_script_or_style(address, path):
     _, _, body = fetch(address, path)
     assert "<script>" not in body
@@ -198,23 +201,43 @@ def test_stylesheet_defines_the_design_tokens(address):
         "--line",
         "--text",
         "--muted",
-        "--copper",
-        "--copper-bright",
-        "--paper",
-        "--schematic-ink",
+        "--accent",
+        "--accent-hover",
+        "--line-strong",
+        # Figures are drawn on the dark ground: grey wires, cyan nodes.
+        "--wire",
         "--ok",
         "--err",
     ):
         assert token in body
 
 
+#: Outbound links the author put on the page. These are navigations the reader
+#: chooses, not resources the page fetches, so they do not make the frontend
+#: depend on anything. Every other https:// is a bug.
+OUTBOUND_LINKS = (
+    "https://github.com/tommysl8/faradaem",
+    "https://www.linkedin.com/in/tommysliu/",
+    "https://x.com/tommysliu",
+)
+
+
 def test_frontend_pulls_nothing_from_the_network(address):
-    for path in ("/", "/about", "/changelog", "/static/style.css", "/static/app.js"):
+    for path in ("/", "/manual", "/about", "/changelog", "/static/style.css",
+                 "/static/app.js"):
         _, _, body = fetch(address, path)
         assert "//fonts.googleapis" not in body
         assert "cdn." not in body
         assert "@import" not in body
-        assert "https://" not in body.replace("https://github.com/tommysl8/faradaem", "")
+
+        # The asset surfaces specifically: a remote script, image or font.
+        assert 'src="http' not in body
+        assert "url(http" not in body
+
+        remaining = body
+        for link in OUTBOUND_LINKS:
+            remaining = remaining.replace(link, "")
+        assert "https://" not in remaining
 
 
 # ---- 404s ---------------------------------------------------------------
@@ -412,7 +435,7 @@ def test_catalogue_endpoint_lists_every_circuit(address):
     listing = json.loads(body)["circuits"]
     assert [item["id"] for item in listing] == [
         "divider", "rc_lowpass", "rc_highpass", "rlc_bandpass",
-        "inverting_amp", "nfet_cs_amp",
+        "inverting_amp", "twopole_amp", "nfet_cs_amp", "opamp_two_stage",
     ]
 
 
@@ -434,7 +457,7 @@ def test_catalogue_carries_presets_for_every_circuit(address):
     _, _, body = fetch(address, "/api/circuits")
     for entry in json.loads(body)["circuits"]:
         presets = entry["presets"]
-        assert 2 <= len(presets) <= 3, entry["id"]
+        assert 2 <= len(presets) <= 6, entry["id"]
 
         keys = {spec["key"] for spec in entry["params"]}
         for item in presets:
@@ -486,6 +509,27 @@ def defaults_body(circuit_id):
     ],
 )
 def test_api_simulate_rejects_bad_input(address, body, fragment):
+    status, content_type, payload = post_api(address, body)
+    assert status == 400
+    assert content_type == JSON
+    assert fragment in json.loads(payload)["error"]
+
+
+@pytest.mark.parametrize(
+    "body,fragment",
+    [
+        # In-range values that combine into something unsweepable. These raise
+        # before ngspice starts, so this test needs no simulator.
+        ({"circuit": "rc_lowpass", "params": {"r": 1e12, "c": 1.0}},
+         "outside the sweepable range"),
+        # A loop that never has gain never crosses 0 dB: no phase margin.
+        ({"circuit": "twopole_amp",
+          "params": {"rin": 1.0, "rf": 1e9, "a0": 100.0, "gbw": 1e6, "fp2": 1e5}},
+         "never crosses 0 dB"),
+    ],
+)
+def test_api_simulate_maps_impossible_combinations_to_400(address, body, fragment):
+    """Values individually in range, jointly impossible: a 400, never a 500."""
     status, content_type, payload = post_api(address, body)
     assert status == 400
     assert content_type == JSON

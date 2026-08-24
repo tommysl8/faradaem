@@ -25,7 +25,9 @@ ALL_IDS = [
     "rc_highpass",
     "rlc_bandpass",
     "inverting_amp",
+    "twopole_amp",
     "nfet_cs_amp",
+    "opamp_two_stage",
 ]
 
 #: AC circuits that need no PDK.  The SKY130 stage is exercised in
@@ -41,6 +43,7 @@ CHECKED_IDS = [
     "rc_highpass",
     "rlc_bandpass",
     "inverting_amp",
+    "twopole_amp",
 ]
 
 
