@@ -218,6 +218,36 @@
         </section>
 
         <section class="section prose">
+          <h2>Asking for a design in plain language</h2>
+          <p>
+            The <strong>Ask for a design</strong> panel at the top of the simulator
+            takes a sentence instead of numbers. Say what you want built and which
+            numbers matter, and a strategist goes to work: it reads the catalogue,
+            picks a circuit, sets targets, generates and simulates a design, and
+            iterates when the measurements fall short.
+          </p>
+          <p>
+            The strategist is a language model, but it is held to this project's
+            rule: it never produces a circuit value. It drives the same tools you
+            can drive by hand, and everything it reports comes back from ngspice.
+            Its words appear as words; the numbers appear as cards, straight from
+            the tool results, each with a button that loads that design into the
+            form and reruns it so you can verify it yourself.
+          </p>
+          <p>
+            If the strategist thinks a target should be relaxed, it does not decide
+            alone. It asks, and the session waits for your reply.
+          </p>
+          <p>
+            This needs an API key for a model provider. Set
+            <code>FARADAEM_ANTHROPIC_KEY</code> or <code>FARADAEM_OPENAI_KEY</code>
+            with <code>setx</code>, then reload the page. With both set, a picker
+            appears and you can choose the model per conversation. Keys stay on
+            your machine and are read from your user environment.
+          </p>
+        </section>
+
+        <section class="section prose">
           <h2>Designing to a spec</h2>
           <p>
             Some circuits carry a <strong>Design to spec</strong> panel under their

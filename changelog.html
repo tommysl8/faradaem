@@ -39,6 +39,20 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">0.7.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>The LLM layer. An Ask for a design panel takes a plain-language request, and a strategist drives the real tools: it reads the catalogue, sets targets, seeds, simulates, and iterates. Its words render as words; every number renders as a card taken from a tool result, with a button that loads the design into the form and reruns it.</li>
+            <li>The strategist never produces a circuit value, and when it believes a target should change, it asks instead of deciding. Sessions can be continued, stopped, and started over.</li>
+            <li>Two providers over the standard library alone: the Anthropic and OpenAI APIs through urllib, selected by whichever keys exist, with a picker when both do. Keys are read from the user environment, including keys set with setx after the server started. No new dependencies.</li>
+            <li>The whole layer is tested without a network against a scripted model, including tool failures, the turn limit, pausing on questions, and a full session over HTTP.</li>
+            <li>The four-way comparison harness from the research plan: human design, optimizer only, LLM only, and LLM plus optimizer, per provider, measured on the same spec by the same simulator. First offline result: the optimizer already edges out the hand design, 131 against 156 microwatts at the same spec.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">0.6.3</span>
             <span class="entry-date">2026-08-24</span>
           </header>

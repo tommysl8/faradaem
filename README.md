@@ -17,7 +17,7 @@ schematic, with the verification done by the simulator rather than asserted by a
 - [x] **V0.4** hand-designed two-stage op-amp
 - [x] **V0.5** parameterized netlist
 - [x] **V0.6** numerical optimizer hits spec
-- [ ] **V0.7** LLM layer with tool calling
+- [x] **V0.7** LLM layer with tool calling
 - [ ] **V0.8** topology selection
 - [ ] **V0.9** PVT + Monte Carlo
 - [ ] **V1.0** spec in, verified schematic out
@@ -46,6 +46,12 @@ targets for gain, bandwidth, phase margin and power, and a coordinate search
 walks the component space, running a real ngspice simulation for every candidate,
 until the spec is met. From a failing start it reached a fully passing op-amp in
 nine simulations.
+
+0.7.0 added the LLM layer the architecture was built for. A strategist takes a
+plain-language request and drives the real tools over the Anthropic or OpenAI
+API, both spoken through the standard library alone. It chooses, explains and
+asks; ngspice measures. The four-way comparison harness (`compare.py`) runs
+human, optimizer, LLM, and LLM-plus-optimizer against the same spec.
 
 0.6.1 made the flow spec-first: enter only the targets and the system creates the
 starting design itself, measures it, and iterates only when the measurement falls
@@ -93,6 +99,8 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `static/bodeplot.js` | SVG Bode plot: stacked magnitude and phase axes over log frequency. |
 | `static/app.js` | Mode switching, form handling, simulate calls, result and error rendering. |
 | `spice/design.py` | The design iterator: goals, margins, and a coordinate search with a real simulator in the loop. |
+| `spice/llm.py`, `spice/strategist.py` | The LLM layer: Anthropic and OpenAI clients over urllib, and the tool-driving strategist that never computes a value. |
+| `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `tests/` | Netlist, parser, validation, routing, optimizer, manual-accuracy and real-ngspice integration tests. |
 
 ## Requirements

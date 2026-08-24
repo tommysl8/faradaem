@@ -1,4 +1,4 @@
-/* Faradaem 0.6.3 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 0.7.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -89,7 +89,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v0.6.3";
+  --app-version: "v0.7.0";
 }
 
 *,
@@ -563,6 +563,138 @@ input {
   font-size: var(--t-label);
   line-height: var(--lh-label);
   letter-spacing: var(--ls-small);
+}
+
+/* ---- the ask-for-a-design panel --------------------------------------- */
+
+.advise-panel {
+  margin-bottom: var(--s5);
+}
+
+.advise-input {
+  width: 100%;
+  min-width: 0;
+  background: var(--ink);
+  border: var(--hairline-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  padding: var(--s2) var(--s3);
+  resize: vertical;
+}
+
+.advise-input:focus {
+  border-color: var(--accent);
+}
+
+.advise-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.advise-send {
+  margin-top: 0;
+  width: auto;
+  flex: 1 1 auto;
+}
+
+.advise-provider {
+  height: var(--control-height);
+  background: var(--ink);
+  border: var(--hairline-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  padding: 0 var(--s2);
+}
+
+/* The conversation. Newest at the bottom, scrolls on its own. */
+.advise-log {
+  max-height: 340px;
+  overflow-y: auto;
+  margin-bottom: var(--s3);
+  padding: var(--s3);
+  border: var(--hairline);
+  background: var(--ink);
+}
+
+.advise-msg {
+  margin-bottom: var(--s3);
+}
+
+.advise-msg:last-child {
+  margin-bottom: 0;
+}
+
+.advise-role {
+  display: block;
+  margin-bottom: var(--s1);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.advise-text {
+  margin: 0;
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+}
+
+.advise-msg.is-question {
+  padding-left: var(--s3);
+  border-left: var(--stroke) solid var(--accent);
+}
+
+.advise-msg.is-error .advise-text {
+  color: var(--err);
+}
+
+/* One tool result: what ran, what it measured, and a way to load it. */
+.advise-card {
+  padding: var(--s2) var(--s3);
+  border: var(--hairline);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+}
+
+.advise-card .card-title {
+  color: var(--accent);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.advise-card.is-failed .card-title {
+  color: var(--err);
+}
+
+.advise-card .card-pairs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--s1) var(--s3);
+  margin-top: var(--s1);
+}
+
+.advise-card .card-pairs .k {
+  color: var(--muted);
+}
+
+.advise-card .card-pairs .v {
+  font-variant-numeric: tabular-nums;
+}
+
+.advise-card .chip {
+  margin-top: var(--s2);
+  color: var(--accent);
+  border-color: var(--line-strong);
 }
 
 /* ---- the design-to-spec panel ---------------------------------------- */

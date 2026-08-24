@@ -37,7 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from spice import circuits, design
+from spice import circuits, design, llm, strategist
 from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
@@ -68,6 +68,14 @@ MAX_JOBS = 12
 MIN_DESIGN_EVALS = 4
 MAX_DESIGN_EVALS = 120
 DEFAULT_DESIGN_EVALS = 40
+
+#: Strategist sessions, same in-memory pattern as design jobs.
+ADVISE_JOBS = {}
+ADVISE_LOCK = threading.Lock()
+MAX_ADVISE_JOBS = 8
+
+#: One request to the strategist, at most this long.
+MAX_ADVISE_CHARS = 4000
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -370,6 +378,94 @@ def start_design_job(circuit_id, params, targets, max_evals):
     return job_id
 
 
+def validate_advise_message(payload):
+    """The user's message for the strategist: a bounded, non-empty string."""
+    if not isinstance(payload, dict):
+        raise ValidationError("Request body must be a JSON object.")
+    message = payload.get("message")
+    if not isinstance(message, str) or not message.strip():
+        raise ValidationError(
+            "Field 'message' must say what you want designed. Describe the "
+            "circuit and the numbers that matter, and send it again."
+        )
+    if len(message) > MAX_ADVISE_CHARS:
+        raise ValidationError(
+            "Field 'message' is longer than " + str(MAX_ADVISE_CHARS)
+            + " characters. Shorten it and send it again."
+        )
+    return message.strip()
+
+
+def _advise_snapshot(job):
+    return {
+        "job": job["job"],
+        "provider": job["provider"],
+        "model": job["model"],
+        "status": job["status"],
+        "events": job["events"][-80:],
+    }
+
+
+def _prune_advise_locked():
+    if len(ADVISE_JOBS) <= MAX_ADVISE_JOBS:
+        return
+    finished = [k for k, j in ADVISE_JOBS.items() if j["status"] != "running"]
+    for key in finished[: len(ADVISE_JOBS) - MAX_ADVISE_JOBS]:
+        del ADVISE_JOBS[key]
+
+
+def _advise_worker(job, client):
+    """One strategist pass over the job's current conversation."""
+
+    def on_event(event):
+        with ADVISE_LOCK:
+            job["events"].append(event)
+
+    try:
+        state = strategist.advise(
+            client, job["messages"], on_event,
+            should_stop=job["stop"].is_set,
+        )
+        with ADVISE_LOCK:
+            job["status"] = state
+    except Exception as exc:  # noqa: BLE001 - boundary of a worker thread
+        traceback.print_exc()
+        with ADVISE_LOCK:
+            job["events"].append({"kind": "error", "message": str(exc)})
+            job["status"] = "error"
+
+
+def start_advise_job(provider, message):
+    """Create the session and run the first strategist pass on a thread."""
+    client = llm.get_client(provider)
+    job_id = uuid.uuid4().hex[:12]
+    job = {
+        "job": job_id,
+        "provider": provider,
+        "model": client.model,
+        "status": "running",
+        "events": [{"kind": "user", "text": message}],
+        "messages": [{"role": "user", "text": message}],
+        "stop": threading.Event(),
+    }
+    with ADVISE_LOCK:
+        ADVISE_JOBS[job_id] = job
+        _prune_advise_locked()
+
+    threading.Thread(target=_advise_worker, args=(job, client), daemon=True).start()
+    return job_id
+
+
+def continue_advise_job(job, message):
+    """Append the user's reply and run another pass."""
+    client = llm.get_client(job["provider"])
+    with ADVISE_LOCK:
+        job["events"].append({"kind": "user", "text": message})
+        job["messages"].append({"role": "user", "text": message})
+        job["status"] = "running"
+    threading.Thread(target=_advise_worker, args=(job, client), daemon=True).start()
+
+
 def analytic_divider(vdd, r1, r2):
     """Ideal divider value. A sanity check on ngspice, never a substitute."""
     return vdd * r2 / (r1 + r2)
@@ -388,7 +484,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/0.6.3"
+    server_version = "Faradaem/0.7.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
@@ -410,6 +506,14 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_design_status(parts.query)
             return
 
+        if path == "/api/advise/providers":
+            self._send_json(200, {"providers": llm.available_providers()})
+            return
+
+        if path == "/api/advise/status":
+            self._handle_advise_status(parts.query)
+            return
+
         route = resolve_route(path)
         if route is None:
             self._send_json(404, {"error": "Not found: " + path})
@@ -426,6 +530,10 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_design_seed()
         elif path == "/api/design/stop":
             self._handle_design_stop()
+        elif path == "/api/advise":
+            self._handle_advise_start()
+        elif path == "/api/advise/reply":
+            self._handle_advise_reply()
         elif path == "/simulate":
             self._handle_simulate()
         elif path == "/simulate_ac":
@@ -498,6 +606,60 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json(200, {"params": seeded, "targets": targets})
+
+    def _handle_advise_start(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        try:
+            message = validate_advise_message(payload)
+            provider = payload.get("provider") or "anthropic"
+            if not isinstance(provider, str):
+                raise ValidationError("Field 'provider' must be a string.")
+            job_id = start_advise_job(provider, message)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        except llm.LlmError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        self._send_json(200, {"job": job_id})
+
+    def _handle_advise_status(self, query):
+        job_id = (parse_qs(query).get("job") or [""])[0]
+        with ADVISE_LOCK:
+            job = ADVISE_JOBS.get(job_id)
+            snapshot = _advise_snapshot(job) if job else None
+        if snapshot is None:
+            self._send_json(404, {"error": "Unknown advise session " + repr(job_id) + "."})
+            return
+        self._send_json(200, snapshot)
+
+    def _handle_advise_reply(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        job_id = payload.get("job") if isinstance(payload, dict) else None
+        with ADVISE_LOCK:
+            job = ADVISE_JOBS.get(job_id or "")
+            busy = bool(job and job["status"] == "running")
+        if job is None:
+            self._send_json(404, {"error": "Unknown advise session " + repr(job_id) + "."})
+            return
+        if busy:
+            self._send_json(409, {"error": "The strategist is still working. "
+                                           "Wait for it to finish, then reply."})
+            return
+        try:
+            message = validate_advise_message(payload)
+            continue_advise_job(job, message)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        except llm.LlmError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        self._send_json(200, {"job": job_id})
 
     def _handle_design_status(self, query):
         job_id = (parse_qs(query).get("job") or [""])[0]

@@ -38,6 +38,26 @@
 
       <div class="sim-left">
 
+      <section class="panel advise-panel" id="advise" aria-label="Ask for a design">
+        <h2 class="panel-head">Ask for a design</h2>
+        <div class="panel-body">
+          <p class="design-intro">Say what you want built and which numbers matter.
+          A strategist drives the real simulator; every number it reports was measured.</p>
+          <div class="advise-log hidden" id="advise-log"></div>
+          <form id="advise-form">
+            <textarea id="advise-input" rows="3" class="advise-input"
+              placeholder="An op-amp driving 5 pF: at least 60 dB and 60 degrees of margin, under 150 microwatts."></textarea>
+            <div class="advise-actions">
+              <select id="advise-provider" class="advise-provider hidden" aria-label="Model provider"></select>
+              <button class="chip hidden" id="advise-reset" type="button">Start over</button>
+              <button class="run advise-send" id="advise-send" type="submit"><span id="advise-send-label">Send</span></button>
+            </div>
+          </form>
+          <p class="hint hidden" id="advise-hint"></p>
+          <p class="field-error hidden" id="advise-error"></p>
+        </div>
+      </section>
+
       <form class="panel sim-controls" id="sim-form" novalidate>
         <div class="modes" role="tablist" aria-label="Circuit" id="modes"></div>
         <h2 class="panel-head" id="panel-title">Loading</h2>

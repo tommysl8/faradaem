@@ -936,6 +936,262 @@
   designStop.addEventListener("click", stopDesign);
   designApply.addEventListener("click", applyDesign);
 
+
+  /* ---- ask for a design --------------------------------------------------- */
+
+  var adviseForm = id("advise-form");
+  var adviseInput = id("advise-input");
+  var adviseLog = id("advise-log");
+  var adviseProvider = id("advise-provider");
+  var adviseSend = id("advise-send");
+  var adviseSendLabel = id("advise-send-label");
+  var adviseReset = id("advise-reset");
+  var adviseHint = id("advise-hint");
+  var adviseError = id("advise-error");
+
+  var adviseJob = null;
+  var adviseTimer = null;
+  var adviseRendered = 0;
+  var adviseProviders = [];
+
+  function adviseShowError(message) {
+    adviseError.textContent = message;
+    show(adviseError, true);
+  }
+
+  function adviseSetBusy(busy) {
+    adviseSend.disabled = busy;
+    adviseSendLabel.textContent = busy ? "Working" : (adviseJob ? "Reply" : "Send");
+  }
+
+  function adviseMessage(role, text, extraClass) {
+    var block = el("div", "advise-msg" + (extraClass ? " " + extraClass : ""));
+    block.appendChild(el("span", "advise-role", role));
+    var body = el("p", "advise-text", text);
+    block.appendChild(body);
+    adviseLog.appendChild(block);
+    return block;
+  }
+
+  function providerLabel() {
+    for (var i = 0; i < adviseProviders.length; i++) {
+      if (adviseProviders[i].name === adviseProvider.value) {
+        return adviseProviders[i].label;
+      }
+    }
+    return "Strategist";
+  }
+
+  /* Pull the interesting numbers out of one tool card's display payload. */
+  function cardPairs(display) {
+    var pairs = [];
+    var measured = display.measured ||
+      (display.best && display.best.measured) || null;
+    if (measured) {
+      Object.keys(measured).forEach(function (key) {
+        var value = measured[key];
+        if (typeof value === "number" && isFinite(value)) {
+          pairs.push([key, window.formatEngineering(value, "")]);
+        }
+      });
+    }
+    if (typeof display.feasible === "boolean") {
+      pairs.unshift(["spec", display.feasible ? "met" : "not met"]);
+    }
+    if (typeof display.evals === "number") {
+      pairs.push(["simulations", String(display.evals)]);
+    }
+    return pairs.slice(0, 8);
+  }
+
+  function applyFromCard(circuitId, params) {
+    if (!known(circuitId)) {
+      return;
+    }
+    if (circuitId !== current.id) {
+      select(circuitId);
+    }
+    Object.keys(params).forEach(function (key) {
+      if (inputs[key]) {
+        inputs[key].value = String(params[key]);
+      }
+    });
+    onEdit();
+    run();
+  }
+
+  function adviseCard(event) {
+    var block = el("div", "advise-msg");
+    var card = el("div", "advise-card" + (event.ok ? "" : " is-failed"));
+    card.appendChild(el("span", "card-title",
+      event.tool + (event.ok ? "" : " failed")));
+
+    if (!event.ok) {
+      var reason = el("p", "advise-text", event.display.error || "");
+      card.appendChild(reason);
+    } else {
+      var pairs = cardPairs(event.display);
+      if (pairs.length) {
+        var grid = el("div", "card-pairs");
+        pairs.forEach(function (pair) {
+          grid.appendChild(el("span", "k", pair[0]));
+          grid.appendChild(el("span", "v", pair[1]));
+        });
+        card.appendChild(grid);
+      }
+      var params = event.display.params ||
+        (event.display.best && event.display.best.params) || null;
+      var circuitId = event.display.circuit;
+      if (params && circuitId) {
+        var apply = el("button", "chip", "Load into the form and run");
+        apply.type = "button";
+        apply.addEventListener("click", function () {
+          applyFromCard(circuitId, params);
+        });
+        card.appendChild(apply);
+      }
+    }
+    block.appendChild(card);
+    adviseLog.appendChild(block);
+  }
+
+  function renderAdviseEvents(events) {
+    for (; adviseRendered < events.length; adviseRendered++) {
+      var event = events[adviseRendered];
+      if (event.kind === "user") {
+        adviseMessage("You", event.text);
+      } else if (event.kind === "text" || event.kind === "done") {
+        adviseMessage(providerLabel(), event.text);
+      } else if (event.kind === "question") {
+        adviseMessage(providerLabel(), event.text, "is-question");
+      } else if (event.kind === "tool") {
+        adviseCard(event);
+      } else if (event.kind === "error") {
+        adviseMessage(providerLabel(), event.message, "is-error");
+      }
+    }
+    adviseLog.scrollTop = adviseLog.scrollHeight;
+  }
+
+  function pollAdvise() {
+    if (!adviseJob) {
+      return;
+    }
+    fetch("/api/advise/status?job=" + encodeURIComponent(adviseJob))
+      .then(function (response) { return response.json(); })
+      .then(function (snapshot) {
+        if (!adviseJob) {
+          return;
+        }
+        renderAdviseEvents(snapshot.events);
+        if (snapshot.status === "running") {
+          adviseTimer = setTimeout(pollAdvise, 1000);
+          return;
+        }
+        adviseSetBusy(false);
+        show(adviseReset, true);
+        if (snapshot.status === "question") {
+          adviseInput.focus();
+        }
+      })
+      .catch(function () {
+        if (adviseJob) {
+          adviseTimer = setTimeout(pollAdvise, 2500);
+        }
+      });
+  }
+
+  function sendAdvise(event) {
+    if (event) {
+      event.preventDefault();
+    }
+    var message = adviseInput.value.trim();
+    if (!message || adviseSend.disabled) {
+      return;
+    }
+    show(adviseError, false);
+    show(adviseLog, true);
+    adviseInput.value = "";
+    adviseSetBusy(true);
+
+    var url = adviseJob ? "/api/advise/reply" : "/api/advise";
+    var body = adviseJob
+      ? { job: adviseJob, message: message }
+      : { message: message, provider: adviseProvider.value || "anthropic" };
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload && payload.error
+              ? payload.error
+              : "The server refused the request.");
+          }
+          adviseJob = payload.job;
+          pollAdvise();
+        });
+      })
+      .catch(function (error) {
+        adviseSetBusy(false);
+        adviseShowError(String(error.message || error));
+      });
+  }
+
+  function resetAdvise() {
+    if (adviseTimer) {
+      clearTimeout(adviseTimer);
+      adviseTimer = null;
+    }
+    adviseJob = null;
+    adviseRendered = 0;
+    clear(adviseLog);
+    show(adviseLog, false);
+    show(adviseReset, false);
+    adviseSetBusy(false);
+  }
+
+  function startAdvisePanel() {
+    fetch("/api/advise/providers")
+      .then(function (response) { return response.json(); })
+      .then(function (payload) {
+        adviseProviders = payload.providers || [];
+        clear(adviseProvider);
+        adviseProviders.forEach(function (item) {
+          var option = document.createElement("option");
+          option.value = item.name;
+          option.textContent = item.label;
+          adviseProvider.appendChild(option);
+        });
+        show(adviseProvider, adviseProviders.length > 1);
+        if (adviseProviders.length === 0) {
+          adviseSend.disabled = true;
+          adviseHint.textContent =
+            "No model key is set. Run setx FARADAEM_ANTHROPIC_KEY or setx " +
+            "FARADAEM_OPENAI_KEY with your key, then reload this page.";
+          show(adviseHint, true);
+        }
+      })
+      .catch(function () {
+        adviseSend.disabled = true;
+        adviseHint.textContent = "Could not check for model keys. Reload the page.";
+        show(adviseHint, true);
+      });
+  }
+
+  adviseForm.addEventListener("submit", sendAdvise);
+  adviseReset.addEventListener("click", resetAdvise);
+  adviseInput.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      sendAdvise();
+    }
+  });
+  startAdvisePanel();
+
   /* ---- selection --------------------------------------------------------- */
 
   function select(circuitId) {
