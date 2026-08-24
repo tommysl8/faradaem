@@ -29,3 +29,14 @@ jobs:
         env:
           FARADAEM_NGSPICE: /usr/bin/ngspice
         run: pytest -q
+
+      # The host runs exactly this command, in a Linux container with no PDK
+      # and no simulator in it. Proving it here means a deploy cannot fail on
+      # something this repository already knew.
+      - name: Build the published site the way the host will
+        run: |
+          python3 tools/build_static.py --out dist
+          test -f dist/index.html
+          test -f dist/catalogue.json
+          test -f dist/static/stepplot.js
+          python3 -c "import json; circuits = json.load(open('dist/catalogue.json'))['circuits']; assert len(circuits) >= 9, circuits"
