@@ -19,8 +19,29 @@ from spice.runner import (
     measure_highpass,
 )
 
-ALL_IDS = ["divider", "rc_lowpass", "rc_highpass", "rlc_bandpass", "inverting_amp"]
+ALL_IDS = [
+    "divider",
+    "rc_lowpass",
+    "rc_highpass",
+    "rlc_bandpass",
+    "inverting_amp",
+    "nfet_cs_amp",
+]
+
+#: AC circuits that need no PDK.  The SKY130 stage is exercised in
+#: tests/test_pdk.py, which skips when the model library is absent.
 AC_IDS = ["rc_lowpass", "rc_highpass", "rlc_bandpass", "inverting_amp"]
+
+#: Circuits that ship a closed-form check.  nfet_cs_amp deliberately does
+#: not: square law does not describe a 150 nm short-channel device, and a
+#: check that is permanently tens of percent out would read as a fault.
+CHECKED_IDS = [
+    "divider",
+    "rc_lowpass",
+    "rc_highpass",
+    "rlc_bandpass",
+    "inverting_amp",
+]
 
 
 def sweep_points(transfer, fstart, fstop, per_decade=20):
@@ -58,7 +79,7 @@ def closedloop_h(gain, f3db):
 # ---- registry shape -----------------------------------------------------
 
 
-def test_catalogue_holds_exactly_the_five_circuits():
+def test_catalogue_holds_exactly_the_catalogued_circuits():
     assert set(circuits.CIRCUITS) == set(ALL_IDS)
     assert circuits.CIRCUIT_ORDER == ALL_IDS
 
@@ -67,8 +88,10 @@ def test_catalogue_holds_exactly_the_five_circuits():
 def test_every_circuit_is_complete(circuit_id):
     circuit = circuits.get_circuit(circuit_id)
     for field in ("id", "name", "analysis", "caption", "params",
-                  "build", "measure", "checks", "readout"):
+                  "build", "measure", "readout"):
         assert circuit[field], field
+    # checks may legitimately be empty -- see CHECKED_IDS.
+    assert isinstance(circuit["checks"], list)
     assert circuit["id"] == circuit_id
     assert circuit["analysis"] in ("dc", "ac")
     if circuit["analysis"] == "ac":
@@ -104,7 +127,7 @@ def test_readout_only_references_declared_checks(circuit_id):
             assert entry["check"] in keys, entry
 
 
-@pytest.mark.parametrize("circuit_id", ALL_IDS)
+@pytest.mark.parametrize("circuit_id", CHECKED_IDS)
 def test_checks_evaluate_on_the_defaults(circuit_id):
     values = circuits.analytic_values(circuit_id, circuits.defaults(circuit_id))
     assert values
@@ -425,10 +448,14 @@ requires_ngspice = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def swept():
-    """Every AC circuit run once at its defaults, plus the DC divider."""
+    """Every discrete AC circuit run once at its defaults, plus the divider.
+
+    PDK circuits are excluded on purpose: they need a model library this
+    machine may not have, and they belong to tests/test_pdk.py.
+    """
     return {
         circuit_id: circuits.simulate(circuit_id, circuits.defaults(circuit_id))
-        for circuit_id in ALL_IDS
+        for circuit_id in CHECKED_IDS
     }
 
 
@@ -486,7 +513,7 @@ def test_live_amp_trades_gain_for_bandwidth():
 
 
 @requires_ngspice
-@pytest.mark.parametrize("circuit_id", ALL_IDS)
+@pytest.mark.parametrize("circuit_id", CHECKED_IDS)
 def test_live_measurements_agree_with_their_analytic_checks(circuit_id, swept):
     circuit = circuits.get_circuit(circuit_id)
     result = swept[circuit_id]

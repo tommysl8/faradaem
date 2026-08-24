@@ -411,7 +411,8 @@ def test_catalogue_endpoint_lists_every_circuit(address):
 
     listing = json.loads(body)["circuits"]
     assert [item["id"] for item in listing] == [
-        "divider", "rc_lowpass", "rc_highpass", "rlc_bandpass", "inverting_amp"
+        "divider", "rc_lowpass", "rc_highpass", "rlc_bandpass",
+        "inverting_amp", "nfet_cs_amp",
     ]
 
 

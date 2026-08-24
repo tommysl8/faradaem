@@ -12,7 +12,7 @@ schematic, with the verification done by the simulator rather than asserted by a
 
 - [x] **V0.0** resistor divider via ngspice
 - [x] **V0.1** RC circuit + AC sweep + Bode plot
-- [ ] **V0.2** SKY130 MOSFET simulates
+- [x] **V0.2** SKY130 MOSFET simulates
 - [ ] **V0.3** auto-measurement of gain/BW/PM/power
 - [ ] **V0.4** hand-designed two-stage op-amp
 - [ ] **V0.5** parameterized netlist
@@ -25,6 +25,12 @@ schematic, with the verification done by the simulator rather than asserted by a
 0.1.5 expanded the circuit library to five circuits behind a data-driven registry
 (`spice/circuits.py`): DC divider, RC low-pass, RC high-pass, series RLC band-pass, and an
 inverting amplifier on a single-pole op-amp macromodel.
+
+0.2.0 added the sixth, and the first built on a real process: a SKY130 NFET
+common-source amplifier. Its bandwidth is set by the transistor's own output
+resistance, so it is the first circuit here whose answer no closed form in the
+codebase predicts. It needs the SKY130 PDK installed; without one it is the only
+circuit that cannot run, and its tests skip.
 
 ## How to run
 
@@ -70,5 +76,7 @@ The integration test drives real ngspice. It skips with a clear message on machi
 ## Requirements
 
 - Python 3.12
+- The SKY130 PDK, for the NFET circuit only. `PDK_ROOT` should point at the install
+  root; `C:\pdk` is used as a fallback. Every other circuit runs without it.
 - ngspice-47, console build (`ngspice_con.exe`) on `PATH`, or `FARADAEM_NGSPICE` set to its
   full path. `C:\ngspice\Spice64\bin\ngspice_con.exe` is used as a last-resort fallback.

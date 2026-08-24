@@ -6,9 +6,21 @@
 - Standard library only for the server. No new dependencies without asking.
 - Run pytest before starting work and report the baseline. Report pass counts between phases. Never git commit.
 - Netlist files are written with ascii encoding.
-- Every version bump adds a changelog entry.
+- Every version bump adds a changelog entry and ticks the roadmap on about.html.
 - The frontend stays zero-dependency: no frameworks, no CDNs, system fonts only.
 - New circuits are added through the registry in spice/circuits.py, never as one-off routes.
 - All spacing and type must come from the token scales in static/style.css. No ad hoc px values.
 - UI copy is sentence case and directive: say what to do, not just what went wrong.
 - Presets live in the registry alongside the circuit they demonstrate.
+
+## SKY130 PDK (installed for 0.2.0)
+- PDK installed at C:\pdk via ciel, pinned version 7b70722e33c03fcb5dabcf4d479fb0822d9251c9
+- PDK_ROOT environment variable is set to C:\pdk (User scope)
+- Model library: C:/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice, corners tt ss ff sf fs
+- Resolve the PDK path from the PDK_ROOT env var with C:\pdk as fallback. Never hard-code the path anywhere else.
+- SKY130 devices are subcircuits. Instantiate with an X prefix: XM1 d g s b sky130_fd_pr__nfet_01v8 W=1 L=0.15. A plain M line will fail.
+- Use forward slashes in .lib paths inside netlists.
+- The first simulation that loads the library takes 10 to 30 seconds. Subprocess timeouts for PDK circuits must allow at least 60 seconds.
+- Integration tests that need the PDK must skip cleanly when PDK_ROOT or the library file is absent, same pattern as the existing ngspice skip.
+- ciel is machine tooling. Never add it to requirements.txt. pytest stays the only dependency.
+- The PDK must never live inside OneDrive.

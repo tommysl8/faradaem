@@ -39,6 +39,20 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">0.2.0</span>
+            <span class="entry-date">2026-08-23</span>
+          </header>
+          <ul>
+            <li>SKY130 NFET common-source amplifier: the first circuit built on a real process design kit rather than on ideal components.</li>
+            <li>PDK resolution from the PDK_ROOT environment variable, falling back to C:\pdk, with a message that says what to install when the model library is missing.</li>
+            <li>The operating point is measured in the same ngspice run as the sweep, so the readout carries drain voltage, drain current and power beside the gain and bandwidth.</li>
+            <li>A gate bias that leaves the device off is reported as a bias problem naming the measured Vds and Id, not as a failed measurement. A stage bottomed out in triode still measures, and says so.</li>
+            <li>This circuit ships no analytic check on purpose. Square law does not describe a 150 nm device, and its bandwidth is set by the transistor&#8217;s own output resistance &#8212; measured 10.5 MHz against an ideal 7.96 MHz. It is the first Faradaem result that cannot be obtained without a simulator.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">0.1.6</span>
             <span class="entry-date">2026-08-22</span>
           </header>

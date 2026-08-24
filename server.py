@@ -36,10 +36,20 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from spice import circuits
-from spice.runner import NgspiceNotFoundError, NgspiceRunError
+from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
-SIMULATION_ERRORS = (NgspiceNotFoundError, NgspiceRunError, ValueError)
+#: A missing PDK belongs here: the request was fine, the machine is not set up.
+SIMULATION_ERRORS = (
+    NgspiceNotFoundError,
+    NgspiceRunError,
+    PdkNotFoundError,
+    ValueError,
+)
+
+#: A bias that leaves nothing to measure is a bad input, so it is a 400.
+#: It subclasses ValueError, so it must be caught before SIMULATION_ERRORS.
+INPUT_ERRORS = (circuits.BiasError,)
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -238,7 +248,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/0.1.6"
+    server_version = "Faradaem/0.2.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
@@ -302,6 +312,8 @@ class FaradaemHandler(BaseHTTPRequestHandler):
 
         try:
             self._send_json(200, circuits.simulate(circuit_id, params))
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
         except SIMULATION_ERRORS as exc:
             self._send_json(500, {"error": str(exc)})
 

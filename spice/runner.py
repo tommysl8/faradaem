@@ -46,6 +46,23 @@ AC_FREQ_MAX = 1e10
 #: Prefix used for the throw-away netlists written to the system temp dir.
 TEMP_PREFIX = "faradaem_"
 
+#: Environment variable holding the PDK install root.
+PDK_ROOT_ENV_VAR = "PDK_ROOT"
+
+#: Where the SKY130 PDK lives when PDK_ROOT is not set in this process.
+PDK_ROOT_FALLBACK = r"C:\pdk"
+
+#: The ngspice model library, relative to the PDK root.
+SKY130_LIB_PARTS = ("sky130A", "libs.tech", "ngspice", "sky130.lib.spice")
+
+#: Process corners the library defines.  V0.2 loads tt only.
+SKY130_CORNERS = ("tt", "ss", "ff", "sf", "fs")
+SKY130_DEFAULT_CORNER = "tt"
+
+#: Loading the SKY130 library costs 10 to 30 s on a cold run, so a PDK
+#: simulation gets a far longer budget than a discrete one.
+PDK_TIMEOUT_S = 90.0
+
 
 class NgspiceNotFoundError(RuntimeError):
     """Raised when no usable ngspice executable can be located."""
@@ -57,6 +74,10 @@ class NgspiceRunError(RuntimeError):
 
 class NgspiceParseError(ValueError):
     """Raised when expected numbers cannot be read out of ngspice output."""
+
+
+class PdkNotFoundError(RuntimeError):
+    """Raised when the SKY130 model library cannot be located."""
 
 
 def find_ngspice() -> str:
@@ -263,13 +284,17 @@ def build_rc_lowpass_netlist(r, c, fstart, fstop, points_per_decade, out_path):
     return "\n".join(lines) + "\n"
 
 
-def run_ac_netlist(netlist, out_path, timeout_s=AC_TIMEOUT_S):
+def run_ac_netlist(netlist, out_path, timeout_s=AC_TIMEOUT_S, with_stdout=False):
     """Run an AC netlist and return the text of the wrdata file it produced.
 
     The caller supplies out_path, which must live in the system temp dir.  Both
     the netlist and the data file are removed in the finally block: ngspice
     output data is a simulation temp file too, and none of it belongs in the
     project folder.
+
+    With with_stdout=True the return is (data, stdout) instead of just data, so
+    a control block that runs an operating point alongside the sweep can have
+    its printed values read back from the same invocation.
     """
     executable = find_ngspice()
     temp_dir = tempfile.gettempdir()
@@ -314,7 +339,9 @@ def run_ac_netlist(netlist, out_path, timeout_s=AC_TIMEOUT_S):
             )
 
         with open(out_path, encoding="utf-8", errors="replace") as data_file:
-            return data_file.read()
+            data = data_file.read()
+
+        return (data, completed.stdout or "") if with_stdout else data
     finally:
         for leftover in (netlist_path, out_path):
             try:
@@ -684,3 +711,109 @@ def simulate_rc_lowpass(r, c):
         "dc_gain_db": measured["dc_gain_db"],
         "phase_at_f3db": measured["phase_at_f3db"],
     }
+
+
+# ---------------------------------------------------------------------------
+# V0.2: the SKY130 PDK
+#
+# The PDK is machine tooling installed outside the project -- never inside
+# OneDrive -- so its location is resolved at call time rather than baked in.
+# ---------------------------------------------------------------------------
+
+
+def pdk_root():
+    r"""Return the PDK install root: $PDK_ROOT, or C:\pdk if it is unset.
+
+    Resolved on every call rather than at import, so a shell that gains the
+    variable does not need the server restarted to be believed.
+    """
+    return os.environ.get(PDK_ROOT_ENV_VAR, "").strip() or PDK_ROOT_FALLBACK
+
+
+def sky130_lib_path():
+    """Return the OS-native path to the SKY130 ngspice model library."""
+    return os.path.join(pdk_root(), *SKY130_LIB_PARTS)
+
+
+def sky130_available():
+    """True when the model library is present and readable.
+
+    Tests that need a real PDK skip on this, the same way the ngspice
+    integration tests skip when no simulator is installed.
+    """
+    return os.path.isfile(sky130_lib_path())
+
+
+def find_sky130_lib(corner=SKY130_DEFAULT_CORNER):
+    """Return the library path in the form a netlist .lib line wants.
+
+    Forward slashes, always: a backslash is escape-prone inside an ngspice
+    control block and inside a .lib path.  Raises PdkNotFoundError naming both
+    the environment variable and the fallback if the file is not there.
+    """
+    if corner not in SKY130_CORNERS:
+        raise ValueError(
+            "Unknown SKY130 corner " + repr(corner) + ". Choose one of: "
+            + ", ".join(SKY130_CORNERS) + "."
+        )
+
+    path = sky130_lib_path()
+    if not os.path.isfile(path):
+        env_value = os.environ.get(PDK_ROOT_ENV_VAR, "").strip()
+        source = (
+            "$" + PDK_ROOT_ENV_VAR + " = " + repr(env_value)
+            if env_value
+            else "$" + PDK_ROOT_ENV_VAR + " is not set in this process, so the "
+            + repr(PDK_ROOT_FALLBACK) + " fallback was used"
+        )
+        raise PdkNotFoundError(
+            "Could not find the SKY130 model library at " + path + ".\n"
+            + source + ".\n"
+            "Install the SKY130 PDK, then set " + PDK_ROOT_ENV_VAR + " to its "
+            "root and restart the server so the new value is picked up."
+        )
+
+    return path.replace("\\", "/")
+
+
+#: Collapses "v ( out )" and "V(OUT)" to one comparable key.
+_SPACE = re.compile(r"\s+")
+
+
+def parse_op_values(stdout, names):
+    """Read printed operating-point values out of ngspice stdout.
+
+    ngspice prints one "name = value" line per vector after an `op`.  Names are
+    matched with whitespace removed and case folded, so "v(out)" matches
+    however ngspice chose to space it.  The last occurrence wins, which is what
+    is wanted when a control block prints more than once.
+
+    Raises NgspiceParseError naming every value that never appeared.
+    """
+    wanted = {_SPACE.sub("", name).lower(): name for name in names}
+    found = {}
+
+    for line in (stdout or "").splitlines():
+        if "=" not in line:
+            continue
+        left, _, right = line.partition("=")
+        key = _SPACE.sub("", left).lower()
+        if key not in wanted:
+            continue
+        fields = right.strip().split()
+        if not fields:
+            continue
+        try:
+            found[wanted[key]] = float(fields[0])
+        except ValueError:
+            continue
+
+    missing = [name for name in names if name not in found]
+    if missing:
+        raise NgspiceParseError(
+            "The operating point did not report " + ", ".join(missing)
+            + ". Check that the control block prints it.\n"
+            "--- last 20 lines of stdout ---\n" + _tail(stdout or "")
+        )
+
+    return found

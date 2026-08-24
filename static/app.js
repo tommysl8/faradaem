@@ -21,7 +21,8 @@
     rc_lowpass: "drawRCLowpass",
     rc_highpass: "drawRCHighpass",
     rlc_bandpass: "drawRLCBandpass",
-    inverting_amp: "drawInvertingAmp"
+    inverting_amp: "drawInvertingAmp",
+    nfet_cs_amp: "drawNfetCsAmp"
   };
 
   /* Which measured value the schematic tags its output node with, and the
@@ -31,7 +32,8 @@
     rc_lowpass: "f3db",
     rc_highpass: "f3db",
     rlc_bandpass: "f0_measured",
-    inverting_amp: "midband_db"
+    inverting_amp: "midband_db",
+    nfet_cs_amp: "midband_db"
   };
 
   var TAG_ARG = {
@@ -39,7 +41,8 @@
     rc_lowpass: "f3db",
     rc_highpass: "f3db",
     rlc_bandpass: "f0",
-    inverting_amp: "gain_db"
+    inverting_amp: "gain_db",
+    nfet_cs_amp: "gain_db"
   };
 
   /* Arrow keys step the leading digit: 1000 -> 2000, 1.5e-7 -> 2.5e-7.
@@ -419,6 +422,11 @@
     id("headline-value").classList.remove("placeholder");
     captionState.textContent = "";
 
+    /* A circuit may ship no closed-form check at all -- the SKY130 stage does
+     * not, because square law does not describe a short-channel device. Then
+     * the check and its badge stay hidden and the note carries whatever
+     * caution the server sent about the operating point instead. */
+    var noteText = "";
     var check = headline.check ? checkFor(current, headline.check) : null;
     if (check && typeof analytic[check.key] === "number") {
       var expected = analytic[check.key];
@@ -429,20 +437,22 @@
 
       var ok = agrees(check, measured, expected);
       badge(id("headline-badge"), ok, measured, expected);
-      if (ok) {
-        show(id("note"), false);
-      } else {
-        id("note").textContent =
+      if (!ok) {
+        noteText =
           "Measured " + present(measured, headline) + " against " +
           present(expected, headline) + ". The simulator is the result; the " +
           "closed form is only the check.";
-        show(id("note"), true);
       }
     } else {
       show(id("headline-check"), false);
       show(id("headline-badge"), false);
-      show(id("note"), false);
     }
+
+    if (!noteText && typeof result.note === "string") {
+      noteText = result.note;
+    }
+    id("note").textContent = noteText;
+    show(id("note"), Boolean(noteText));
 
     clear(statsEl);
     readout.stats.forEach(function (stat) {

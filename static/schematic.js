@@ -244,6 +244,53 @@
     return group;
   }
 
+  /* Enhancement-mode NMOS, gate on the left, drain up and source down.
+   * The channel is drawn as three dashes, which is what marks it enhancement
+   * mode, and the bulk arrow points at the channel, which is what marks it
+   * n-type. Bulk is tied into the source lead because that is how the netlist
+   * wires it. (x, y) is the centre of the channel.
+   *
+   * Terminals, for a caller placing wires: the gate lead starts at
+   * x - gap - lead, and the drain and source leads both leave on the column
+   * x + lead, at y - half - 14 and y + half + 14. */
+  function nmos(parent, options) {
+    var x = options.x;
+    var y = options.y;
+    var half = options.half || 24;
+    var gap = options.gap || 10;
+    var lead = options.lead || 26;
+    var group = add(parent, "g", {});
+
+    var gateX = x - gap;
+    var railX = x + lead;
+    var drainY = y - half + 7;
+    var sourceY = y + half - 7;
+
+    // Gate plate and its lead.
+    polyline(group, [[gateX, y - half], [gateX, y + half]]);
+    polyline(group, [[gateX - lead, y], [gateX, y]]);
+
+    // Channel: three dashes with the gaps an enhancement device is drawn with.
+    polyline(group, [[x, y - half], [x, y - half + 14]]);
+    polyline(group, [[x, y - 7], [x, y + 7]]);
+    polyline(group, [[x, y + half - 14], [x, y + half]]);
+
+    // Drain lead: out to the rail column, then up.
+    polyline(group, [[x, drainY], [railX, drainY]]);
+    polyline(group, [[railX, drainY], [railX, y - half - 14]]);
+
+    // Source lead: out to the rail column, then down.
+    polyline(group, [[x, sourceY], [railX, sourceY]]);
+    polyline(group, [[railX, sourceY], [railX, y + half + 14]]);
+
+    // Bulk, tied into the source lead, arrow pointing at the channel.
+    polyline(group, [[x, y], [railX, y]]);
+    polyline(group, [[railX, y], [railX, sourceY]]);
+    polyline(group, [[x + 9, y - 5], [x, y], [x + 9, y + 5]]);
+
+    return group;
+  }
+
   function nodeDot(parent, options) {
     return add(parent, "circle", {
       "class": "sch-fill",
@@ -306,6 +353,7 @@
     capacitor: capacitor,
     inductor: inductor,
     opamp: opamp,
+    nmos: nmos,
     dcSource: dcSource,
     ground: ground,
     nodeDot: nodeDot,
@@ -751,11 +799,121 @@
     return svg;
   }
 
+  /* ---- SKY130 NFET common-source amplifier -------------------------- */
+
+  var CS_GEOMETRY = {
+    yVdd: 44, yOut: 140, yDev: 196, yBottom: 272,
+    xGate: 96, gateCy: 224, gateR: 20,
+    chanX: 232, xRail: 258, xCL: 350,
+    rdTop: 64, rdBottom: 120,
+    railEnd: 330, gateDotX: 150, capCentre: 200
+  };
+
+  /* Draw the V0.2 common-source stage. gain_db may be null, meaning "not
+   * swept yet". W and L arrive in metres and are shown in engineering units,
+   * so 1.5e-7 reads as 150 nm rather than as a raw exponent. */
+  function drawNfetCsAmp(svg, values) {
+    var g = CS_GEOMETRY;
+    var gain = values.gain_db === undefined ? null : values.gain_db;
+
+    begin(svg, 470, 330,
+      "SKY130 NFET common-source amplifier: an n-channel transistor of width " +
+      formatEngineering(values.w, "m") + " and length " +
+      formatEngineering(values.l, "m") + ", gate biased at " +
+      formatEngineering(values.vgs, "V") + " and carrying the 1 volt AC " +
+      "excitation, source and body grounded, drain loaded by RD " +
+      formatEngineering(values.rd, "\u03a9") + " to a " +
+      formatEngineering(values.vdd, "V") + " supply and by CL " +
+      formatEngineering(values.cl, "F") + " to ground, output taken at the drain" +
+      (gain === null ? "." : ", measured midband gain " + gain.toFixed(2) + " dB."));
+
+    // Supply rail into RD, then down to the drain.
+    wire(svg, g.xRail, g.yVdd, g.railEnd, g.yVdd);
+    wire(svg, g.xRail, g.yVdd, g.xRail, g.rdTop);
+    wire(svg, g.xRail, g.rdBottom, g.xRail, g.yDev - 24 - 14);
+
+    // Output node across to the load capacitor.
+    wire(svg, g.xRail, g.yOut, g.xCL, g.yOut);
+
+    // Source down to the ground rail, and the gate drive in from the left.
+    wire(svg, g.xRail, g.yDev + 24 + 14, g.xRail, g.yBottom);
+    wire(svg, g.chanX - 10 - 26, g.yDev, g.xGate, g.yDev);
+    wire(svg, g.xGate, g.yDev, g.xGate, g.gateCy - g.gateR);
+    wire(svg, g.xGate, g.gateCy + g.gateR, g.xGate, g.yBottom);
+    wire(svg, g.xGate, g.yBottom, g.xCL, g.yBottom);
+
+    // Components.
+    resistor(svg, { x: g.xRail, y1: g.rdTop, y2: g.rdBottom, peaks: 6 });
+    nmos(svg, { x: g.chanX, y: g.yDev });
+    capacitor(svg, {
+      x: g.xCL, y1: g.yOut, y2: g.yBottom, centre: g.capCentre
+    });
+    dcSource(svg, { cx: g.xGate, cy: g.gateCy, radius: g.gateR });
+    ground(svg, { x: 170, y: g.yBottom });
+
+    // Nodes.
+    nodeDot(svg, { x: g.xRail, y: g.yOut });
+    nodeDot(svg, { x: g.gateDotX, y: g.yDev });
+    label(svg, { x: g.xRail - 12, y: g.yOut + 4, text: "out", anchor: "end", strong: true });
+    label(svg, { x: g.gateDotX, y: g.yDev - 12, text: "g", anchor: "middle", strong: true });
+
+    // The supply is a rail, so it carries its label rather than a symbol.
+    label(svg, { x: g.railEnd + 8, y: g.yVdd - 4, text: "VDD", strong: true });
+    label(svg, { value: true,
+      x: g.railEnd + 8, y: g.yVdd + 12, text: formatEngineering(values.vdd, "V")
+    });
+
+    label(svg, { x: g.xRail + 16, y: 88, text: "RD", strong: true });
+    label(svg, { value: true,
+      x: g.xRail + 16, y: 104, text: formatEngineering(values.rd, "\u03a9")
+    });
+
+    label(svg, { x: g.xCL + 16, y: g.capCentre - 2, text: "CL", strong: true });
+    label(svg, { value: true,
+      x: g.xCL + 16, y: g.capCentre + 14, text: formatEngineering(values.cl, "F")
+    });
+
+    // Bias and excitation on separate lines: one run of text long enough to
+    // hold both is wide enough to fall off the left edge of the frame.
+    var gateEdge = g.xGate - g.gateR - 13;
+    label(svg, { x: gateEdge, y: g.gateCy - 18, text: "Vg", anchor: "end", strong: true });
+    label(svg, { value: true,
+      x: gateEdge, y: g.gateCy - 2,
+      text: formatEngineering(values.vgs, "V"), anchor: "end"
+    });
+    label(svg, { value: true,
+      x: gateEdge, y: g.gateCy + 14, text: "+ AC 1 V", anchor: "end"
+    });
+
+    // The device is a component too, so it carries its live geometry.
+    var devEdge = g.chanX - 36;
+    label(svg, { x: devEdge, y: 236, text: "XM1", anchor: "end", strong: true });
+    label(svg, { value: true,
+      x: devEdge, y: 250, text: "W " + formatEngineering(values.w, "m"),
+      anchor: "end", size: 11
+    });
+    label(svg, { value: true,
+      x: devEdge, y: 264, text: "L " + formatEngineering(values.l, "m"),
+      anchor: "end", size: 11
+    });
+
+    // Only a completed sweep may put a gain on the figure. The tag hangs below
+    // the output node: RD occupies the space above it.
+    if (gain !== null && isFinite(gain)) {
+      wire(svg, 305, g.yOut, 305, g.yOut + 18);
+      valueTag(svg, {
+        x: 305, y: g.yOut + 18, anchor: "middle", text: gain.toFixed(2) + " dB"
+      });
+    }
+    return svg;
+  }
+
   window.drawDivider = drawDivider;
   window.drawRCLowpass = drawRCLowpass;
   window.drawRCHighpass = drawRCHighpass;
   window.drawRLCBandpass = drawRLCBandpass;
   window.drawInvertingAmp = drawInvertingAmp;
+  window.drawNfetCsAmp = drawNfetCsAmp;
   window.formatEngineering = formatEngineering;
   window.FaradaemSymbols = symbols;
 })(window, document);
