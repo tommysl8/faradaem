@@ -101,6 +101,11 @@ def test_the_pages_and_their_assets_are_served():
         "/static/schematic.js",
         "/static/bodeplot.js",
         "/favicon.svg",
+        "/favicon.ico",
+        "/static/icon.svg",
+        "/static/icon-32.png",
+        "/static/apple-touch-icon.png",
+        "/static/og.png",
     }
 
 
@@ -128,19 +133,20 @@ def test_favicon_is_served_as_svg(address):
     assert status == 200
     assert content_type == "image/svg+xml"
     assert body.startswith("<svg")
-    assert "22D3EE" in body  # the accent zigzag, not a default mark
+    assert "#FFFFFF" in body  # the white AE mark, not a default page
 
 
 @pytest.mark.parametrize("path", ["/", "/manual", "/about", "/changelog"])
-def test_pages_carry_the_inline_favicon(address, path):
+def test_pages_link_the_real_icons(address, path):
     _, _, body = fetch(address, path)
-    assert 'rel="icon"' in body
-    assert "data:image/svg+xml," in body
+    assert '<link rel="icon" href="/static/icon.svg" type="image/svg+xml">' in body
+    assert '<link rel="icon" href="/static/icon-32.png" sizes="32x32"' in body
+    assert '<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">' in body
 
 
 @pytest.mark.parametrize(
     "path,title",
-    [("/", "<title>Faradaem</title>"),
+    [("/", "<title>Faradaem: AI-assisted analog IC design</title>"),
      ("/manual", "<title>Manual - Faradaem</title>"),
      ("/changelog", "<title>Changelog - Faradaem</title>"),
      ("/about", "<title>About - Faradaem</title>")],
@@ -172,7 +178,7 @@ def test_whitelisted_route_returns_200_with_expected_content_type(address, path)
 @pytest.mark.parametrize("path", ["/", "/manual", "/about", "/changelog"])
 def test_pages_share_the_shell(address, path):
     _, _, body = fetch(address, path)
-    assert "FARADAEM" in body
+    assert 'FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span>' in body
     assert '/static/style.css' in body
     assert 'href="/manual"' in body
     assert 'href="/about"' in body
@@ -289,7 +295,7 @@ def test_rejected_post_does_not_desync_a_keep_alive_connection(address):
         second = conn.getresponse()
         body = second.read().decode("utf-8")
         assert second.status == 200
-        assert "FARADAEM" in body
+        assert 'FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span>' in body
     finally:
         conn.close()
 

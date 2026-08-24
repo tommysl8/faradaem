@@ -5,7 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Manual - Faradaem</title>
 <meta name="description" content="How to run a simulation in Faradaem, how to read the result, what each circuit measures, and what to do when something goes wrong.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230A0E14'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%2322D3EE'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="application-name" content="Faradaem">
+<meta property="og:site_name" content="Faradaem">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Manual - Faradaem">
+<meta property="og:description" content="How to run a simulation in Faradaem, how to read the result, what each circuit measures, and what to do when something goes wrong.">
+<meta property="og:image" content="/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A white AE ligature on a black square, the Faradaem mark.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Manual - Faradaem">
+<meta name="twitter:description" content="How to run a simulation in Faradaem, how to read the result, what each circuit measures, and what to do when something goes wrong.">
+<meta name="twitter:image" content="/static/og.png">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,7 +28,7 @@
 <header class="nav">
   <div class="wrap nav-inner">
     <a class="wordmark" href="/">
-      <span class="wordmark-name">FARADAEM</span>
+      <span class="wordmark-name">FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span></span>
       <span class="wordmark-version"></span>
     </a>
     <nav aria-label="Primary">
@@ -45,16 +60,24 @@
             ngspice process that ran while you waited.
           </p>
           <p>
+            If you are reading this on the published site, there is no simulator
+            behind it. The pages and the schematics are real and the drawings
+            redraw as you change values, but the panels that measure, ask, design
+            and check corners are put away, because measuring needs ngspice
+            running on your own machine. Install it as below and every panel comes
+            back.
+          </p>
+          <p>
             You need ngspice 47 or later, console build. Put
             <code>ngspice_con.exe</code> on your PATH, or set the environment variable
             <code>FARADAEM_NGSPICE</code> to its full path. Faradaem never uses
             <code>ngspice.exe</code>, because that build opens a window and never returns.
           </p>
           <p>
-            One circuit, the SKY130 NFET amplifier, also needs the SKY130 process design
-            kit. Set <code>PDK_ROOT</code> to the folder you installed it in. Every other
-            circuit runs without it. If the kit is missing, only that one circuit stops
-            working, and it tells you what to install.
+            The three SKY130 circuits, the NFET amplifier, the op-amp and the OTA, also
+            need the SKY130 process design kit. Set <code>PDK_ROOT</code> to the folder
+            you installed it in. Every other circuit runs without it. If the kit is
+            missing, only those circuits stop working, and they tell you what to install.
           </p>
         </section>
 
@@ -355,7 +378,12 @@
   <div class="wrap">
     <div class="foot-inner">
       <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
-      <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/manual">Manual</a>
+        <a href="/about">About</a>
+        <a href="/changelog">Changelog</a>
+        <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+      </nav>
     </div>
   </div>
 </footer>

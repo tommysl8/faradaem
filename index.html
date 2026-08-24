@@ -3,9 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Faradaem</title>
-<meta name="description" content="Simulate resistor dividers, RC and RLC filters, and an inverting amplifier with real ngspice, in the browser.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230A0E14'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%2322D3EE'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Faradaem: AI-assisted analog IC design</title>
+<meta name="description" content="Describe the analog circuit you need. Faradaem designs it against real ngspice simulation, iterates to your spec, and verifies the result across corners.">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="application-name" content="Faradaem">
+<meta property="og:site_name" content="Faradaem">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Faradaem: AI-assisted analog IC design">
+<meta property="og:description" content="Describe the analog circuit you need. Faradaem designs it against real ngspice simulation, iterates to your spec, and verifies the result across corners.">
+<meta property="og:image" content="/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A white AE ligature on a black square, the Faradaem mark.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Faradaem: AI-assisted analog IC design">
+<meta name="twitter:description" content="Describe the analog circuit you need. Faradaem designs it against real ngspice simulation, iterates to your spec, and verifies the result across corners.">
+<meta name="twitter:image" content="/static/og.png">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,7 +28,7 @@
 <header class="nav">
   <div class="wrap nav-inner">
     <a class="wordmark" href="/" aria-current="page">
-      <span class="wordmark-name">FARADAEM</span>
+      <span class="wordmark-name">FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span></span>
       <span class="wordmark-version"></span>
     </a>
     <nav aria-label="Primary">
@@ -29,14 +44,34 @@
 <main class="page">
   <div class="wrap">
 
-    <div class="page-head">
-      <h1 class="page-title">Simulator</h1>
-      <p class="page-sub">Every number below comes from a real ngspice run.</p>
-    </div>
+    <section class="hero">
+      <p class="hero-kicker">Analog IC design, verified</p>
+      <h1 class="hero-title">Spec in. Verified schematic out.</h1>
+      <p class="hero-sub">Describe the circuit you need in plain language. A
+      strategist sizes it against real ngspice runs, iterates until your numbers
+      hold, and proves them across corners. No value on this page was ever
+      estimated.</p>
+      <div class="hero-actions">
+        <a class="hero-cta" href="#advise">Ask for a design</a>
+        <a class="hero-alt" href="/manual">Read the manual</a>
+      </div>
+      <ul class="hero-facts">
+        <li>Real ngspice runs</li>
+        <li>SKY130 transistors</li>
+        <li>11 PVT corners</li>
+        <li>Mismatch Monte Carlo</li>
+      </ul>
+    </section>
 
     <div class="sim">
 
       <div class="sim-left">
+
+      <p class="static-note hidden" id="static-note">You are reading the
+      published site, which has no simulator behind it. The schematics below
+      are live and redraw as you change values. Measuring one needs ngspice on
+      your own machine: <a href="https://github.com/tommysl8/faradaem"
+      rel="noreferrer">run it locally</a> and every panel comes back.</p>
 
       <section class="panel advise-panel" id="advise" aria-label="Ask for a design">
         <h2 class="panel-head">Ask for a design</h2>
@@ -127,7 +162,9 @@
         <h2 class="section-label">Schematic</h2>
 
         <figure class="figure">
-          <svg id="schematic" viewBox="0 0 420 300"></svg>
+          <div class="figure-scroll">
+            <svg id="schematic" viewBox="0 0 420 300"></svg>
+          </div>
           <figcaption>
             <span id="caption"></span>
             <span class="caption-state" id="caption-state">Run to measure.</span>
@@ -174,7 +211,12 @@
   <div class="wrap">
     <div class="foot-inner">
       <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
-      <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/manual">Manual</a>
+        <a href="/about">About</a>
+        <a href="/changelog">Changelog</a>
+        <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+      </nav>
     </div>
   </div>
 </footer>

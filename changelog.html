@@ -5,7 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Changelog - Faradaem</title>
 <meta name="description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230A0E14'/%3E%3Cpath%20d='M4%2016h4l2-6%204%2012%204-12%204%2012%202-6h4'%20fill='none'%20stroke='%2322D3EE'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="application-name" content="Faradaem">
+<meta property="og:site_name" content="Faradaem">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Changelog - Faradaem">
+<meta property="og:description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
+<meta property="og:image" content="/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A white AE ligature on a black square, the Faradaem mark.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Changelog - Faradaem">
+<meta name="twitter:description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
+<meta name="twitter:image" content="/static/og.png">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,7 +28,7 @@
 <header class="nav">
   <div class="wrap nav-inner">
     <a class="wordmark" href="/">
-      <span class="wordmark-name">FARADAEM</span>
+      <span class="wordmark-name">FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span></span>
       <span class="wordmark-version"></span>
     </a>
     <nav aria-label="Primary">
@@ -36,6 +51,27 @@
 
     <div class="panel">
       <div class="panel-body">
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">1.1.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>Faradaem has a face. The mark is the AE ligature itself, white on the ink ground, its outline lifted from IBM Plex Sans SemiBold and baked into path data so no font is needed to render it. It ships as the favicon, the touch icon, and an Open Graph card, all generated from one geometry by tools/make_brand.py so the sizes cannot drift apart.</li>
+            <li>The header logotype now sets the name with the AE ligature, the ligature in accent cyan, and a trademark symbol sized from the font&#8217;s own metrics: one third of the cap height, top aligned to the cap line, tucked inside the brand tracking. In prose the name stays plain ASCII Faradaem, and a test keeps the ligature from leaking anywhere else.</li>
+            <li>The home page opens like a product instead of a form: a landing that says what the tool does, one button that jumps to asking for a design, and the facts that matter in a single row. The header follows you down the page, and the schematic column holds still beside the controls while you scroll.</li>
+            <li>Every page now carries a descriptive title, an application name, and a full Open Graph and Twitter card block, so a shared link unfurls with the mark instead of a bare URL.</li>
+            <li>Fixed on phones: below 560 pixels the header lost its side padding and sat flush against the screen edge.</li>
+            <li>The circuit list is a row of separate bordered tabs, the chosen one filled in accent like the run button. Before, nine names ran together into one block of text.</li>
+            <li>Figures size themselves to what they contain. A drawing unit may grow to 1.15 pixels and may shrink to 0.85, no further either way: a three-part divider stops expanding instead of filling the column, and a dense circuit holds its size and scrolls sideways instead of collapsing into an unreadable thumbnail. Between those limits the drawing is centred in a full-width frame, and the page itself is wider, so the op-amp draws about a third larger than it did in 1.0.0.</li>
+            <li>Wires stop where they turn. Every wire was drawn with a round cap, which added half a stroke past each endpoint, so at every corner two segments overshot the turn and left a stub. Caps are flat now, and each transistor lead is one polyline that turns rather than two that meet.</li>
+            <li>The plot no longer collides with itself. Its axis titles sat inside the frames, right where a lowpass response runs, so the trace cut through the words; they are now rotated into the margin. Frequency ticks read 10 kHz instead of 10.00 kHz, which stops neighbouring decades from touching, and the two floating trace labels are gone. The plot is also drawn at the width it will occupy rather than stretched to fit, so its type renders at the size it was designed at.</li>
+            <li>The manual no longer claims only one circuit needs the process design kit; all three SKY130 circuits do, and the page now says so.</li>
+            <li>Faradaem can be published. tools/build_static.py writes the four pages, the assets, and the circuit catalogue into a folder any static host can serve, and vercel.json at the root builds it the same way from the command line or from a git push. The pages ask for the simulator first, fall back to the published catalogue when there is none, and drop into a static mode that keeps the live schematics and puts away every panel that would need a measured number, with a note at the top saying why. No number appears that nothing measured.</li>
+            <li>One test could fail for the wrong reason. It looked for stray simulation files across the whole system temp directory, so running the corner suite in a browser while the tests ran was enough to fail it, which says nothing about whether the run under test cleaned up. It now works in a private directory that no other Faradaem can reach.</li>
+          </ul>
+        </article>
 
         <article class="entry">
           <header class="entry-head">
@@ -299,7 +335,12 @@
   <div class="wrap">
     <div class="foot-inner">
       <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
-      <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/manual">Manual</a>
+        <a href="/about">About</a>
+        <a href="/changelog">Changelog</a>
+        <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+      </nav>
     </div>
   </div>
 </footer>

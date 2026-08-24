@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# The published site, rebuilt by tools/build_static.py.
+dist/

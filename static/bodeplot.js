@@ -13,9 +13,14 @@
 
   var NS = "http://www.w3.org/2000/svg";
 
+  //: Fallback size. The plot is really drawn at the width it will occupy,
+  //: measured at draw time, so nothing is scaled up and no text stretches.
   var VIEW = { width: 520, height: 360 };
-  //: Top margin holds two staggered rows of marker labels.
-  var MARGIN = { left: 48, right: 44, top: 40, bottom: 38 };
+  var MIN_WIDTH = 400;
+  var MAX_WIDTH = 1000;
+  //: Top margin holds two staggered rows of marker labels. The left margin
+  //: holds the tick values and, outside them, the rotated axis title.
+  var MARGIN = { left: 58, right: 30, top: 40, bottom: 38 };
   //: Marker labels closer than this on screen get bumped to the second row.
   var LABEL_CLEARANCE = 78;
   var GAP = 18;
@@ -50,6 +55,9 @@
       "text-anchor": options.anchor || "start",
       "font-size": options.size || 10
     });
+    if (options.transform) {
+      node.setAttribute("transform", options.transform);
+    }
     node.textContent = options.text;
     return node;
   }
@@ -121,6 +129,34 @@
     };
   }
 
+  //: Axis ticks say 10 kHz, not 10.00 kHz: four significant digits on a
+  //: decade line is noise, and the long form crowds its neighbours.
+  var DECADE_UNITS = ["Hz", "kHz", "MHz", "GHz", "THz"];
+
+  function decadeLabel(decade) {
+    if (decade < 0) {
+      return window.formatEngineering(Math.pow(10, decade), "Hz");
+    }
+    var step = Math.floor(decade / 3);
+    if (step >= DECADE_UNITS.length) {
+      return window.formatEngineering(Math.pow(10, decade), "Hz");
+    }
+    return Math.pow(10, decade - step * 3) + " " + DECADE_UNITS[step];
+  }
+
+  /* A panel title, rotated up the left margin beside its frame. */
+  function axisTitle(svg, label, top, bottom) {
+    var middle = (top + bottom) / 2;
+    text(svg, {
+      x: 13,
+      y: middle,
+      text: label,
+      anchor: "middle",
+      className: "bode-title",
+      transform: "rotate(-90 13 " + middle + ")"
+    });
+  }
+
   function drawBode(svg, data) {
     var freq = (data && data.freq) || [];
     var magDb = (data && data.mag_db) || [];
@@ -128,15 +164,26 @@
     var f3db = data && data.f3db !== undefined ? data.f3db : null;
 
     clear(svg);
-    svg.setAttribute("viewBox", "0 0 " + VIEW.width + " " + VIEW.height);
+
+    // Draw at the size the element actually has, so one drawing unit is one
+    // CSS pixel and the type renders at the size it was designed at.
+    var measured = svg.getBoundingClientRect();
+    var view = {
+      width: Math.round(clamp(
+        measured && measured.width ? measured.width : VIEW.width,
+        MIN_WIDTH, MAX_WIDTH
+      )),
+      height: VIEW.height
+    };
+    svg.setAttribute("viewBox", "0 0 " + view.width + " " + view.height);
     svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
     svg.setAttribute("role", "img");
 
     if (freq.length < 2 || magDb.length !== freq.length) {
       svg.setAttribute("aria-label", "Frequency response plot, no data yet.");
       text(svg, {
-        x: VIEW.width / 2,
-        y: VIEW.height / 2,
+        x: view.width / 2,
+        y: view.height / 2,
         text: "run a sweep to plot the frequency response",
         anchor: "middle",
         size: 12,
@@ -146,13 +193,13 @@
     }
 
     var left = MARGIN.left;
-    var right = VIEW.width - MARGIN.right;
+    var right = view.width - MARGIN.right;
     var magTop = MARGIN.top;
-    var plotHeight = VIEW.height - MARGIN.top - MARGIN.bottom;
+    var plotHeight = view.height - MARGIN.top - MARGIN.bottom;
     var magHeight = Math.round((plotHeight - GAP) * MAGNITUDE_SHARE);
     var magBottom = magTop + magHeight;
     var phaseTop = magBottom + GAP;
-    var phaseBottom = VIEW.height - MARGIN.bottom;
+    var phaseBottom = view.height - MARGIN.bottom;
 
     svg.setAttribute(
       "aria-label",
@@ -201,7 +248,7 @@
       text(svg, {
         x: x,
         y: phaseBottom + 15,
-        text: window.formatEngineering(Math.pow(10, decade), "Hz"),
+        text: decadeLabel(decade),
         anchor: "middle"
       });
     }
@@ -296,31 +343,14 @@
       });
     });
 
-    // ---- inline trace labels, no legend box ----
-    text(svg, {
-      x: right + 6,
-      y: magPoints[magPoints.length - 1][1] + 3.5,
-      text: "mag",
-      className: "bode-label-mag"
-    });
-    if (phasePoints.length > 1) {
-      text(svg, {
-        x: right + 6,
-        y: phasePoints[phasePoints.length - 1][1] + 3.5,
-        text: "phase"
-      });
-    }
-
-    // ---- axis titles, inside the frames ----
-    text(svg, {
-      x: left + 7, y: magTop + 14, text: "MAGNITUDE (dB)", className: "bode-title"
-    });
-    text(svg, {
-      x: left + 7, y: phaseTop + 14, text: "PHASE (deg)", className: "bode-title"
-    });
+    // ---- axis titles, rotated in the margin ----
+    // Inside the frame they sat where the trace runs. Out here they cannot
+    // collide with anything, and each panel still says what it plots.
+    axisTitle(svg, "MAGNITUDE (dB)", magTop, magBottom);
+    axisTitle(svg, "PHASE (deg)", phaseTop, phaseBottom);
     text(svg, {
       x: (left + right) / 2,
-      y: VIEW.height - 7,
+      y: view.height - 7,
       text: "FREQUENCY",
       anchor: "middle",
       className: "bode-title"
@@ -335,7 +365,8 @@
       left: left,
       right: right,
       magTop: magTop,
-      phaseBottom: phaseBottom
+      phaseBottom: phaseBottom,
+      viewWidth: view.width
     });
 
     return svg;
@@ -378,7 +409,7 @@
       if (!box || !box.width) {
         return null;
       }
-      return ((event.clientX - box.left) / box.width) * VIEW.width;
+      return ((event.clientX - box.left) / box.width) * ctx.viewWidth;
     }
 
     function tooltip(index, x) {

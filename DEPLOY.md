@@ -31,6 +31,76 @@ docker run -p 8000:8000 -v /path/to/pdk:/pdk \
   -e FARADAEM_OPENAI_KEY=... -e FARADAEM_ANTHROPIC_KEY=... faradaem
 ```
 
+## Publishing the site at faradaem.com
+
+### What can be published, and what cannot
+
+The simulator cannot run on Vercel, and it is worth being exact about why
+rather than discovering it halfway through a deploy:
+
+- ngspice is a **native binary**. Vercel builds and runs your code; it does
+  not let you `apt-get install` a simulator into the runtime.
+- The SKY130 PDK is **2.1 GB**. A Vercel function bundle is capped at 250 MB.
+- A PVT suite takes **minutes**. A Vercel function is capped at 10 s on the
+  Hobby plan, 300 s at most on Pro.
+- Design and robustness jobs live **in one process's memory**, polled over
+  many requests. Serverless invocations do not share memory, so the next
+  poll can land on a different machine that has never heard of the job.
+
+So Vercel gets the half that is honestly static, and it is a real page, not
+a placeholder: all four pages, the circuit catalogue, and **live schematics**,
+which are drawn in the browser and redraw as you change values. The page
+asks for `/api/circuits`, does not find a server, falls back to the
+published `catalogue.json`, and puts away every panel that would need a
+measured number. It says so in a note at the top. No number appears that
+nothing measured.
+
+### Deploy it
+
+```
+npm i -g vercel
+vercel login
+vercel --prod
+```
+
+Run from the repository root. `vercel.json` there carries the build command
+(`python3 tools/build_static.py --out dist`) and the output directory, so
+the same file serves the CLI and the Git integration; connecting the repo in
+the Vercel dashboard needs no further settings and redeploys on every push.
+
+If the build image has no Python, build locally and upload the result
+instead:
+
+```
+python tools/build_static.py --out dist
+vercel deploy --prod dist
+```
+
+### Point the domain at it
+
+In the Vercel project, open Settings, then Domains, and add `faradaem.com`
+and `www.faradaem.com`. Vercel prints the exact DNS records to create at the
+registrar: an A record for the apex and a CNAME for `www`. Copy the values it
+shows rather than any written here; they are Vercel's to change. Alternatively
+move the domain's nameservers to Vercel and it manages both records itself.
+DNS takes minutes to hours to propagate, and the certificate is issued
+automatically once it has.
+
+### Running the whole tool on the internet
+
+If you want the simulator itself reachable, not just the pages, it needs a
+host that runs a **container with a disk**, because it needs ngspice, the
+2.1 GB PDK, and a process that stays alive between requests. Fly.io, Render,
+Railway, or any VPS can do it; the `Dockerfile` here is the whole
+description. Mount the PDK as a volume at `/pdk`, give it at least 2 CPUs,
+and read the warning below first, because it applies with force to a public
+host: with no authentication, anyone who finds the URL spends your API
+credits and your CPU.
+
+A reasonable arrangement is the static site on `faradaem.com` and the real
+tool behind an authenticating tunnel on a subdomain, so the public page
+stays free to serve and the expensive half stays yours.
+
 ## Environment variables
 
 | Variable | Meaning | Default |

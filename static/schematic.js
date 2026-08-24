@@ -87,7 +87,7 @@
       points: points.map(function (point) {
         return point[0] + "," + point[1];
       }).join(" "),
-      "stroke-linecap": "round",
+      "stroke-linecap": "butt",
       "stroke-linejoin": "round"
     });
   }
@@ -275,17 +275,15 @@
     polyline(group, [[x, y - 7], [x, y + 7]]);
     polyline(group, [[x, y + half - 14], [x, y + half]]);
 
-    // Drain lead: out to the rail column, then up.
-    polyline(group, [[x, drainY], [railX, drainY]]);
-    polyline(group, [[railX, drainY], [railX, y - half - 14]]);
+    // Drain lead: out to the rail column, then up. One polyline per lead,
+    // so the turn is a join rather than two ends meeting.
+    polyline(group, [[x, drainY], [railX, drainY], [railX, y - half - 14]]);
 
     // Source lead: out to the rail column, then down.
-    polyline(group, [[x, sourceY], [railX, sourceY]]);
-    polyline(group, [[railX, sourceY], [railX, y + half + 14]]);
+    polyline(group, [[x, sourceY], [railX, sourceY], [railX, y + half + 14]]);
 
     // Bulk, tied into the source lead, arrow pointing at the channel.
-    polyline(group, [[x, y], [railX, y]]);
-    polyline(group, [[railX, y], [railX, sourceY]]);
+    polyline(group, [[x, y], [railX, y], [railX, sourceY]]);
     polyline(group, [[x + 9, y - 5], [x, y], [x + 9, y + 5]]);
 
     return group;
@@ -318,16 +316,13 @@
     polyline(group, [[x, y + half - 14], [x, y + half]]);
 
     // Source lead: out to the rail column, then up toward the supply.
-    polyline(group, [[x, sourceY], [railX, sourceY]]);
-    polyline(group, [[railX, sourceY], [railX, y - half - 14]]);
+    polyline(group, [[x, sourceY], [railX, sourceY], [railX, y - half - 14]]);
 
     // Drain lead: out to the rail column, then down.
-    polyline(group, [[x, drainY], [railX, drainY]]);
-    polyline(group, [[railX, drainY], [railX, y + half + 14]]);
+    polyline(group, [[x, drainY], [railX, drainY], [railX, y + half + 14]]);
 
     // Bulk, tied into the source lead, arrow pointing away from the channel.
-    polyline(group, [[x, y], [railX, y]]);
-    polyline(group, [[railX, y], [railX, sourceY]]);
+    polyline(group, [[x, y], [railX, y], [railX, sourceY]]);
     polyline(group, [[railX - 9, y - 5], [railX, y], [railX - 9, y + 5]]);
 
     return group;

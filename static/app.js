@@ -128,6 +128,9 @@
   /* The most recent successful measurement, for flows that act on it. */
   var lastResult = null;
 
+  //: True when the pages are served with no simulator behind them.
+  var isStatic = false;
+
   /* ---- number presentation ------------------------------------------ */
 
   function present(value, spec) {
@@ -385,11 +388,16 @@
     });
     args[TAG_ARG[current.id]] = result ? result[SCHEMATIC_TAG[current.id]] : null;
     window[DRAWERS[current.id]](id("schematic"), args);
+    var drawn = id("schematic").viewBox.baseVal;
+    naturalView = { w: drawn.width, h: drawn.height };
+    fitSchematic();
 
     var isAc = current.analysis === "ac";
     show(bodePanel, isAc);
     if (isAc) {
-      window.drawBode(id("bode"), result ? bodeData(result, animate) : {});
+      lastBode = result ? bodeData(result, animate) : {};
+      window.drawBode(id("bode"), lastBode);
+      lastBode = Object.assign({}, lastBode, { animate: false });
     }
   }
 
@@ -421,7 +429,9 @@
     show(id("note"), false);
     clear(statsEl);
     show(statsEl, false);
-    captionState.textContent = "Run to measure.";
+    captionState.textContent = isStatic
+      ? "Measuring needs the local app."
+      : "Run to measure.";
   }
 
   function renderResult(result) {
@@ -684,6 +694,10 @@
   }
 
   function renderDesignPanel() {
+    if (isStatic) {
+      show(designPanel, false);
+      return;
+    }
     designIdle();
     clear(designGoalsEl);
     designInputs = {};
@@ -1277,6 +1291,10 @@
   }
 
   function renderRobustPanel() {
+    if (isStatic) {
+      show(robustPanel, false);
+      return;
+    }
     robustIdle();
     show(robustPanel, Boolean(current.pdk));
   }
@@ -1429,6 +1447,62 @@
     }
   });
 
+  /* ---- figure scale ------------------------------------------------------- */
+
+  /* How many CSS pixels one drawing unit may become. A three-part divider
+     stops growing at MAX so it does not fill the column with white space;
+     a dense circuit stops shrinking at MIN and scrolls sideways instead of
+     collapsing into a thumbnail nobody can read. */
+  var UNIT_PX_MAX = 1.15;
+  var UNIT_PX_MIN = 0.85;
+
+  //: The size the drawer chose, before any fitting. Resizing refits from
+  //: this, never from the padded box a previous fit left behind.
+  var naturalView = null;
+
+  function fitSchematic() {
+    var svg = id("schematic");
+    var lane = svg.parentNode;
+    var laneWidth = lane.clientWidth;
+    if (!naturalView || !naturalView.w || !laneWidth) {
+      return;
+    }
+
+    var unit = Math.min(UNIT_PX_MAX, laneWidth / naturalView.w);
+    if (unit < UNIT_PX_MIN) {
+      unit = UNIT_PX_MIN;
+    }
+    var drawn = naturalView.w * unit;
+
+    if (drawn <= laneWidth + 0.5) {  // half a pixel of float slack
+      // It fits: widen the box around the drawing instead of stretching the
+      // drawing, which centres it and pins the scale at exactly `unit`.
+      var boxWidth = laneWidth / unit;
+      var inset = (boxWidth - naturalView.w) / 2;
+      svg.setAttribute("viewBox", (-inset).toFixed(2) + " 0 "
+        + boxWidth.toFixed(2) + " " + naturalView.h);
+      svg.style.width = "";
+      svg.style.maxWidth = "";
+    } else {
+      svg.setAttribute("viewBox",
+        "0 0 " + naturalView.w + " " + naturalView.h);
+      svg.style.width = Math.round(drawn) + "px";
+      svg.style.maxWidth = "none";
+    }
+  }
+
+  //: The last plot drawn, kept so a resize can redraw it at the new width.
+  var lastBode = null;
+
+  function refitFigures() {
+    fitSchematic();
+    if (lastBode && !bodePanel.classList.contains("hidden")) {
+      window.drawBode(id("bode"), lastBode);
+    }
+  }
+
+  window.addEventListener("resize", refitFigures);
+
   /* ---- selection --------------------------------------------------------- */
 
   function select(circuitId) {
@@ -1478,10 +1552,47 @@
 
   form.addEventListener("submit", run);
 
+  /* The catalogue comes from the running server. Where there is no server,
+     a published copy stands in and the page drops to static mode: drawings
+     still work, and everything that would need a measured number is put
+     away rather than left to fail. */
+  async function loadCatalogue() {
+    try {
+      var live = await fetch("/api/circuits");
+      if (live.ok) {
+        return (await live.json()).circuits;
+      }
+    } catch (noServer) {
+      // Fall through to the published catalogue.
+    }
+    var published = await fetch("catalogue.json");
+    if (!published.ok) {
+      throw new Error("no catalogue");
+    }
+    isStatic = true;
+    return (await published.json()).circuits;
+  }
+
+  function applyStaticMode() {
+    show(id("static-note"), true);
+    // The headline action points at a panel that is about to be put away.
+    var cta = document.querySelector(".hero-cta");
+    if (cta) {
+      cta.href = "https://github.com/tommysl8/faradaem";
+      cta.rel = "noreferrer";
+      cta.textContent = "Run it locally";
+    }
+    runButton.disabled = true;
+    runLabel.textContent = "Simulation runs on your machine";
+    show(netlistToggle, false);
+    show(id("advise"), false);
+    show(designPanel, false);
+    show(id("robust"), false);
+  }
+
   async function start() {
     try {
-      var response = await fetch("/api/circuits");
-      catalogue = (await response.json()).circuits;
+      catalogue = await loadCatalogue();
     } catch (networkError) {
       id("panel-title").textContent = "Unavailable";
       showError("Could not load the circuit catalogue. Start the server with " +
@@ -1491,6 +1602,9 @@
 
     var wanted = window.location.hash.replace("#", "");
     select(known(wanted) ? wanted : catalogue[0].id);
+    if (isStatic) {
+      applyStaticMode();
+    }
   }
 
   start();

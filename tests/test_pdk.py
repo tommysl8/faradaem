@@ -348,10 +348,19 @@ def test_a_bottomed_out_stage_still_measures_but_warns():
 
 
 @requires_live_pdk
-def test_live_pdk_runs_leave_no_temp_files_behind():
-    import glob
+def test_live_pdk_runs_leave_no_temp_files_behind(tmp_path, monkeypatch):
+    """The netlist and its data files go away, whatever else is running.
+
+    The run is pointed at a private temp directory first. Globbing the
+    shared one used to fail this test whenever a second Faradaem was
+    simulating at that moment, a browser running the corner suite for
+    instance, which says nothing about whether this run cleaned up.
+    """
     import tempfile
 
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    assert tempfile.gettempdir() == str(tmp_path)
+
     circuits.simulate(CIRCUIT_ID, circuits.defaults(CIRCUIT_ID))
-    leftovers = glob.glob(os.path.join(tempfile.gettempdir(), "faradaem_*"))
-    assert leftovers == []
+
+    assert sorted(item.name for item in tmp_path.iterdir()) == []

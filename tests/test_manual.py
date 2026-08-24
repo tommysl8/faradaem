@@ -36,7 +36,7 @@ def test_manual_uses_the_shared_shell():
     assert "<title>Manual - Faradaem</title>" in MANUAL
     assert '<meta name="description"' in MANUAL
     assert "/static/style.css" in MANUAL
-    assert "FARADAEM" in MANUAL
+    assert 'FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span>' in MANUAL
     assert "github.com/tommysl8/faradaem" in MANUAL
 
 

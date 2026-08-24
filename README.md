@@ -117,7 +117,18 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `spice/llm.py`, `spice/strategist.py` | The LLM layer: Anthropic and OpenAI clients over urllib, and the tool-driving strategist that never computes a value. |
 | `spice/pvt.py` | PVT corners and Monte Carlo mismatch, done by editing the finished netlist text. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
+| `tools/make_brand.py` | The mark: the AE ligature lifted out of a font file and baked into the favicon, the touch icon and the Open Graph card, all from one geometry. |
+| `tools/build_static.py` | The published site: the pages, the assets and the catalogue, for a host that cannot run a simulator. |
 | `tests/` | Netlist, parser, validation, routing, optimizer, manual-accuracy and real-ngspice integration tests. |
+
+## Publishing
+
+`python tools/build_static.py --out dist` writes the site a static host can
+serve: the four pages, their assets, and the circuit catalogue. The pages ask
+for the simulator, do not find one, and drop into a static mode that keeps the
+live schematics and puts away everything that would need a measured number.
+The simulator itself needs a host that runs a container with a disk, since it
+needs ngspice and a 2.1 GB process design kit. `DEPLOY.md` covers both.
 
 ## Requirements
 

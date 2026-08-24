@@ -91,6 +91,7 @@ HTML = "text/html; charset=utf-8"
 CSS = "text/css; charset=utf-8"
 JS = "text/javascript; charset=utf-8"
 SVG = "image/svg+xml"
+PNG = "image/png"
 
 #: The complete GET surface: exact request path -> (project file, content type).
 #: Values are literals.  Nothing derived from a request ever reaches the disk.
@@ -104,6 +105,11 @@ ROUTES = {
     "/static/schematic.js": ("static/schematic.js", JS),
     "/static/bodeplot.js": ("static/bodeplot.js", JS),
     "/favicon.svg": ("static/favicon.svg", SVG),
+    "/favicon.ico": ("static/icon-32.png", PNG),
+    "/static/icon.svg": ("static/icon.svg", SVG),
+    "/static/icon-32.png": ("static/icon-32.png", PNG),
+    "/static/apple-touch-icon.png": ("static/apple-touch-icon.png", PNG),
+    "/static/og.png": ("static/og.png", PNG),
 }
 
 #: Refuse absurd request bodies before reading them into memory.
@@ -576,7 +582,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/1.0.0"
+    server_version = "Faradaem/1.1.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
