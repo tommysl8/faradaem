@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ngspice
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ngspice
+
+      - name: Install pytest
+        run: pip install pytest==9.1.1
+
+      # The SKY130 PDK is not installed here, and the LLM keys are absent on
+      # purpose: every test that needs either skips cleanly, which is itself
+      # part of the design under test. What runs is the whole macromodel
+      # suite against a real ngspice.
+      - name: Run the suite
+        env:
+          FARADAEM_NGSPICE: /usr/bin/ngspice
+        run: pytest -q

@@ -536,7 +536,8 @@ def test_live_sweeps_leave_no_temp_files_behind():
     import glob
     import tempfile
 
-    pattern = tempfile.gettempdir() + "\\faradaem_*"
+    import os
+    pattern = os.path.join(tempfile.gettempdir(), "faradaem_*")
     before = set(glob.glob(pattern))
     circuits.simulate("rlc_bandpass", circuits.defaults("rlc_bandpass"))
     circuits.simulate("inverting_amp", circuits.defaults("inverting_amp"))

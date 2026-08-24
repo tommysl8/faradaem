@@ -39,6 +39,19 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">0.9.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>PVT corners. A Robustness panel on the SKY130 circuits reruns the design across eleven conditions: five process corners, the supply and temperature extremes, and the two classic cross corners. The table names the worst case per metric and the condition that caused it. Measured on the OTA: unity-gain bandwidth falls from 14.3 MHz nominal to 11.4 MHz at slow, hot and starved.</li>
+            <li>Monte Carlo mismatch: twenty samples from the PDK's statistical models at the typical corner, each under its own seed, reported as mean, sigma, minimum and maximum. The PDK's bare mc section ships without device models, so mismatch at the typical corner is what Monte Carlo means here, and the manual says so.</li>
+            <li>The machinery is one hook: robustness runs edit the finished netlist text, the corner in the .lib line, the supply, the temperature card. No circuit builder learned anything.</li>
+            <li>The strategist gained run_corners and now verifies a finished design across PVT, reporting the worst case with its corner named.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">0.8.0</span>
             <span class="entry-date">2026-08-24</span>
           </header>

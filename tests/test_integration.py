@@ -5,6 +5,8 @@ UI shows came out of the simulator, not out of a formula. It skips cleanly on
 machines without ngspice so the rest of the suite still runs there.
 """
 
+import sys
+
 import pytest
 
 from spice.runner import find_ngspice, simulate_divider
@@ -26,6 +28,8 @@ def test_equal_divider_halves_the_supply():
 
 
 @requires_ngspice
+@pytest.mark.skipif(sys.platform != "win32",
+                    reason="the GUI-build hazard exists only on Windows")
 def test_uses_the_console_build_not_the_gui_build():
     # ngspice.exe opens a GUI window and never returns; only ngspice_con.exe is safe.
     assert NGSPICE_PATH.lower().endswith("ngspice_con.exe")

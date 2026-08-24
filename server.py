@@ -37,7 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from spice import circuits, design, llm, strategist
+from spice import circuits, design, llm, pvt, strategist
 from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
@@ -76,6 +76,11 @@ MAX_ADVISE_JOBS = 8
 
 #: One request to the strategist, at most this long.
 MAX_ADVISE_CHARS = 4000
+
+#: Robustness jobs: PVT suites and Monte Carlo runs, same job pattern.
+ROBUST_JOBS = {}
+ROBUST_LOCK = threading.Lock()
+MAX_ROBUST_JOBS = 8
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -466,6 +471,93 @@ def continue_advise_job(job, message):
     threading.Thread(target=_advise_worker, args=(job, client), daemon=True).start()
 
 
+def validate_robust_request(payload):
+    """Validate a /api/robust body: circuit, params, mode, optional runs."""
+    circuit_id, params = validate_api_request(payload)
+    try:
+        pvt.require_supported(circuit_id)
+    except pvt.PvtError as exc:
+        raise ValidationError(str(exc)) from None
+
+    mode = payload.get("mode")
+    if mode not in ("pvt", "mc"):
+        raise ValidationError(
+            "Field 'mode' must be 'pvt' for the corner suite or 'mc' for "
+            "Monte Carlo."
+        )
+
+    runs = payload.get("runs", pvt.MC_DEFAULT_RUNS)
+    if isinstance(runs, bool) or not isinstance(runs, int):
+        raise ValidationError("Field 'runs' must be a whole number of samples.")
+    if mode == "mc" and not pvt.MC_MIN_RUNS <= runs <= pvt.MC_MAX_RUNS:
+        raise ValidationError(
+            "Field 'runs' must be between " + str(pvt.MC_MIN_RUNS) + " and "
+            + str(pvt.MC_MAX_RUNS) + "."
+        )
+    return circuit_id, params, mode, runs
+
+
+def _robust_snapshot(job):
+    return {
+        "job": job["job"],
+        "circuit": job["circuit"],
+        "mode": job["mode"],
+        "status": job["status"],
+        "done": job["done"],
+        "total": job["total"],
+        "rows": job["rows"],
+        "summary": job["summary"],
+        "keys": job["keys"],
+        "error": job["error"],
+    }
+
+
+def start_robust_job(circuit_id, params, mode, runs):
+    job_id = uuid.uuid4().hex[:12]
+    total = len(pvt.PVT_CONDITIONS) if mode == "pvt" else runs
+    job = {
+        "job": job_id, "circuit": circuit_id, "mode": mode,
+        "status": "running", "done": 0, "total": total,
+        "rows": [], "summary": None, "keys": [],
+        "error": None, "stop": threading.Event(),
+    }
+    with ROBUST_LOCK:
+        ROBUST_JOBS[job_id] = job
+        if len(ROBUST_JOBS) > MAX_ROBUST_JOBS:
+            for key in [k for k, j in ROBUST_JOBS.items()
+                        if j["status"] != "running"][: len(ROBUST_JOBS) - MAX_ROBUST_JOBS]:
+                del ROBUST_JOBS[key]
+
+    def on_each(row):
+        with ROBUST_LOCK:
+            job["rows"].append(row)
+            job["done"] += 1
+
+    def work():
+        try:
+            if mode == "pvt":
+                result = pvt.run_pvt(circuit_id, params, on_each=on_each,
+                                     should_stop=job["stop"].is_set)
+                summary = result["worst"]
+            else:
+                result = pvt.run_monte_carlo(circuit_id, params, runs,
+                                             on_each=on_each,
+                                             should_stop=job["stop"].is_set)
+                summary = result["stats"]
+            with ROBUST_LOCK:
+                job["summary"] = summary
+                job["keys"] = result["keys"]
+                job["status"] = "stopped" if job["stop"].is_set() else "done"
+        except Exception as exc:  # noqa: BLE001 - worker boundary
+            traceback.print_exc()
+            with ROBUST_LOCK:
+                job["error"] = str(exc)
+                job["status"] = "failed"
+
+    threading.Thread(target=work, daemon=True).start()
+    return job_id
+
+
 def analytic_divider(vdd, r1, r2):
     """Ideal divider value. A sanity check on ngspice, never a substitute."""
     return vdd * r2 / (r1 + r2)
@@ -484,7 +576,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/0.8.0"
+    server_version = "Faradaem/0.9.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
@@ -514,6 +606,10 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_advise_status(parts.query)
             return
 
+        if path == "/api/robust/status":
+            self._handle_robust_status(parts.query)
+            return
+
         route = resolve_route(path)
         if route is None:
             self._send_json(404, {"error": "Not found: " + path})
@@ -536,6 +632,10 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_advise_start()
         elif path == "/api/advise/reply":
             self._handle_advise_reply()
+        elif path == "/api/robust":
+            self._handle_robust_start()
+        elif path == "/api/robust/stop":
+            self._handle_robust_stop()
         elif path == "/simulate":
             self._handle_simulate()
         elif path == "/simulate_ac":
@@ -679,6 +779,41 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
             return
         self._send_json(200, {"job": job_id})
+
+    def _handle_robust_start(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        try:
+            circuit_id, params, mode, runs = validate_robust_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        job_id = start_robust_job(circuit_id, params, mode, runs)
+        self._send_json(200, {"job": job_id})
+
+    def _handle_robust_status(self, query):
+        job_id = (parse_qs(query).get("job") or [""])[0]
+        with ROBUST_LOCK:
+            job = ROBUST_JOBS.get(job_id)
+            snapshot = _robust_snapshot(job) if job else None
+        if snapshot is None:
+            self._send_json(404, {"error": "Unknown robustness job " + repr(job_id) + "."})
+            return
+        self._send_json(200, snapshot)
+
+    def _handle_robust_stop(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        job_id = payload.get("job") if isinstance(payload, dict) else None
+        with ROBUST_LOCK:
+            job = ROBUST_JOBS.get(job_id or "")
+        if job is None:
+            self._send_json(404, {"error": "Unknown robustness job " + repr(job_id) + "."})
+            return
+        job["stop"].set()
+        self._send_json(200, {"job": job_id, "stopping": True})
 
     def _handle_design_status(self, query):
         job_id = (parse_qs(query).get("job") or [""])[0]

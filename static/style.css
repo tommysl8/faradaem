@@ -1,4 +1,4 @@
-/* Faradaem 0.8.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 0.9.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -89,7 +89,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v0.8.0";
+  --app-version: "v0.9.0";
 }
 
 *,
@@ -818,6 +818,51 @@ input {
   margin-top: var(--s3);
   color: var(--accent);
   border-color: var(--line-strong);
+}
+
+/* ---- the robustness panel --------------------------------------------- */
+
+.robust-panel {
+  margin-top: var(--s5);
+}
+
+/* Condition rows and the summary, in one scrolling mono grid. */
+.robust-table {
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+}
+
+.robust-table table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+.robust-table th {
+  text-align: left;
+  padding: var(--s1) var(--s3) var(--s1) 0;
+  border-bottom: var(--hairline);
+  color: var(--muted);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.robust-table td {
+  padding: var(--s1) var(--s3) var(--s1) 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.robust-table tr.is-summary td {
+  border-top: var(--hairline);
+  color: var(--accent);
+}
+
+.robust-table td.is-bad {
+  color: var(--err);
 }
 
 /* ---- the paper figures ----------------------------------------------- */

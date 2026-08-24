@@ -301,6 +301,35 @@
         </section>
 
         <section class="section prose">
+          <h2>Robustness: corners and Monte Carlo</h2>
+          <p>
+            One passing simulation shows a circuit works at the typical process, room
+            temperature and a nominal supply. The <strong>Robustness</strong> panel on
+            the SKY130 circuits asks the harder questions.
+          </p>
+          <p>
+            <strong>Run PVT corners</strong> reruns the circuit eleven times: the five
+            process corners at nominal conditions, the four supply and temperature
+            extremes, and the two classic cross corners, slow at low supply and hot,
+            fast at high supply and cold. The table shows every condition's
+            measurements and the worst case per metric, with the condition that caused
+            it named. A corner where the circuit cannot be measured is reported as its
+            own finding.
+          </p>
+          <p>
+            <strong>Run Monte Carlo</strong> draws twenty mismatch samples using the
+            PDK's statistical models at the typical corner, each under a different
+            seed, and reports the mean, sigma, minimum and maximum per metric. This is
+            what tells you whether a design survives the fact that no two transistors
+            are identical.
+          </p>
+          <p>
+            The strategist uses the same corner suite: once a design meets its targets
+            at the typical corner, it verifies across PVT and reports the worst case.
+          </p>
+        </section>
+
+        <section class="section prose">
           <h2>If something goes wrong</h2>
           <dl class="manual-list">
             <dt>Could not reach the Faradaem server</dt>

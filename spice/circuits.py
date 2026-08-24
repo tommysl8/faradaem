@@ -1100,6 +1100,7 @@ CIRCUITS = {
 
     "ota_5t": {
         "id": "ota_5t",
+        "pdk": True,
         "name": "OTA (SKY130)",
         "analysis": "ac",
         "caption": "Figure 9: SKY130 five-transistor OTA, open-loop response. "
@@ -1151,6 +1152,7 @@ CIRCUITS = {
 
     "opamp_two_stage": {
         "id": "opamp_two_stage",
+        "pdk": True,
         "name": "Op-amp (SKY130)",
         "analysis": "ac",
         "caption": "Figure 8: SKY130 two-stage op-amp, open-loop response. "
@@ -1215,6 +1217,7 @@ CIRCUITS = {
 
     "nfet_cs_amp": {
         "id": "nfet_cs_amp",
+        "pdk": True,
         "name": "NFET amp (SKY130)",
         "analysis": "ac",
         "caption": "Figure 7: SKY130 NFET common-source amplifier, frequency response.",
@@ -1323,6 +1326,7 @@ def catalog():
                 }
                 if circuit.get("design") else None
             ),
+            "pdk": bool(circuit.get("pdk")),
         })
     return listing
 
@@ -1342,9 +1346,12 @@ def _timeout(circuit, default):
     return circuit.get("timeout_s") or default
 
 
-def _run_dc(circuit, params):
+def _run_dc(circuit, params, transform=None):
+    netlist = circuit["build"](params)
+    if transform is not None:
+        netlist = transform(netlist)
     stdout = runner.run_netlist(
-        circuit["build"](params),
+        netlist,
         timeout_s=_timeout(circuit, runner.DEFAULT_TIMEOUT_S),
     )
     return circuit["measure"](stdout, params)
@@ -1367,7 +1374,7 @@ def _reserve_data_path():
     return path
 
 
-def _run_ac(circuit, params):
+def _run_ac(circuit, params, transform=None):
     fstart, fstop = sweep_range(
         circuit["centre"](params), circuit.get("decades")
     )
@@ -1384,6 +1391,12 @@ def _run_ac(circuit, params):
         netlist = circuit["build"](params, fstart, fstop, paths)
     else:
         netlist = circuit["build"](params, fstart, fstop, paths[0])
+
+    # PVT and Monte Carlo runs modify the finished netlist text: the corner
+    # in the .lib line, the supply, the temperature. The circuit builders
+    # stay ignorant of all of it.
+    if transform is not None:
+        netlist = transform(netlist)
 
     texts, stdout = runner.run_ac_multi(
         netlist,
@@ -1425,20 +1438,23 @@ def build_netlist_preview(circuit_id, params):
     return circuit["build"](values, fstart, fstop, placeholders[0])
 
 
-def simulate(circuit_id, params):
+def simulate(circuit_id, params, transform=None):
     """Run one catalogue circuit and return its measurements plus the checks.
 
     The returned dict is the measurement, with an "analytic" object alongside
     holding what each check expected.  Comparing them is the caller's job; this
     function never reconciles the two.
+
+    transform, when given, edits the finished netlist text before it runs.
+    The PVT and Monte Carlo machinery lives on this hook.
     """
     circuit = get_circuit(circuit_id)
     values = dict(params)
 
     if circuit["analysis"] == "dc":
-        result = _run_dc(circuit, values)
+        result = _run_dc(circuit, values, transform)
     else:
-        result = _run_ac(circuit, values)
+        result = _run_ac(circuit, values, transform)
 
     result["analytic"] = analytic_values(circuit_id, values)
     return result

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 
-from . import circuits, design, runner
+from . import circuits, design, pvt, runner
 
 #: The most model turns one request may take. Each turn may carry tool calls.
 MAX_TURNS = 12
@@ -50,6 +50,9 @@ seed_design if available, simulate the seed, and if any target is missed, \
 run_design to iterate. Quote measured numbers from the tool results.
 - If the request is impossible or targets should be relaxed, do not decide \
 alone: end your reply with a clear question to the user and no tool calls.
+- When a design meets its targets at the typical corner, verify it with \
+run_corners and report the worst case. A target that fails at a corner is a \
+finding to report, with the corner named.
 - When the design is done, summarise what was asked, what was measured, and \
 what trade-offs were made. Keep it short and plain.
 - The user sees your text and, separately, cards for every tool result. Do \
@@ -113,6 +116,23 @@ TOOLS = [
         },
     },
     {
+        "name": "run_corners",
+        "description": "Rerun a SKY130 circuit across the PVT suite: five "
+                       "process corners, supply and temperature extremes, "
+                       "eleven simulations in all. Returns every corner's "
+                       "measurements and the worst case per metric. Use it "
+                       "to verify a finished design; expect minutes.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "circuit": _CIRCUIT_PROP,
+                "params": {"type": "object",
+                           "additionalProperties": {"type": "number"}},
+            },
+            "required": ["circuit", "params"],
+        },
+    },
+    {
         "name": "run_design",
         "description": "Iterate a designable circuit's tunable parameters "
                        "until every target is met or the budget runs out. "
@@ -133,6 +153,7 @@ TOOLS = [
 
 #: Errors a tool may raise that are the candidate's fault, not the server's.
 TOOL_ERRORS = (
+    pvt.PvtError,
     circuits.UnknownCircuitError,
     circuits.CircuitInputError,
     design.DesignError,
@@ -241,6 +262,22 @@ def run_tool(name, arguments, on_progress=None):
             },
         }
         return payload, dict(payload, circuit=arguments["circuit"])
+
+    if name == "run_corners":
+        result = pvt.run_pvt(
+            arguments["circuit"],
+            _full_params(arguments["circuit"], arguments.get("params")),
+        )
+        payload = {
+            "worst": result["worst"],
+            "rows": [
+                {"label": row["label"],
+                 "measured": row["measured"], "error": row["error"]}
+                for row in result["rows"]
+            ],
+        }
+        return payload, dict(payload, circuit=arguments["circuit"],
+                             mode="pvt")
 
     raise ValueError("Unknown tool " + repr(name))
 

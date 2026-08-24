@@ -19,7 +19,7 @@ schematic, with the verification done by the simulator rather than asserted by a
 - [x] **V0.6** numerical optimizer hits spec
 - [x] **V0.7** LLM layer with tool calling
 - [x] **V0.8** topology selection
-- [ ] **V0.9** PVT + Monte Carlo
+- [x] **V0.9** PVT + Monte Carlo
 - [ ] **V1.0** spec in, verified schematic out
 
 0.1.5 expanded the circuit library to five circuits behind a data-driven registry
@@ -56,6 +56,11 @@ human, optimizer, LLM, and LLM-plus-optimizer against the same spec.
 0.8.0 made topology a real decision: a five-transistor OTA joined the two-stage
 op-amp, and the strategist chooses between them by the gain, speed and power the
 request asks for. A netlist viewer shows the exact deck every simulation runs.
+
+0.9.0 added the harder questions: a PVT suite across process corners, supply and
+temperature, and Monte Carlo mismatch from the PDK's statistical models, both as
+a Robustness panel and as a strategist tool, so a finished design gets verified
+across conditions rather than demonstrated once.
 
 0.6.1 made the flow spec-first: enter only the targets and the system creates the
 starting design itself, measures it, and iterates only when the measurement falls
@@ -104,6 +109,7 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `static/app.js` | Mode switching, form handling, simulate calls, result and error rendering. |
 | `spice/design.py` | The design iterator: goals, margins, and a coordinate search with a real simulator in the loop. |
 | `spice/llm.py`, `spice/strategist.py` | The LLM layer: Anthropic and OpenAI clients over urllib, and the tool-driving strategist that never computes a value. |
+| `spice/pvt.py` | PVT corners and Monte Carlo mismatch, done by editing the finished netlist text. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `tests/` | Netlist, parser, validation, routing, optimizer, manual-accuracy and real-ngspice integration tests. |
 

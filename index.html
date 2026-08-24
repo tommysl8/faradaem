@@ -98,6 +98,28 @@
         </div>
       </section>
 
+      <section class="panel robust-panel hidden" id="robust" aria-label="Robustness">
+        <h2 class="panel-head">Robustness</h2>
+        <div class="panel-body">
+          <p class="design-intro">One working simulation is a demonstration. These
+          rerun the same circuit across process corners, supply and temperature, or
+          across mismatch samples. Every row is a full simulation; expect minutes.</p>
+          <div class="design-actions">
+            <button class="chip" id="robust-pvt" type="button">Run PVT corners (11 simulations)</button>
+            <button class="chip" id="robust-mc" type="button">Run Monte Carlo (20 samples)</button>
+          </div>
+          <div class="design-progress hidden" id="robust-progress">
+            <div class="design-statusline">
+              <span id="robust-state">Running</span>
+              <span class="design-evals" id="robust-count"></span>
+              <button class="chip" id="robust-stop" type="button">Stop</button>
+            </div>
+            <div class="robust-table" id="robust-table"></div>
+          </div>
+          <p class="field-error hidden" id="robust-error"></p>
+        </div>
+      </section>
+
       </div>
 
       <section class="sim-figure" aria-label="Schematic and result">
