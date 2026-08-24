@@ -576,7 +576,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/0.9.0"
+    server_version = "Faradaem/1.0.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------

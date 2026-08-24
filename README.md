@@ -20,7 +20,7 @@ schematic, with the verification done by the simulator rather than asserted by a
 - [x] **V0.7** LLM layer with tool calling
 - [x] **V0.8** topology selection
 - [x] **V0.9** PVT + Monte Carlo
-- [ ] **V1.0** spec in, verified schematic out
+- [x] **V1.0** spec in, verified schematic out
 
 0.1.5 expanded the circuit library to five circuits behind a data-driven registry
 (`spice/circuits.py`): DC divider, RC low-pass, RC high-pass, series RLC band-pass, and an
@@ -61,6 +61,12 @@ request asks for. A netlist viewer shows the exact deck every simulation runs.
 temperature, and Monte Carlo mismatch from the PDK's statistical models, both as
 a Robustness panel and as a strategist tool, so a finished design gets verified
 across conditions rather than demonstrated once.
+
+1.0.0 closed the loop. In the acceptance run, one plain-English sentence became
+a two-stage op-amp that meets every target at every one of eleven PVT
+conditions, designed by a model driving the seed, simulate, iterate and corner
+tools, with every number measured by ngspice. Verified does not yet mean
+layout or silicon; per the longer plan, those come next.
 
 0.6.1 made the flow spec-first: enter only the targets and the system creates the
 starting design itself, measures it, and iterates only when the measurement falls

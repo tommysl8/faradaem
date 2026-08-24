@@ -39,6 +39,20 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.0.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>The loop is closed: specification in, verified schematic out. In the acceptance run, one sentence went into the panel and a strategist chose the two-stage topology for the gain requirement, generated a design from the targets, measured it, iterated to feasibility in six simulations, then verified it across all eleven PVT conditions.</li>
+            <li>Verified means verified: the shipped design holds every target at every corner. Worst gain 69.4 dB at low supply and hot, worst bandwidth 3.77 MHz at the slow corner, worst phase margin 63.3 degrees, worst power 67.2 microwatts, each named with the condition that caused it.</li>
+            <li>The whole flow is pinned by an end-to-end test that replays it with real tools, and the winning schematic is reproducible: rerunning its exact parameters lands on its exact numbers.</li>
+            <li>Deployment groundwork ships with it: a Dockerfile, continuous integration that runs the suite against a real ngspice on every push, and DEPLOY.md with the honest warnings about authentication and API credits.</li>
+            <li>What verified does not yet mean: layout, parasitic extraction, or silicon. Those are the next chapters of the plan, not fine print.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">0.9.0</span>
             <span class="entry-date">2026-08-24</span>
           </header>
