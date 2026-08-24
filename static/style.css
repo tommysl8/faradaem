@@ -1,4 +1,4 @@
-/* Faradaem 0.7.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 0.7.1 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -89,7 +89,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v0.7.0";
+  --app-version: "v0.7.1";
 }
 
 *,

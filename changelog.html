@@ -39,6 +39,20 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">0.7.1</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>First contact with the real OpenAI API, and the fixes it demanded: current models take max_completion_tokens, and function tools on the chat endpoint need reasoning effort disabled. The default model is now gpt-5.6-terra, overridable through FARADAEM_OPENAI_MODEL.</li>
+            <li>Rate limits and transient provider errors are retried with backoff, honouring Retry-After.</li>
+            <li>Strategist tools accept partial parameters merged over the circuit's defaults, so a model can pass just the load capacitance, and the tool schemas now carry the real circuit ids and target keys so first calls land.</li>
+            <li>A design card's parameters now include the fixed conditions, not only the tuned values. Applying a card reproduces the card's measurement exactly; before this, the load could silently revert to the form's value.</li>
+            <li>Verified live: a plain-English request became a measured op-amp meeting all four targets, 72.1 dB, 4.73 MHz, 65.9 degrees, 65.9 microwatts, designed by GPT driving the seed, simulate and iterate tools.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">0.7.0</span>
             <span class="entry-date">2026-08-24</span>
           </header>

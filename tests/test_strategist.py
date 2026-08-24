@@ -352,3 +352,25 @@ def test_full_session_over_http_with_a_scripted_model(address, monkeypatch):
     snap = wait_for({"done"})
     assert snap["events"][-1]["kind"] == "done"
     assert "done" in snap["events"][-1]["text"].lower()
+
+
+@requires_ngspice
+def test_run_design_card_params_reproduce_the_measurement():
+    """Applying a card must land on the numbers the card shows.
+
+    The iterator moves only the tunables, but the card carries the complete
+    parameter set including fixed conditions like the load, because that is
+    what the Apply button loads into the form.
+    """
+    start = {"fp2": 1e4, "gbw": 2e6}
+    payload, display = strategist.run_tool("run_design", {
+        "circuit": "twopole_amp",
+        "params": start,
+        "targets": {},
+    })
+    best = payload["best"]
+    assert set(best["params"]) == set(circuits.defaults("twopole_amp"))
+    replay = circuits.simulate("twopole_amp", dict(best["params"]))
+    assert replay["phase_margin"] == pytest.approx(
+        best["measured"]["phase_margin"], abs=1e-9
+    )

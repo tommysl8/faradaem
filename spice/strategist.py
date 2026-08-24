@@ -49,6 +49,24 @@ what trade-offs were made. Keep it short and plain.
 - The user sees your text and, separately, cards for every tool result. Do \
 not paste raw tool JSON into your prose."""
 
+#: The exact circuit ids, baked into the schemas so the model cannot guess.
+_CIRCUIT_IDS = list(circuits.CIRCUIT_ORDER)
+
+_CIRCUIT_PROP = {"type": "string", "enum": _CIRCUIT_IDS}
+
+#: Targets are flat numbers keyed by goal key. The op-amp's goal keys and
+#: units are named right here because getting them wrong costs a real turn.
+_TARGETS_PROP = {
+    "type": "object",
+    "description": "Flat mapping of goal key to a plain number. For "
+                   "opamp_two_stage the keys are loop_gain_db (dB), "
+                   "f_crossover (Hz), unity-gain bandwidth, phase_margin "
+                   "(degrees) and power (watts). For twopole_amp: "
+                   "phase_margin and f_crossover. Omitted keys use the "
+                   "circuit's default targets.",
+    "additionalProperties": {"type": "number"},
+}
+
 TOOLS = [
     {
         "name": "list_circuits",
@@ -64,8 +82,9 @@ TOOLS = [
         "schema": {
             "type": "object",
             "properties": {
-                "circuit": {"type": "string"},
-                "params": {"type": "object"},
+                "circuit": _CIRCUIT_PROP,
+                "params": {"type": "object",
+                           "additionalProperties": {"type": "number"}},
             },
             "required": ["circuit", "params"],
         },
@@ -73,13 +92,16 @@ TOOLS = [
     {
         "name": "seed_design",
         "description": "Generate a starting parameter set for a circuit from "
-                       "spec targets alone. Only circuits with a seed rule.",
+                       "spec targets alone. Only circuits with a seed rule "
+                       "(the op-amp). Fixed conditions like the load go in "
+                       "params; goals go in targets.",
         "schema": {
             "type": "object",
             "properties": {
-                "circuit": {"type": "string"},
-                "targets": {"type": "object"},
-                "params": {"type": "object"},
+                "circuit": _CIRCUIT_PROP,
+                "targets": _TARGETS_PROP,
+                "params": {"type": "object",
+                           "additionalProperties": {"type": "number"}},
             },
             "required": ["circuit"],
         },
@@ -93,9 +115,10 @@ TOOLS = [
         "schema": {
             "type": "object",
             "properties": {
-                "circuit": {"type": "string"},
-                "params": {"type": "object"},
-                "targets": {"type": "object"},
+                "circuit": _CIRCUIT_PROP,
+                "params": {"type": "object",
+                           "additionalProperties": {"type": "number"}},
+                "targets": _TARGETS_PROP,
             },
             "required": ["circuit", "params"],
         },
@@ -134,6 +157,25 @@ def _strip_curves(result):
     return slim
 
 
+def _full_params(circuit_id, given):
+    """The circuit's defaults with the model's values merged over them.
+
+    A model reasonably passes only what matters, like the load capacitance.
+    Every tool therefore treats params as overrides, never as a form that
+    must be complete.
+    """
+    params = circuits.defaults(circuit_id)
+    for key, value in (given or {}).items():
+        if key not in params:
+            raise circuits.CircuitInputError(
+                "Unknown parameter " + repr(key) + " for circuit "
+                + repr(circuit_id) + ". Its parameters are: "
+                + ", ".join(sorted(params)) + "."
+            )
+        params[key] = float(value)
+    return params
+
+
 def run_tool(name, arguments, on_progress=None):
     """Execute one tool call against the real machinery.
 
@@ -147,38 +189,47 @@ def run_tool(name, arguments, on_progress=None):
         return listing, {"circuits": [entry["id"] for entry in listing]}
 
     if name == "simulate":
-        result = circuits.simulate(arguments["circuit"], dict(arguments["params"]))
+        params = _full_params(arguments["circuit"], arguments.get("params"))
+        result = circuits.simulate(arguments["circuit"], params)
         slim = _strip_curves(result)
         return slim, {"circuit": arguments["circuit"],
-                      "params": dict(arguments["params"]),
+                      "params": params,
                       "measured": slim}
 
     if name == "seed_design":
         seeded, targets = design.seed_params(
             arguments["circuit"],
             arguments.get("targets") or {},
-            dict(arguments.get("params") or circuits.defaults(arguments["circuit"])),
+            _full_params(arguments["circuit"], arguments.get("params")),
         )
         return ({"params": seeded, "targets": targets},
                 {"circuit": arguments["circuit"], "params": seeded,
                  "targets": targets})
 
     if name == "run_design":
+        start = _full_params(arguments["circuit"], arguments.get("params"))
         result = design.run_design(
             arguments["circuit"],
-            dict(arguments["params"]),
+            start,
             arguments.get("targets") or {},
             DESIGN_BUDGET,
             on_eval=on_progress,
         )
         best = result["best"]
+        # The iterator reports only the tunables it moved. The winning design
+        # is those tunables over the full start, and that complete set is what
+        # goes on the card: applying it must reproduce the measurement.
+        full_best = None
+        if best is not None:
+            full_best = dict(start)
+            full_best.update(best["params"])
         payload = {
             "feasible": result["feasible"],
             "evals": result["evals"],
             "reason": result["reason"],
             "targets": result["targets"],
             "best": None if best is None else {
-                "params": best["params"],
+                "params": full_best,
                 "measured": best["measured"],
                 "margins": best["margins"],
             },
@@ -227,7 +278,9 @@ def advise(client, messages, on_event, should_stop=None, run_tool_fn=run_tool,
                               "ok": True, "display": display})
                     content = _clip(payload)
                 except TOOL_ERRORS as exc:
-                    message = str(exc)
+                    # A KeyError's str() wraps the message in quotes.
+                    message = (exc.args[0] if isinstance(exc, KeyError)
+                               and exc.args else str(exc))
                     on_event({"kind": "tool", "tool": call["name"],
                               "ok": False, "display": {"error": message}})
                     content = json.dumps({"error": message})

@@ -114,9 +114,17 @@ def row_llm(provider, goals, targets, tools):
             if score is not None and (best_score is None or score > best_score):
                 best, best_score = measured, score
 
+    message = spec_message(targets)
+    if tools is not None:
+        # The llm-only row has no seeder and no iterator, and the system
+        # prompt describes both. Say plainly what this mode asks of it.
+        message += (" You have no seeding or optimizer tool in this session: "
+                    "propose complete parameter sets yourself and verify every "
+                    "one with the simulate tool. Report your best measured "
+                    "design.")
     state = strategist.advise(
         client,
-        [{"role": "user", "text": spec_message(targets)}],
+        [{"role": "user", "text": message}],
         on_event,
         tools=tools,
     )

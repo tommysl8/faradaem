@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -34,7 +35,7 @@ OPENAI_KEY_VAR = "FARADAEM_OPENAI_KEY"
 ANTHROPIC_MODEL_VAR = "FARADAEM_ANTHROPIC_MODEL"
 OPENAI_MODEL_VAR = "FARADAEM_OPENAI_MODEL"
 ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5"
-OPENAI_DEFAULT_MODEL = "gpt-5.6-luna"
+OPENAI_DEFAULT_MODEL = "gpt-5.6-terra"
 
 #: One request's ceiling on generated tokens. Strategy turns are short.
 MAX_TOKENS = 1500
@@ -69,33 +70,58 @@ def read_setting(name):
         return ""
 
 
-def _post_json(url, headers, payload):
-    """POST one JSON body and return the decoded JSON response."""
-    body = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(url, data=body, method="POST")
-    request.add_header("Content-Type", "application/json")
-    for name, value in headers.items():
-        request.add_header(name, value)
+#: Transient statuses worth one more try, after a pause.
+RETRY_STATUSES = (429, 500, 502, 503, 529)
+MAX_ATTEMPTS = 3
+MAX_RETRY_WAIT_S = 65.0
 
-    try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = ""
+
+def _post_json(url, headers, payload):
+    """POST one JSON body and return the decoded JSON response.
+
+    Rate limits and transient server errors are retried a couple of times,
+    honouring Retry-After when the provider sends one. Anything else fails
+    with the provider's message, never the key.
+    """
+    body = json.dumps(payload).encode("utf-8")
+
+    for attempt in range(MAX_ATTEMPTS):
+        request = urllib.request.Request(url, data=body, method="POST")
+        request.add_header("Content-Type", "application/json")
+        for name, value in headers.items():
+            request.add_header(name, value)
         try:
-            raw = exc.read().decode("utf-8", errors="replace")
-            parsed = json.loads(raw)
-            detail = (parsed.get("error") or {}).get("message") or raw[:300]
-        except Exception:  # noqa: BLE001 - the error body is best-effort
-            pass
-        raise LlmError(
-            "The model provider returned HTTP " + str(exc.code)
-            + (". " + detail if detail else ".")
-        ) from None
-    except urllib.error.URLError as exc:
-        raise LlmError(
-            "Could not reach the model provider: " + str(exc.reason)
-        ) from None
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code in RETRY_STATUSES and attempt + 1 < MAX_ATTEMPTS:
+                try:
+                    wait = float(exc.headers.get("retry-after") or 0)
+                except (TypeError, ValueError):
+                    wait = 0.0
+                if wait <= 0:
+                    wait = 5.0 * (attempt + 1)
+                time.sleep(min(wait, MAX_RETRY_WAIT_S))
+                continue
+            _raise_http_error(exc)
+        except urllib.error.URLError as exc:
+            raise LlmError(
+                "Could not reach the model provider: " + str(exc.reason)
+            ) from None
+
+
+def _raise_http_error(exc):
+    detail = ""
+    try:
+        raw = exc.read().decode("utf-8", errors="replace")
+        parsed = json.loads(raw)
+        detail = (parsed.get("error") or {}).get("message") or raw[:300]
+    except Exception:  # noqa: BLE001 - the error body is best-effort
+        pass
+    raise LlmError(
+        "The model provider returned HTTP " + str(exc.code)
+        + (". " + detail if detail else ".")
+    ) from None
 
 
 class AnthropicClient:
@@ -227,7 +253,12 @@ class OpenAIClient:
 
         return {
             "model": self.model,
-            "max_tokens": MAX_TOKENS,
+            # Current OpenAI models take max_completion_tokens; max_tokens is
+            # refused with an HTTP 400. And function tools are only accepted
+            # on this endpoint with reasoning effort disabled; the strategist
+            # is an orchestrator, so that trade is fine.
+            "max_completion_tokens": MAX_TOKENS,
+            "reasoning_effort": "none",
             "messages": converted,
             "tools": [
                 {
