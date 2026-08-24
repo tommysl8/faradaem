@@ -324,6 +324,47 @@
         </section>
 
         <section class="section prose">
+          <h2>Step response: how fast it can actually move</h2>
+          <p>
+            A sweep measures an amplifier held to small signals, where it behaves
+            like the linear model. A step asks a different question: how fast can it
+            move when you stop being polite, and does it stop cleanly when it
+            arrives. Neither answer is visible in a Bode plot.
+          </p>
+          <p>
+            <strong>Run step response</strong> on either SKY130 amplifier rewires the
+            same circuit as a unity-gain buffer, a real closed loop with no servo,
+            and hits it with a 0.3 V step, up and then back down. One transient run,
+            about twenty seconds.
+          </p>
+          <p>
+            <strong>Slew rate</strong> is how many volts per microsecond the output
+            manages across the middle of the edge, the tenth to ninetieth percent
+            band, which excludes the corner where it is still linear and the tail
+            where it is recovering. Both edges are measured, because they need not
+            match: a two-stage amplifier charges its compensation capacitor from the
+            tail current on the way up and discharges it through the output stage on
+            the way down. The number reported is the worse of the two, since that is
+            what a datasheet would have to honour, and both are shown underneath.
+          </p>
+          <p>
+            <strong>Settling to 0.1%</strong> is when the output last leaves a band
+            that tight around its final value. If it is still moving when the window
+            ends, the answer is that it did not settle in the window, not a number
+            invented to fill the space. <strong>Overshoot</strong> is how far past the
+            final value it went, as a percentage of the step; a well compensated
+            amplifier with seventy degrees of margin will show almost none.
+          </p>
+          <p>
+            The window sizes itself from the parts that set the slew, the tail current
+            and the capacitor it has to charge, so a slower design is watched for
+            longer. If the output hits a supply rail during the step it is clipping
+            rather than slewing, and the panel says so instead of reporting numbers
+            measured off a flat line.
+          </p>
+        </section>
+
+        <section class="section prose">
           <h2>Robustness: corners and Monte Carlo</h2>
           <p>
             One passing simulation shows a circuit works at the typical process, room

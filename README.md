@@ -112,6 +112,7 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `static/style.css` | Design tokens and layout. One dark surface; schematics drawn in light grey and cyan directly on it. |
 | `static/schematic.js` | SVG symbol primitives plus one compose function per circuit. |
 | `static/bodeplot.js` | SVG Bode plot: stacked magnitude and phase axes over log frequency. |
+| `static/stepplot.js` | SVG step plot: output against time, for the slew rate and settling measurement. |
 | `static/app.js` | Mode switching, form handling, simulate calls, result and error rendering. |
 | `spice/design.py` | The design iterator: goals, margins, and a coordinate search with a real simulator in the loop. |
 | `spice/llm.py`, `spice/strategist.py` | The LLM layer: Anthropic and OpenAI clients over urllib, and the tool-driving strategist that never computes a value. |

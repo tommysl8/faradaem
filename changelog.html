@@ -54,6 +54,22 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.2.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>The first analysis here that is not a sweep. Both SKY130 amplifiers can now be measured as a unity-gain buffer hit with a 0.3 V step, which is a real closed loop with no servo in it, and the numbers that come back are the ones a sweep cannot give: slew rate, settling time and overshoot.</li>
+            <li>The measurement was checked against the physics before it was wired to anything. A two-stage amplifier should slew at its tail current over its compensation capacitor, 10.0 V/us for the default design; the measurement says 7.4, under that ceiling and in sight of it. Doubling the capacitor halved the measured rate and doubling the bias current raised it, both as the textbook says they should. A test pins the measurement between half the ceiling and the ceiling so a wrong answer cannot pass quietly.</li>
+            <li>Both edges are measured, because they need not match. The two-stage op-amp is slower rising, 7.43 against 7.65 V/us, and the OTA is slower falling, 6.71 against 7.00. The reported figure is the worse edge and both are shown, since a datasheet has to honour the slower one.</li>
+            <li>A new plot, the first in the time domain: output against time, with the moment of the step marked, drawn at the width it will occupy in the same idiom as everything else. The window sizes itself from the parts that set the slew, so a slower amplifier is watched for longer and its edge is still a visible slope rather than a vertical line.</li>
+            <li>Settling means settled. An earlier version of the measurement took the last sample as the final value and asked only whether it was near itself, which would call an output still climbing at the end of the window settled. It now checks the tail is flat first and answers &#8220;not in this window&#8221; when it is not, rather than inventing a number. The test that caught this is in the suite.</li>
+            <li>A trap in the parameter ranges is gone. Two widths on the op-amp offered up to 200 and 500 microns, but a SKY130 01v8 device accepts 100 and refuses 101, verified against the model library in both flavours. Anything above the limit failed with a raw simulator error, on the sweep as much as the step. The maxima now match what the device takes, and a test refuses any declared width that claims more.</li>
+            <li>What this does not do yet: the design iterator cannot target a slew rate, because a transient run costs a full simulation on top of the sweep. Making it a goal is the next step, not fine print.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">1.1.0</span>
             <span class="entry-date">2026-08-24</span>
           </header>

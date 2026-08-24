@@ -133,6 +133,26 @@
         </div>
       </section>
 
+      <section class="panel design-panel hidden" id="step" aria-label="Step response">
+        <h2 class="panel-head">Step response</h2>
+        <div class="panel-body">
+          <p class="design-intro">A sweep measures the amplifier being polite.
+          This asks how fast it can actually move: the same circuit as a unity
+          buffer, hit with a 0.3 V step, up and back down. One transient run,
+          about twenty seconds.</p>
+          <div class="design-actions">
+            <button class="chip" id="step-run" type="button">Run step response</button>
+          </div>
+          <div class="design-progress hidden" id="step-progress">
+            <div class="design-statusline">
+              <span id="step-state">Running</span>
+            </div>
+            <div class="design-best" id="step-metrics"></div>
+          </div>
+          <p class="field-error hidden" id="step-error"></p>
+        </div>
+      </section>
+
       <section class="panel robust-panel hidden" id="robust" aria-label="Robustness">
         <h2 class="panel-head">Robustness</h2>
         <div class="panel-body">
@@ -173,6 +193,13 @@
 
         <figure class="figure hidden" id="bode-panel">
           <svg id="bode" viewBox="0 0 520 360"></svg>
+        </figure>
+
+        <figure class="figure hidden" id="step-panel">
+          <svg id="step-plot" viewBox="0 0 520 260"></svg>
+          <figcaption>
+            <span id="step-caption"></span>
+          </figcaption>
         </figure>
 
         <h2 class="section-label">Measurement</h2>
@@ -223,6 +250,7 @@
 
 <script src="/static/schematic.js"></script>
 <script src="/static/bodeplot.js"></script>
+<script src="/static/stepplot.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

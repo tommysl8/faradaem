@@ -1,4 +1,4 @@
-/* Faradaem 1.1.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.2.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -109,7 +109,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.1.0";
+  --app-version: "v1.2.0";
 }
 
 *,
@@ -462,6 +462,13 @@ input {
 .sim-figure {
   position: sticky;
   top: calc(var(--s6) + var(--s4));
+}
+
+/* Grid items refuse to shrink below their content by default, so a wide
+   drawing would push the whole column, and every panel in it, past the
+   screen edge instead of scrolling inside its own figure. */
+.sim > * {
+  min-width: 0;
 }
 
 .sim {

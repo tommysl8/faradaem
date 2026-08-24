@@ -62,6 +62,13 @@ OPAMP_W5 = 5e-6
 #: is reported as broken rather than measured.
 OPAMP_RAIL_MARGIN = 0.2
 
+#: The widest a single SKY130 01v8 device may be. Both flavours accept
+#: 100 um and refuse 101, verified against the model library rather than
+#: read off a datasheet. A wider transistor is built from fingers, which
+#: these netlists do not emit, so this is the honest ceiling for a
+#: declared width and no parameter may claim more.
+SKY130_MAX_WIDTH_M = 1e-4
+
 #: Presentation-layer sanity bands for the common-source bias.  These are not
 #: device parameters and nothing is computed from them: they only decide which
 #: caution the readout shows beside numbers ngspice already produced.
@@ -640,6 +647,211 @@ def build_ota_5t(params, fstart, fstop, out_paths):
     )
 
 
+# ---------------------------------------------------------------------------
+# the step response: what an amplifier does when it is not being polite
+# ---------------------------------------------------------------------------
+#
+# A sweep measures an amplifier held to small signals, where it behaves like
+# the linear model. A step asks a different question: how fast can the thing
+# actually move, and does it stop cleanly when it gets there. Those are the
+# numbers a datasheet calls slew rate and settling time, and neither is
+# visible in a Bode plot.
+#
+# The testbench is the amplifier as a unity-gain buffer, which is a real
+# closed loop and needs no servo, driven by a step big enough to steer the
+# input pair completely. The step comes back down inside the same run,
+# because the two edges need not match.
+
+#: The step is differential around the common mode, this many volts tall.
+#: Large enough to fully steer the pair, small enough to stay off the rails.
+STEP_VOLTS = 0.3
+
+#: The source edge, far faster than any amplifier here, so what the output
+#: does is the amplifier's own limit and not the stimulus.
+STEP_EDGE_S = 1e-9
+
+#: Points across one half of the window. Enough that the 10 to 90 band is
+#: resolved by hundreds of samples rather than a handful.
+STEP_POINTS = 5000
+
+#: However fast the amplifier is, look at it for at least this long. Low
+#: enough that a fast amplifier's edge is a visible slope rather than a
+#: vertical line, high enough to hold the settling tail that follows it.
+STEP_WINDOW_FLOOR_S = 2.5e-7
+
+#: Slewing takes step/rate seconds; allow this many of those for the settling
+#: that follows before the other edge arrives.
+STEP_WINDOW_SLEWS = 6.0
+
+
+def _step_window(slew_estimate):
+    """Half the run: long enough for the slew plus its settling tail."""
+    if slew_estimate <= 0:
+        return STEP_WINDOW_FLOOR_S
+    slew_time = STEP_VOLTS / slew_estimate
+    return max(STEP_WINDOW_FLOOR_S, STEP_WINDOW_SLEWS * slew_time)
+
+
+def opamp_step_window(params):
+    """A two-stage amplifier slews at the tail current over Cc.
+
+    The mirror sets the tail from the bias current, and the compensation
+    capacitor is what that current has to charge. This is an estimate used
+    only to frame the run; the rate that gets reported is measured.
+    """
+    tail = params["ibias"] * OPAMP_W5 / OPAMP_W8
+    return _step_window(tail / params["cc"])
+
+
+def ota_step_window(params):
+    """A single-stage OTA slews at the tail current over the load."""
+    tail = params["ibias"] * OPAMP_W5 / OPAMP_W8
+    return _step_window(tail / params["cl"])
+
+
+def step_control_block(window, out_path, op_prints=None):
+    """The .control block for a two-edge step response.
+
+    One run holds both edges: the rise at one window, the fall at two, and a
+    third window of tail so the falling edge has the same room to settle.
+    """
+    lines = [".control"]
+    if op_prints:
+        lines.append("op")
+        lines.append("print " + " ".join(op_prints))
+    lines.extend([
+        "tran " + _fmt(window / STEP_POINTS, "timestep")
+        + " " + _fmt(3.0 * window, "stop"),
+        "wrdata " + str(out_path).replace("\\", "/") + " v(out)",
+        "quit",
+        ".endc",
+        ".end",
+    ])
+    return lines
+
+
+def _pulse_source(window):
+    """A step up at one window and back down at two, edges far faster than
+    anything the amplifier can do."""
+    return ("Vin inp 0 PULSE(" + _fmt(OPAMP_VCM - STEP_VOLTS / 2.0, "low")
+            + " " + _fmt(OPAMP_VCM + STEP_VOLTS / 2.0, "high")
+            + " " + _fmt(window, "delay")
+            + " " + _fmt(STEP_EDGE_S, "rise")
+            + " " + _fmt(STEP_EDGE_S, "fall")
+            + " " + _fmt(window, "width")
+            + " " + _fmt(4.0 * window, "period") + ")")
+
+
+def build_opamp_step(params, window, out_paths):
+    """The two-stage op-amp as a unity buffer, hit with a step.
+
+    Same devices as the open-loop testbench, wired differently: the output
+    goes straight back to M1's gate, which is the inverting input, so the
+    loop is closed for real. Nothing here is servoed and nothing is
+    fictional; what the output does is what the amplifier does.
+    """
+    nf = " " + NFET_MODEL + " "
+    pf = " sky130_fd_pr__pfet_01v8 "
+    length = "L=" + _microns(params["l"], "l")
+
+    def nfet(name, d, g, s_, w):
+        return ("XM" + name + " " + d + " " + g + " " + s_ + " 0" + nf
+                + "W=" + _microns(w, "w") + " " + length)
+
+    def pfet(name, d, g, s_, w):
+        return ("XM" + name + " " + d + " " + g + " " + s_ + " vdd" + pf
+                + "W=" + _microns(w, "w") + " " + length)
+
+    devices = [
+        ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
+        "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
+        _pulse_source(window),
+        "Ib vdd nbias DC " + _fmt(params["ibias"], "ibias"),
+        nfet("8", "nbias", "nbias", "0", OPAMP_W8),
+        # M1's gate is the inverting input and takes the feedback directly.
+        nfet("1", "d1", "out", "tail", params["wpair"]),
+        nfet("2", "d2", "inp", "tail", params["wpair"]),
+        pfet("3", "d1", "d1", "vdd", params["wload"]),
+        pfet("4", "d2", "d1", "vdd", params["wload"]),
+        nfet("5", "tail", "nbias", "0", OPAMP_W5),
+        pfet("6", "out", "d2", "vdd", params["w6"]),
+        nfet("7", "out", "nbias", "0", params["w7"]),
+        "Rz d2 zx " + _fmt(params["rz"], "rz"),
+        "Cc zx out " + _fmt(params["cc"], "cc"),
+        "CL out 0 " + _fmt(params["cl"], "cl"),
+        ".nodeset v(out)=" + _fmt(OPAMP_VCM - STEP_VOLTS / 2.0, "start")
+        + " v(d2)=1.1",
+    ]
+
+    return "\n".join(
+        ["* Faradaem SKY130 two-stage op-amp, unity buffer step response"]
+        + devices
+        + step_control_block(window, out_paths[0], op_prints=["v(out)"])
+    ) + "\n"
+
+
+def build_ota_step(params, window, out_paths):
+    """The five-transistor OTA as a unity buffer, hit with a step.
+
+    M2's gate is the inverting input on this topology, the non-diode side,
+    so that is where the output feeds back.
+    """
+    nf = " " + NFET_MODEL + " "
+    pf = " sky130_fd_pr__pfet_01v8 "
+    length = "L=" + _microns(params["l"], "l")
+
+    def nfet(name, d, g, s_, w):
+        return ("XM" + name + " " + d + " " + g + " " + s_ + " 0" + nf
+                + "W=" + _microns(w, "w") + " " + length)
+
+    def pfet(name, d, g, s_, w):
+        return ("XM" + name + " " + d + " " + g + " " + s_ + " vdd" + pf
+                + "W=" + _microns(w, "w") + " " + length)
+
+    devices = [
+        ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
+        "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
+        _pulse_source(window),
+        "Ib vdd nbias DC " + _fmt(params["ibias"], "ibias"),
+        nfet("8", "nbias", "nbias", "0", OPAMP_W8),
+        nfet("1", "d1", "inp", "tail", params["wpair"]),
+        nfet("2", "out", "out", "tail", params["wpair"]),
+        pfet("3", "d1", "d1", "vdd", params["wload"]),
+        pfet("4", "out", "d1", "vdd", params["wload"]),
+        nfet("5", "tail", "nbias", "0", OPAMP_W5),
+        "CL out 0 " + _fmt(params["cl"], "cl"),
+        ".nodeset v(out)=" + _fmt(OPAMP_VCM - STEP_VOLTS / 2.0, "start"),
+    ]
+
+    return "\n".join(
+        ["* Faradaem SKY130 5T OTA, unity buffer step response"]
+        + devices
+        + step_control_block(window, out_paths[0], op_prints=["v(out)"])
+    ) + "\n"
+
+
+def measure_step_response(points, params, window):
+    """Slew rate, settling and overshoot, with the rails checked.
+
+    A buffer that has hit a rail is not slewing, it is stuck, and the
+    numbers that come off that waveform would be fiction. Say so instead.
+    """
+    highest = max(value for _, value in points)
+    lowest = min(value for _, value in points)
+    if highest > OPAMP_VDD - OPAMP_RAIL_MARGIN or lowest < OPAMP_RAIL_MARGIN:
+        raise BiasError(
+            "The buffer output reached " + ("%.3f" % lowest) + " V to "
+            + ("%.3f" % highest) + " V against a " + ("%.2f" % OPAMP_VDD)
+            + " V supply, so it is clipping rather than settling. Lower the "
+            "bias current or widen the output devices and run again."
+        )
+
+    measured = runner.measure_step(points, window, 2.0 * window, window)
+    measured["window"] = window
+    measured["rise_at"] = window
+    return measured
+
+
 def build_nfet_cs_amp(params, fstart, fstop, out_path):
     """SKY130 NFET common-source amplifier.
 
@@ -1115,6 +1327,18 @@ CIRCUITS = {
             param("wload", "W3,4 (mirror load)", "m", 1e-5, 4.2e-7, 1e-4),
             param("cl", "CL (load)", "F", 2e-12, 1e-13, 1e-10),
         ],
+        "step": {
+            "build": build_ota_step,
+            "window": ota_step_window,
+            "caption": "Figure 11: the OTA as a unity buffer, hit with a 0.3 V "
+                       "step. A single stage drives the load capacitor "
+                       "directly, so the load is what sets the slew rate.",
+            "readout": [
+                metric("slew_rate", "slew rate", "slew", "V/s"),
+                metric("settling_time", "settling to 0.1%", "eng", "s"),
+                metric("overshoot", "overshoot", "percent", None),
+            ],
+        },
         "centre": opamp_frame,
         "presets": [
             preset("Balanced", ibias=2e-5, l=5e-7, wpair=1e-5, wload=1e-5, cl=2e-12),
@@ -1167,12 +1391,24 @@ CIRCUITS = {
             param("l", "L (all devices)", "m", 5e-7, 1.5e-7, 2e-6),
             param("wpair", "W1,2 (input pair)", "m", 1e-5, 4.2e-7, 1e-4),
             param("wload", "W3,4 (mirror load)", "m", 1e-5, 4.2e-7, 1e-4),
-            param("w6", "W6 (output driver)", "m", 4e-5, 1e-6, 5e-4),
-            param("w7", "W7 (output sink)", "m", 1e-5, 4.2e-7, 2e-4),
+            param("w6", "W6 (output driver)", "m", 4e-5, 1e-6, SKY130_MAX_WIDTH_M),
+            param("w7", "W7 (output sink)", "m", 1e-5, 4.2e-7, SKY130_MAX_WIDTH_M),
             param("cc", "Cc (Miller)", "F", 2e-12, 5e-14, 2e-11),
             param("rz", "Rz (zero nulling)", "\u03a9", 2000.0, 1e-3, 1e5),
             param("cl", "CL (load)", "F", 2e-12, 1e-13, 1e-10),
         ],
+        "step": {
+            "build": build_opamp_step,
+            "window": opamp_step_window,
+            "caption": "Figure 10: the same op-amp as a unity buffer, hit with a "
+                       "0.3 V step. What the output does here is what it can "
+                       "actually do, not what the small-signal model predicts.",
+            "readout": [
+                metric("slew_rate", "slew rate", "slew", "V/s"),
+                metric("settling_time", "settling to 0.1%", "eng", "s"),
+                metric("overshoot", "overshoot", "percent", None),
+            ],
+        },
         "centre": opamp_frame,
         "presets": [
             preset("Balanced", ibias=2e-5, l=5e-7, wpair=1e-5, wload=1e-5,
@@ -1327,6 +1563,15 @@ def catalog():
                 if circuit.get("design") else None
             ),
             "pdk": bool(circuit.get("pdk")),
+            # A circuit that declares a step testbench advertises what the
+            # panel should show: no callables, same as everything else here.
+            "step": (
+                {
+                    "caption": circuit["step"]["caption"],
+                    "readout": [dict(item) for item in circuit["step"]["readout"]],
+                }
+                if circuit.get("step") else None
+            ),
         })
     return listing
 
@@ -1436,6 +1681,65 @@ def build_netlist_preview(circuit_id, params):
     if "outputs" in circuit:
         return circuit["build"](values, fstart, fstop, placeholders)
     return circuit["build"](values, fstart, fstop, placeholders[0])
+
+
+#: Points kept for drawing the waveform. The measurement always uses every
+#: point ngspice produced; this is only what travels to the browser.
+WAVEFORM_POINTS = 900
+
+
+class NoStepResponseError(CircuitInputError):
+    """Raised when a circuit has no step testbench to run."""
+
+
+def has_step(circuit_id):
+    """True when this circuit declares a step response."""
+    return "step" in get_circuit(circuit_id)
+
+
+def _decimate(points, limit):
+    """Thin a series for drawing, keeping the first and last sample.
+
+    Plain stride sampling: the waveform is already smooth at the timestep
+    the run used, and anything cleverer would be a picture of a filter
+    rather than a picture of the output.
+    """
+    if len(points) <= limit:
+        return [[t, v] for t, v in points]
+    stride = len(points) / float(limit)
+    kept = [points[int(i * stride)] for i in range(limit)]
+    kept[-1] = points[-1]
+    return [[t, v] for t, v in kept]
+
+
+def run_step(circuit_id, params, transform=None):
+    """Run one circuit's step response and return what it measured.
+
+    The waveform comes back with the numbers, thinned for drawing, because
+    a slew rate without the edge it came from is a number nobody can check.
+    """
+    circuit = get_circuit(circuit_id)
+    step = circuit.get("step")
+    if step is None:
+        raise NoStepResponseError(
+            "The circuit " + repr(circuit_id) + " has no step response. "
+            "The two SKY130 amplifiers do; pick one of those."
+        )
+
+    values = dict(params)
+    window = step["window"](values)
+    paths = [_reserve_data_path()]
+    netlist = step["build"](values, window, paths)
+    if transform is not None:
+        netlist = transform(netlist)
+
+    texts, stdout = runner.run_data_netlist(
+        netlist, paths, timeout_s=runner.TRAN_TIMEOUT_S, with_stdout=True
+    )
+    points = runner.parse_wrdata_real(texts[0])
+    measured = measure_step_response(points, values, window)
+    measured["waveform"] = _decimate(points, WAVEFORM_POINTS)
+    return measured
 
 
 def simulate(circuit_id, params, transform=None):

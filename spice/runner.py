@@ -284,19 +284,17 @@ def build_rc_lowpass_netlist(r, c, fstart, fstop, points_per_decade, out_path):
     return "\n".join(lines) + "\n"
 
 
-def run_ac_multi(netlist, out_paths, timeout_s=AC_TIMEOUT_S, with_stdout=False):
-    """Run one AC netlist that writes several data files, and read them all back.
+def run_data_netlist(netlist, out_paths, timeout_s, with_stdout=False):
+    """Run a netlist that writes data files, and return their text.
 
-    One ngspice invocation, one sweep, several wrdata calls.  Circuits that need
-    two responses measured on the same frequency grid -- a closed loop and the
-    loop gain that produced it -- get them from a single run rather than from
-    two runs that could disagree about where the samples fell.
+    The analysis is the netlist's business, not this function's: a sweep, a
+    step response, anything that ends in wrdata. What happens here is the
+    same either way. The netlist goes to a temp file, ngspice runs with the
+    temp directory as its working directory, and every data file is removed
+    in the finally block; simulator output is a temp file too, and none of
+    it belongs in the project folder.
 
-    Every path in out_paths must live in the system temp dir.  The netlist and
-    all data files are removed in the finally block; simulator output is a temp
-    file too, and none of it belongs in the project folder.
-
-    With with_stdout=True the return is (texts, stdout) instead of just texts.
+    With with_stdout=True the return is (texts, stdout) instead of texts.
     """
     executable = find_ngspice()
     temp_dir = tempfile.gettempdir()
@@ -318,7 +316,7 @@ def run_ac_multi(netlist, out_paths, timeout_s=AC_TIMEOUT_S, with_stdout=False):
             )
         except subprocess.TimeoutExpired as exc:
             raise NgspiceRunError(
-                "ngspice did not finish the AC sweep within the "
+                "ngspice did not finish within the "
                 + str(timeout_s) + " s timeout (executable: " + executable + ")."
             ) from exc
         except OSError as exc:
@@ -351,6 +349,12 @@ def run_ac_multi(netlist, out_paths, timeout_s=AC_TIMEOUT_S, with_stdout=False):
                 os.unlink(leftover)
             except OSError:
                 pass
+
+
+def run_ac_multi(netlist, out_paths, timeout_s=AC_TIMEOUT_S, with_stdout=False):
+    """Run an AC netlist that writes several data files. The sweep spelling
+    of run_data_netlist, with the AC timeout as its default."""
+    return run_data_netlist(netlist, out_paths, timeout_s, with_stdout)
 
 
 def run_ac_netlist(netlist, out_path, timeout_s=AC_TIMEOUT_S, with_stdout=False):
@@ -775,6 +779,155 @@ def simulate_rc_lowpass(r, c):
 # The PDK is machine tooling installed outside the project -- never inside
 # OneDrive -- so its location is resolved at call time rather than baked in.
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# transient: the step response, and what it measures
+# ---------------------------------------------------------------------------
+
+#: A transient run integrates thousands of timepoints through the PDK
+#: models, so it gets a longer budget than a sweep of the same circuit.
+TRAN_TIMEOUT_S = 240.0
+
+#: Settled means inside this fraction of the step, and stays there.
+SETTLE_TOLERANCE = 0.001
+
+
+def parse_wrdata_real(text):
+    """Read a wrdata table of real values: (x, y) per row.
+
+    Transient output is time in the first column and the vector in the
+    second. Blank lines and any header ngspice writes are skipped, and a
+    row that will not parse is skipped rather than guessed at.
+    """
+    points = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            points.append((float(parts[0]), float(parts[1])))
+        except ValueError:
+            continue
+    if len(points) < 3:
+        raise NgspiceParseError(
+            "The transient run produced " + str(len(points)) + " usable points. "
+            "Expected a time series."
+        )
+    return points
+
+
+def _edge_slew(points, edge_at, window):
+    """Volts per second across the middle of one edge.
+
+    The 10 to 90 percent band is the conventional measure: it excludes the
+    corner where the amplifier is still linear and the tail where it is
+    recovering, leaving the part that is genuinely slew limited.
+
+    Returns (rate, start_value, final_value) or None when no edge is there.
+    """
+    before = [value for time, value in points if time < edge_at]
+    segment = [(t, v) for t, v in points if edge_at <= t <= edge_at + window]
+    if not before or len(segment) < 3:
+        return None
+
+    start = before[-1]
+    final = segment[-1][1]
+    span = final - start
+    if abs(span) < 1e-4:
+        return None
+
+    low = start + 0.1 * span
+    high = start + 0.9 * span
+    rising = span > 0
+    at_low = at_high = None
+    for time, value in segment:
+        if at_low is None and (value >= low if rising else value <= low):
+            at_low = time
+        if at_low is not None and at_high is None and (
+                value >= high if rising else value <= high):
+            at_high = time
+            break
+    if at_low is None or at_high is None or at_high <= at_low:
+        return None
+    return abs(high - low) / (at_high - at_low), start, final
+
+
+def _settling_time(points, edge_at, window, start, final, tolerance):
+    """When the output last leaves the band around its final value.
+
+    Measured from the edge. Returns None if it never enters the band, which
+    is a real answer: the amplifier did not settle inside the window.
+    """
+    band = abs(final - start) * tolerance
+    segment = [(t, v) for t, v in points if edge_at <= t <= edge_at + window]
+    if len(segment) < 10:
+        return None
+
+    # Settled means it stopped moving and stayed put. Taking the last sample
+    # as the final value and asking only whether it is close to itself would
+    # call an output still climbing at the end of the window settled, which
+    # is the one case this needs to catch. So check the tail is flat first.
+    tail = segment[max(0, int(len(segment) * 0.9)):]
+    if abs(tail[-1][1] - tail[0][1]) > band:
+        return None
+    if abs(segment[-1][1] - final) > band:
+        return None
+    settled = None
+    for time, value in reversed(segment):
+        if abs(value - final) > band:
+            break
+        settled = time
+    return None if settled is None else settled - edge_at
+
+
+def _overshoot(points, edge_at, window, start, final):
+    """How far past the final value the output went, as a fraction of the step."""
+    span = final - start
+    if abs(span) < 1e-9:
+        return 0.0
+    segment = [v for t, v in points if edge_at <= t <= edge_at + window]
+    if not segment:
+        return 0.0
+    extreme = max(segment) if span > 0 else min(segment)
+    return max(0.0, (extreme - final) / span if span > 0 else (final - extreme) / -span)
+
+
+def measure_step(points, rise_at, fall_at, window,
+                 tolerance=SETTLE_TOLERANCE):
+    """Slew rate, settling and overshoot from a two-edge step response.
+
+    Both edges are measured because they need not match: a two-stage
+    amplifier charges its compensation capacitor from the tail current on
+    the way up and discharges it through the output stage on the way down.
+    The reported slew rate is the worse of the two, which is the number a
+    datasheet would have to honour.
+    """
+    rise = _edge_slew(points, rise_at, window)
+    fall = _edge_slew(points, fall_at, window)
+    if rise is None and fall is None:
+        raise NgspiceParseError(
+            "No output edge was found in the step response. The amplifier "
+            "may not be responding to the input step."
+        )
+
+    rates = {}
+    if rise is not None:
+        rates["slew_rise"] = rise[0]
+    if fall is not None:
+        rates["slew_fall"] = fall[0]
+
+    result = dict(rates)
+    result["slew_rate"] = min(rates.values())
+
+    if rise is not None:
+        rate, start, final = rise
+        result["settling_time"] = _settling_time(
+            points, rise_at, window, start, final, tolerance
+        )
+        result["overshoot"] = _overshoot(points, rise_at, window, start, final)
+        result["step_final"] = final
+    return result
 
 
 def pdk_root():

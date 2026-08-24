@@ -29,6 +29,18 @@ def test_the_schematic_sits_in_a_scroll_lane():
     assert "overflow-x: auto;" in block[:200]
 
 
+def test_a_wide_drawing_cannot_push_the_page():
+    """A grid item will not shrink below its content unless told to.
+
+    Without this the op-amp at its floor scale, 646 pixels wide, made the
+    single column on a phone 646 wide too, and every panel in it went off
+    the screen edge. The figure has to scroll inside itself instead.
+    """
+    css = read("static/style.css")
+    block = css[css.index(".sim > * {"):]
+    assert "min-width: 0;" in block[:80]
+
+
 def test_the_scale_band_has_both_limits():
     """Growth stops so small circuits do not fill the column; shrinking
     stops so dense ones stay readable."""

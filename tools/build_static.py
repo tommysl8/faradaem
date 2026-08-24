@@ -36,7 +36,7 @@ PAGES = ("index.html", "manual.html", "about.html", "changelog.html")
 #: Everything the pages load. Listed rather than globbed so a stray file in
 #: static/ cannot end up published by accident.
 ASSETS = (
-    "style.css", "app.js", "schematic.js", "bodeplot.js",
+    "style.css", "app.js", "schematic.js", "bodeplot.js", "stepplot.js",
     "icon.svg", "icon-32.png", "apple-touch-icon.png", "og.png",
     "favicon.svg",
 )
