@@ -39,6 +39,19 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">0.8.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>A second amplifier topology: the five-transistor OTA on SKY130, measured open loop through the same DC servo as the two-stage. One stage means no compensation, phase margin near 90 degrees, and better bandwidth per microwatt, at the price of gain: 37 dB at the base sizing against the two-stage's 71.5 dB.</li>
+            <li>Topology selection is now a real choice the strategist makes and explains: high gain points at the two-stage, modest gain with speed or power pressure points at the OTA. Both topologies seed from targets and both can be iterated.</li>
+            <li>The measured trade is pinned by a test: the OTA carries more than ten degrees more margin, the two-stage more than twenty decibels more gain.</li>
+            <li>View netlist, under the run button: the exact SPICE deck your values produce, updating live as you edit. Nothing on this site is hidden behind the schematic; the deck is the ground truth and now you can read it.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">0.7.1</span>
             <span class="entry-date">2026-08-24</span>
           </header>

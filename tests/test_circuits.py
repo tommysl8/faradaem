@@ -28,6 +28,7 @@ ALL_IDS = [
     "twopole_amp",
     "nfet_cs_amp",
     "opamp_two_stage",
+    "ota_5t",
 ]
 
 #: AC circuits that need no PDK.  The SKY130 stage is exercised in

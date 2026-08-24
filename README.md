@@ -18,7 +18,7 @@ schematic, with the verification done by the simulator rather than asserted by a
 - [x] **V0.5** parameterized netlist
 - [x] **V0.6** numerical optimizer hits spec
 - [x] **V0.7** LLM layer with tool calling
-- [ ] **V0.8** topology selection
+- [x] **V0.8** topology selection
 - [ ] **V0.9** PVT + Monte Carlo
 - [ ] **V1.0** spec in, verified schematic out
 
@@ -52,6 +52,10 @@ plain-language request and drives the real tools over the Anthropic or OpenAI
 API, both spoken through the standard library alone. It chooses, explains and
 asks; ngspice measures. The four-way comparison harness (`compare.py`) runs
 human, optimizer, LLM, and LLM-plus-optimizer against the same spec.
+
+0.8.0 made topology a real decision: a five-transistor OTA joined the two-stage
+op-amp, and the strategist chooses between them by the gain, speed and power the
+request asks for. A netlist viewer shows the exact deck every simulation runs.
 
 0.6.1 made the flow spec-first: enter only the targets and the system creates the
 starting design itself, measures it, and iterates only when the measurement falls

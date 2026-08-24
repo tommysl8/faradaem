@@ -1042,6 +1042,125 @@
     return svg;
   }
 
+  /* ---- SKY130 5T OTA -------------------------------------------------- */
+
+  /* One stage: the two-stage op-amp's front half, ending at M2's drain.
+   * Same layout discipline: strict columns, labels in clear space, the one
+   * crossing at the mirror gate tie. The DC servo is not drawn. */
+  function drawOta5t(svg, values) {
+    var yVdd = 40, yGnd = 420;
+    var pY = 120, nY = 240, bY = 352;
+    var pm = values.phase_margin === undefined ? null : values.phase_margin;
+
+    begin(svg, 520, 448,
+      "SKY130 five-transistor OTA: NMOS input pair of width " +
+      formatEngineering(values.wpair, "m") + " under a PMOS mirror load of width " +
+      formatEngineering(values.wload, "m") + ", tail current set by " +
+      formatEngineering(values.ibias, "A") + " through a mirror, output at the " +
+      "second drain, loaded by " + formatEngineering(values.cl, "F") +
+      ". Measured open loop; the DC servo that sets the operating point is not drawn" +
+      (pm === null ? "." : ", measured phase margin " + pm.toFixed(1) + " degrees."));
+
+    // Rails span only the columns they feed.
+    wire(svg, 110, yVdd, 350, yVdd);
+    wire(svg, 110, yGnd, 440, yGnd);
+    ground(svg, { x: 280, y: yGnd });
+    label(svg, { x: 358, y: yVdd + 4, text: "VDD 1.8 V", size: 11, node: true });
+
+    // Bias branch: Ib into diode-connected M8, tied left of the source.
+    wire(svg, 122, yVdd, 122, 158);
+    add(svg, "circle", { "class": "sch-stroke", cx: 122, cy: 180, r: 22 });
+    polyline(svg, [[122, 168], [122, 192]]);
+    polyline(svg, [[117, 185], [122, 192], [127, 185]]);
+    wire(svg, 122, 202, 122, 306);
+    wire(svg, 122, 306, 122, 314);
+    nmos(svg, { x: 96, y: bY });
+    wire(svg, 122, 306, 60, 306);
+    wire(svg, 60, 306, 60, bY);
+    nodeDot(svg, { x: 122, y: 306 });
+    label(svg, { x: 130, y: 300, text: "nbias", size: 11, node: true });
+    label(svg, { x: 92, y: 176, text: "Ib", anchor: "end", strong: true });
+    label(svg, { value: true, x: 92, y: 192, anchor: "end",
+                 text: formatEngineering(values.ibias, "A"), size: 11 });
+    label(svg, { x: 134, y: 340, text: "M8", size: 11 });
+
+    // The bias bus, straight along the bottom row's gates.
+    wire(svg, 60, bY, 188, bY);
+    label(svg, { x: 262, y: 340, text: "M5", size: 11 });
+
+    // PMOS mirror.
+    pmos(svg, { x: 200, y: pY });
+    pmos(svg, { x: 300, y: pY });
+    wire(svg, 226, yVdd, 226, 82);
+    wire(svg, 326, yVdd, 326, 82);
+    label(svg, { x: 158, y: 116, text: "M3", anchor: "end", size: 11 });
+    label(svg, { x: 258, y: 116, text: "M4", anchor: "end", size: 11 });
+    label(svg, { value: true, x: 340, y: 104, size: 11,
+                 text: "W " + formatEngineering(values.wload, "m") });
+
+    // Mirror gate tie, over the top; its M3-source crossing is the only one.
+    wire(svg, 164, pY, 164, 66);
+    wire(svg, 164, 66, 264, 66);
+    wire(svg, 264, 66, 264, pY);
+
+    // d1, tapping across to the tie.
+    wire(svg, 226, 158, 226, 202);
+    wire(svg, 226, 180, 164, 180);
+    wire(svg, 164, 180, 164, pY);
+    nodeDot(svg, { x: 226, y: 180 });
+
+    // The pair. M2 is mirrored so its gate faces outward.
+    nmos(svg, { x: 200, y: nY });
+    var flipped = add(svg, "g", { transform: "translate(600 0) scale(-1 1)" });
+    nmos(flipped, { x: 300, y: nY });
+    label(svg, { x: 158, y: 262, text: "M1", anchor: "end", size: 11 });
+    label(svg, { x: 266, y: 236, text: "M2", anchor: "end", size: 11 });
+
+    // Tail into M5.
+    wire(svg, 226, 278, 226, 292);
+    wire(svg, 274, 278, 274, 292);
+    wire(svg, 226, 292, 274, 292);
+    wire(svg, 250, 292, 250, 314);
+    nmos(svg, { x: 224, y: bY });
+    label(svg, { value: true, x: 258, y: 308, size: 11,
+                 text: "W " + formatEngineering(values.wpair, "m") });
+
+    // Inputs: the non-inverting side drives M1; M2's gate takes the feedback
+    // in the servo, so it is drawn as the inverting input stub.
+    wire(svg, 164, nY, 140, nY);
+    nodeDot(svg, { x: 140, y: nY });
+    label(svg, { x: 140, y: 228, text: "inp", anchor: "middle", node: true });
+    wire(svg, 336, nY, 360, nY);
+    nodeDot(svg, { x: 360, y: nY });
+    label(svg, { x: 360, y: 258, text: "inn", anchor: "middle", node: true });
+
+    // The output: M4's drain down to M2's drain, with the load hung right.
+    wire(svg, 326, 158, 326, 196);
+    wire(svg, 326, 196, 274, 196);
+    wire(svg, 274, 196, 274, 202);
+    nodeDot(svg, { x: 326, y: 180 });
+    label(svg, { x: 334, y: 174, text: "out", node: true });
+    wire(svg, 326, 180, 420, 180);
+    wire(svg, 420, 180, 420, 240);
+    capacitor(svg, { x: 420, y1: 240, y2: 284, centre: 262 });
+    wire(svg, 420, 284, 420, yGnd);
+    label(svg, { x: 444, y: 258, text: "CL", strong: true });
+    label(svg, { value: true, x: 444, y: 274,
+                 text: formatEngineering(values.cl, "F"), size: 11 });
+
+    // Bottom-row sources to ground.
+    wire(svg, 122, 390, 122, yGnd);
+    wire(svg, 250, 390, 250, yGnd);
+
+    if (pm !== null && isFinite(pm)) {
+      wire(svg, 380, 180, 380, 202);
+      valueTag(svg, {
+        x: 380, y: 202, anchor: "middle", text: "PM " + pm.toFixed(1) + "\u00b0"
+      });
+    }
+    return svg;
+  }
+
   /* ---- SKY130 two-stage op-amp -------------------------------------- */
 
   /* The full eight-transistor amplifier, laid out in strict columns so that
@@ -1219,6 +1338,7 @@
   window.drawTwopoleAmp = drawTwopoleAmp;
   window.drawNfetCsAmp = drawNfetCsAmp;
   window.drawOpampTwoStage = drawOpampTwoStage;
+  window.drawOta5t = drawOta5t;
   window.formatEngineering = formatEngineering;
   window.FaradaemSymbols = symbols;
 })(window, document);

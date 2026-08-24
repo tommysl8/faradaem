@@ -104,7 +104,7 @@ def test_manual_explains_the_circuits_that_ship_no_analytic_check():
         for cid in circuits.CIRCUIT_ORDER
         if not circuits.get_circuit(cid)["checks"]
     }
-    assert uncheckable == {"NFET amp (SKY130)", "Op-amp (SKY130)"}
+    assert uncheckable == {"NFET amp (SKY130)", "Op-amp (SKY130)", "OTA (SKY130)"}
     for name in uncheckable:
         assert name in MANUAL_TEXT, name
     assert "square law" in MANUAL_LOWER

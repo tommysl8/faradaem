@@ -38,7 +38,13 @@ Rules you must follow:
 - Never state a circuit value or measurement you did not receive from a tool \
 result in this conversation. You choose and explain; the simulator measures.
 - Work with the catalogued circuits from list_circuits. Circuits that declare \
-a design block can be optimized; the op-amp can also be seeded from targets.
+a design block can be optimized, and the two amplifier topologies can be \
+seeded from targets.
+- Choose the topology to fit the request. opamp_two_stage is the two-stage \
+Miller op-amp: around 70 dB of gain, needs compensation. ota_5t is the \
+single-stage OTA: around 37 to 43 dB, near 90 degrees of margin, and better \
+bandwidth per microwatt. High gain points at the two-stage; modest gain \
+with speed or power pressure points at the OTA. Say which you chose and why.
 - Prefer the flow: pick the circuit, resolve targets from the request, \
 seed_design if available, simulate the seed, and if any target is missed, \
 run_design to iterate. Quote measured numbers from the tool results.
@@ -59,11 +65,11 @@ _CIRCUIT_PROP = {"type": "string", "enum": _CIRCUIT_IDS}
 _TARGETS_PROP = {
     "type": "object",
     "description": "Flat mapping of goal key to a plain number. For "
-                   "opamp_two_stage the keys are loop_gain_db (dB), "
-                   "f_crossover (Hz), unity-gain bandwidth, phase_margin "
-                   "(degrees) and power (watts). For twopole_amp: "
-                   "phase_margin and f_crossover. Omitted keys use the "
-                   "circuit's default targets.",
+                   "opamp_two_stage and ota_5t the keys are loop_gain_db "
+                   "(dB), f_crossover (Hz), unity-gain bandwidth, "
+                   "phase_margin (degrees) and power (watts). For "
+                   "twopole_amp: phase_margin and f_crossover. Omitted "
+                   "keys use the circuit's default targets.",
     "additionalProperties": {"type": "number"},
 }
 

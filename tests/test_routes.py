@@ -436,6 +436,7 @@ def test_catalogue_endpoint_lists_every_circuit(address):
     assert [item["id"] for item in listing] == [
         "divider", "rc_lowpass", "rc_highpass", "rlc_bandpass",
         "inverting_amp", "twopole_amp", "nfet_cs_amp", "opamp_two_stage",
+        "ota_5t",
     ]
 
 
@@ -671,3 +672,30 @@ def test_simulate_still_runs_end_to_end(address):
     payload = json.loads(body)
     assert payload["vout"] == pytest.approx(2.5, abs=1e-6)
     assert payload["analytic"] == pytest.approx(2.5, abs=1e-12)
+
+
+def test_netlist_preview_returns_the_deck(address):
+    body = json.dumps({"circuit": "divider",
+                       "params": server.circuits.defaults("divider")})
+    status, content_type, payload = fetch(address, "/api/netlist", "POST", body)
+    assert status == 200
+    netlist = json.loads(payload)["netlist"]
+    assert "V1 in 0 DC 5" in netlist
+    assert "print v(out)" in netlist
+
+
+def test_netlist_preview_shows_placeholder_paths(address):
+    body = json.dumps({"circuit": "rc_lowpass",
+                       "params": server.circuits.defaults("rc_lowpass")})
+    _, _, payload = fetch(address, "/api/netlist", "POST", body)
+    netlist = json.loads(payload)["netlist"]
+    # Placeholder names, never a real temp path.
+    assert "response" in netlist
+    assert "AppData" not in netlist
+
+
+def test_netlist_preview_validates_like_simulate(address):
+    body = json.dumps({"circuit": "divider", "params": {"vdd": 5}})
+    status, _, payload = fetch(address, "/api/netlist", "POST", body)
+    assert status == 400
+    assert "'r1'" in json.loads(payload)["error"]

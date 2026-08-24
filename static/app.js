@@ -24,7 +24,8 @@
     inverting_amp: "drawInvertingAmp",
     twopole_amp: "drawTwopoleAmp",
     nfet_cs_amp: "drawNfetCsAmp",
-    opamp_two_stage: "drawOpampTwoStage"
+    opamp_two_stage: "drawOpampTwoStage",
+    ota_5t: "drawOta5t"
   };
 
   /* Which measured value the schematic tags its output node with, and the
@@ -37,7 +38,8 @@
     inverting_amp: "midband_db",
     twopole_amp: "phase_margin",
     nfet_cs_amp: "midband_db",
-    opamp_two_stage: "phase_margin"
+    opamp_two_stage: "phase_margin",
+    ota_5t: "phase_margin"
   };
 
   var TAG_ARG = {
@@ -48,7 +50,8 @@
     inverting_amp: "gain_db",
     twopole_amp: "phase_margin",
     nfet_cs_amp: "gain_db",
-    opamp_two_stage: "phase_margin"
+    opamp_two_stage: "phase_margin",
+    ota_5t: "phase_margin"
   };
 
   /* Arrow keys step the leading digit: 1000 -> 2000, 1.5e-7 -> 2.5e-7.
@@ -509,6 +512,55 @@
     }
   });
 
+  /* ---- the netlist viewer ------------------------------------------------- */
+
+  var netlistToggle = id("netlist-toggle");
+  var netlistView = id("netlist-view");
+  var netlistShown = false;
+
+  function hideNetlist() {
+    netlistShown = false;
+    show(netlistView, false);
+    netlistToggle.textContent = "View netlist";
+  }
+
+  function refreshNetlist() {
+    if (!validate()) {
+      return;
+    }
+    fetch("/api/netlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ circuit: current.id, params: values() })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload && payload.error
+              ? payload.error : "Could not build the netlist.");
+          }
+          netlistView.textContent = payload.netlist;
+          show(netlistView, true);
+          netlistShown = true;
+          netlistToggle.textContent = "Hide netlist";
+        });
+      })
+      .catch(function (error) {
+        netlistView.textContent = String(error.message || error);
+        show(netlistView, true);
+        netlistShown = true;
+        netlistToggle.textContent = "Hide netlist";
+      });
+  }
+
+  netlistToggle.addEventListener("click", function () {
+    if (netlistShown) {
+      hideNetlist();
+    } else {
+      refreshNetlist();
+    }
+  });
+
   /* ---- running ----------------------------------------------------------- */
 
   function setPending(pending) {
@@ -538,6 +590,9 @@
     dismissError();
     redraw(null, false);
     memory[current.id] = values();
+    if (netlistShown) {
+      refreshNetlist();
+    }
   }
 
   async function run(event) {
@@ -1214,6 +1269,7 @@
     renderPresets();
     renderInputs(memory[current.id]);
     renderDesignPanel();
+    hideNetlist();
     validate();
     dismissError();
     clearResult();

@@ -484,7 +484,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/0.7.1"
+    server_version = "Faradaem/0.8.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
@@ -524,6 +524,8 @@ class FaradaemHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/simulate":
             self._handle_api_simulate()
+        elif path == "/api/netlist":
+            self._handle_netlist()
         elif path == "/api/design":
             self._handle_design_start()
         elif path == "/api/design/seed":
@@ -575,6 +577,23 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
         except SIMULATION_ERRORS as exc:
             self._send_json(500, {"error": str(exc)})
+
+    def _handle_netlist(self):
+        """The deck the current form values would run, for reading."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        try:
+            circuit_id, params = validate_api_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        try:
+            netlist = circuits.build_netlist_preview(circuit_id, params)
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, {"netlist": netlist})
 
     def _handle_design_start(self):
         payload = self._read_json_body()

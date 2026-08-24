@@ -66,6 +66,11 @@
             <strong>Run simulation</strong>, or just press Enter.
           </p>
           <p>
+            <strong>View netlist</strong> under the run button shows the exact SPICE deck
+            your values produce, the same text that is handed to ngspice, with only the
+            data-file names replaced by placeholders. It follows your edits live.
+          </p>
+          <p>
             The schematic redraws as you type, so the picture always matches the values in
             the form. Measured numbers behave differently: they appear only after a run
             finishes, and while a run is in flight the previous reading dims instead of
@@ -120,7 +125,7 @@
             or hides one of them.
           </p>
           <p>
-            The two SKY130 circuits, the NFET amplifier and the op-amp, deliberately
+            The SKY130 circuits, the NFET amplifier, the op-amp and the OTA, deliberately
             ship no analytic check at all. Square
             law does not describe a 150 nm short channel device, and its bandwidth is set
             by the transistor's own output resistance, which no formula in this codebase
@@ -212,6 +217,8 @@
             <dd>An op-amp with two poles instead of one, which is the point at which stability stops being automatic. Measures phase margin from a real loop gain sweep. Walk the examples and watch the margin fall as the second pole moves toward crossover.</dd>
             <dt>NFET amp (SKY130)</dt>
             <dd>A common-source amplifier built on a real process, not on ideal parts. Measures gain, bandwidth, drain voltage, drain current, and power. Needs the PDK. The first run after starting the server takes 10 to 30 seconds while the model library loads.</dd>
+            <dt>OTA (SKY130)</dt>
+            <dd>The five-transistor operational transconductance amplifier: an input pair under a mirror load, output taken at the second drain. One stage, so no compensation is needed and the phase margin sits near 90 degrees. It trades gain (around 37 to 43 dB) for simplicity, bandwidth and power. This is the second topology the strategist can choose.</dd>
             <dt>Op-amp (SKY130)</dt>
             <dd>A two-stage Miller op-amp built from eight SKY130 transistors: an input pair under a mirror load, then a common-source second stage, compensated by Cc and its zero-nulling resistor Rz. Measures open-loop gain, unity-gain bandwidth, phase margin and power from one sweep. Needs the PDK. This is also the circuit the design iterator sizes for you.</dd>
           </dl>

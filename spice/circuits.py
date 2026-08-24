@@ -343,6 +343,23 @@ def opamp_seed(targets, params):
     return seeded
 
 
+def ota_seed(targets, params):
+    """A launch point for the OTA, scaled from its verified base sizing.
+
+    Bias tracks the power budget (the topology draws about twice Ibias from
+    the supply: the reference branch and the tail, measured 2026-08-24, with
+    headroom left under the budget). A gain target above what the 0.5 um
+    sizing delivers reaches for the longer channel. Heuristics only; nothing
+    from here is reported, and the iterator does the real work.
+    """
+    seeded = dict(params)
+    seeded["ibias"] = targets["power"] / 5.0
+    seeded["l"] = 1e-6 if targets["loop_gain_db"] > 40.0 else 5e-7
+    seeded["wpair"] = 1e-5
+    seeded["wload"] = 1e-5
+    return seeded
+
+
 def opamp_frame(params):
     """A fixed frame: 3.16 Hz to 316 MHz with the four-decade half-width.
 
@@ -573,6 +590,56 @@ def build_opamp_two_stage(params, fstart, fstop, out_paths):
     )
 
 
+def build_ota_5t(params, fstart, fstop, out_paths):
+    """SKY130 five-transistor OTA, measured open loop.
+
+    One stage: NMOS pair (M1, M2) under a PMOS mirror (M3 diode, M4), NMOS
+    tail M5, bias through diode M8. The output is M2's drain. With a single
+    inversion in the loop, the inverting input is M2's gate, the non-diode
+    side, so the DC servo feeds back there; the same L and C servo as the
+    two-stage op-amp, with Einv restoring the sign of the written vector.
+    """
+    loop_path = out_paths[0]
+    nf = " " + NFET_MODEL + " "
+    pf = " sky130_fd_pr__pfet_01v8 "
+    length = "L=" + _microns(params["l"], "l")
+
+    def nfet(name, d, g, s_, w):
+        return ("XM" + name + " " + d + " " + g + " " + s_ + " 0" + nf
+                + "W=" + _microns(w, "w") + " " + length)
+
+    def pfet(name, d, g, s_, w):
+        return ("XM" + name + " " + d + " " + g + " " + s_ + " vdd" + pf
+                + "W=" + _microns(w, "w") + " " + length)
+
+    devices = [
+        ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
+        "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
+        "Vcm inp 0 DC " + _fmt(OPAMP_VCM, "vcm"),
+        "Ib vdd nbias DC " + _fmt(params["ibias"], "ibias"),
+        nfet("8", "nbias", "nbias", "0", OPAMP_W8),
+        nfet("1", "d1", "inp", "tail", params["wpair"]),
+        nfet("2", "out", "inn", "tail", params["wpair"]),
+        pfet("3", "d1", "d1", "vdd", params["wload"]),
+        pfet("4", "out", "d1", "vdd", params["wload"]),
+        nfet("5", "tail", "nbias", "0", OPAMP_W5),
+        "CL out 0 " + _fmt(params["cl"], "cl"),
+        "Lfb out inn 1e9",
+        "Vs ac 0 DC 0 AC 1",
+        "Cin ac inn 1e9",
+        "Einv lg 0 0 out 1",
+        ".nodeset v(out)=" + _fmt(OPAMP_VCM, "vcm")
+        + " v(inn)=" + _fmt(OPAMP_VCM, "vcm"),
+    ]
+
+    return _netlist(
+        "* Faradaem SKY130 5T OTA, open-loop response",
+        devices, fstart, fstop, None,
+        op_prints=["v(out)", "i(vdd)"],
+        outputs=[(loop_path, "v(lg)")],
+    )
+
+
 def build_nfet_cs_amp(params, fstart, fstop, out_path):
     """SKY130 NFET common-source amplifier.
 
@@ -669,6 +736,40 @@ def measure_opamp_two_stage(bodes, params, stdout=None):
             + ("%.1f" % OPAMP_VDD) + " V supply, so the amplifier does not "
             "bias at these sizes. Rebalance the second stage: W6 sets its "
             "pull-up and W7 its pull-down current, and they have to agree."
+        )
+
+    loop = bodes[0]
+    try:
+        measured = dict(runner.measure_loop(loop))
+    except runner.NgspiceParseError as exc:
+        raise CircuitInputError(
+            "The open-loop gain never crosses 0 dB inside the sweep, so there "
+            "is no unity-gain bandwidth or phase margin to measure. Raise the "
+            "bias current or widen the input pair, and run again."
+        ) from exc
+
+    measured["power"] = OPAMP_VDD * supply_current
+    measured["out_dc"] = out_dc
+    return _with_curves(loop, measured)
+
+
+def measure_ota_5t(bodes, params, stdout=None):
+    """The OTA's open-loop line: gain, bandwidth, margin, power.
+
+    Same discipline as the two-stage: the operating point is checked first,
+    because a railed output means the sizing does not bias and the sweep of
+    a railed stage measures nothing.
+    """
+    operating = runner.parse_op_values(stdout or "", ("v(out)", "i(vdd)"))
+    out_dc = operating["v(out)"]
+    supply_current = abs(operating["i(vdd)"])
+
+    if not OPAMP_RAIL_MARGIN < out_dc < OPAMP_VDD - OPAMP_RAIL_MARGIN:
+        raise CircuitInputError(
+            "The output settled at " + ("%.3f" % out_dc) + " V, against a "
+            + ("%.1f" % OPAMP_VDD) + " V supply, so the OTA does not bias at "
+            "these sizes. Rebalance the pair and mirror widths so the branch "
+            "currents agree, and run again."
         )
 
     loop = bodes[0]
@@ -996,6 +1097,58 @@ CIRCUITS = {
         },
     },
 
+
+    "ota_5t": {
+        "id": "ota_5t",
+        "name": "OTA (SKY130)",
+        "analysis": "ac",
+        "caption": "Figure 9: SKY130 five-transistor OTA, open-loop response. "
+                   "A DC servo sets the operating point; the sweep sees the open loop.",
+        "timeout_s": runner.PDK_TIMEOUT_S,
+        "outputs": 1,
+        "decades": 4,
+        "params": [
+            param("ibias", "Ibias", "A", 20e-6, 5e-7, 2e-4),
+            param("l", "L (all devices)", "m", 5e-7, 1.5e-7, 2e-6),
+            param("wpair", "W1,2 (input pair)", "m", 1e-5, 4.2e-7, 1e-4),
+            param("wload", "W3,4 (mirror load)", "m", 1e-5, 4.2e-7, 1e-4),
+            param("cl", "CL (load)", "F", 2e-12, 1e-13, 1e-10),
+        ],
+        "centre": opamp_frame,
+        "presets": [
+            preset("Balanced", ibias=2e-5, l=5e-7, wpair=1e-5, wload=1e-5, cl=2e-12),
+            preset("High gain", ibias=2e-5, l=1e-6, wpair=1e-5, wload=1e-5, cl=2e-12),
+            preset("Low power", ibias=4e-6, l=5e-7, wpair=1e-5, wload=1e-5, cl=2e-12),
+            preset("Fast", ibias=6e-5, l=5e-7, wpair=3e-5, wload=1e-5, cl=1e-12),
+            preset("Heavy load", ibias=2e-5, l=5e-7, wpair=1e-5, wload=1e-5, cl=2e-11),
+            preset("Micropower", ibias=1e-6, l=5e-7, wpair=1e-5, wload=1e-5, cl=2e-12),
+        ],
+        "build": build_ota_5t,
+        "measure": measure_ota_5t,
+        # A real device circuit: no closed form here predicts it.
+        "checks": [],
+        "readout": {
+            "headline": metric("loop_gain_db", "open-loop gain", "db", "dB"),
+            "stats": [
+                metric("f_crossover", "unity-gain BW", "eng", "Hz"),
+                metric("phase_margin", "phase margin", "deg"),
+                metric("power", "power", "eng", "W"),
+                metric("out_dc", "output DC", "eng", "V"),
+            ],
+            "markers": [{"key": "f_crossover", "label": "0dB"}],
+        },
+        "design": {
+            "tunable": ["ibias", "l", "wpair", "wload"],
+            "seed": ota_seed,
+            "goals": [
+                goal("loop_gain_db", "open-loop gain", ">=", "dB", 35.0),
+                goal("f_crossover", "unity-gain BW", ">=", "Hz", 5e6),
+                goal("phase_margin", "phase margin", ">=", "deg", 60.0),
+                goal("power", "power", "<=", "W", 1e-4),
+            ],
+        },
+    },
+
     "opamp_two_stage": {
         "id": "opamp_two_stage",
         "name": "Op-amp (SKY130)",
@@ -1122,6 +1275,7 @@ CIRCUIT_ORDER = [
     "twopole_amp",
     "nfet_cs_amp",
     "opamp_two_stage",
+    "ota_5t",
 ]
 
 
@@ -1244,6 +1398,31 @@ def _run_ac(circuit, params):
     return circuit["measure"](
         bodes if declares else bodes[0], params, stdout
     )
+
+
+def build_netlist_preview(circuit_id, params):
+    """The exact netlist these values produce, without running it.
+
+    Data-file paths are shown as placeholder names, because the real ones are
+    throwaway temp files chosen at run time.
+    """
+    circuit = get_circuit(circuit_id)
+    values = dict(params)
+
+    if circuit["analysis"] == "dc":
+        return circuit["build"](values)
+
+    fstart, fstop = sweep_range(
+        circuit["centre"](values), circuit.get("decades")
+    )
+    count = circuit.get("outputs", 1)
+    placeholders = [
+        "response.data" if count == 1 else "response%d.data" % (index + 1)
+        for index in range(count)
+    ]
+    if "outputs" in circuit:
+        return circuit["build"](values, fstart, fstop, placeholders)
+    return circuit["build"](values, fstart, fstop, placeholders[0])
 
 
 def simulate(circuit_id, params):
