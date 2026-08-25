@@ -1,4 +1,4 @@
-/* Faradaem 1.3.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.4.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -109,7 +109,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.3.0";
+  --app-version: "v1.4.0";
 }
 
 *,
@@ -164,8 +164,11 @@ input {
   outline-color: var(--text);
 }
 
+/* The one utility that has to win. Any rule setting display later in this
+   file would otherwise beat it at equal specificity, which is how a badge
+   marked hidden went on rendering as an empty box next to the reading. */
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .placeholder {
@@ -952,12 +955,26 @@ input {
   line-height: var(--lh-label);
 }
 
-.design-best .goal-label {
+/* Label and value pairs, where a run reports two columns rather than the
+   four a design search reports. Both are grids whose cells are direct
+   children: wrapping a pair in a div puts them in one cell, on top of
+   each other. */
+.metric-pairs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--s1) var(--s3);
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+}
+
+.goal-label {
   color: var(--muted);
   letter-spacing: var(--ls-small);
 }
 
-.design-best .goal-value {
+.goal-value {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -1034,6 +1051,82 @@ input {
 
 .robust-table td.is-bad {
   color: var(--err);
+}
+
+/* ---- the analysis section ------------------------------------------- */
+
+/* The four deeper analyses, one at a time, across the full width. They are
+   not part of setting a circuit up, so they sit below the form that does,
+   and each one that draws something keeps its plot beside its numbers. */
+.analysis {
+  margin-top: var(--s6);
+  padding-top: var(--s5);
+  border-top: var(--hairline);
+  scroll-margin-top: calc(var(--s6) + var(--s4));
+}
+
+.analysis-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+}
+
+.analysis-tab {
+  padding: var(--s2) var(--s3);
+  background: none;
+  border: var(--hairline-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--step) ease, border-color var(--step) ease,
+              background var(--step) ease;
+}
+
+.analysis-tab:hover {
+  color: var(--text);
+  border-color: var(--line-hover);
+}
+
+.analysis-tab[aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* A pane with a plot puts the controls beside it rather than above it, so
+   the numbers and the picture they came from are read together. */
+.analysis-pane {
+  display: grid;
+  grid-template-columns: minmax(var(--col-min), var(--col-max)) 1fr;
+  gap: var(--s5);
+  align-items: start;
+}
+
+.analysis-pane > * {
+  min-width: 0;
+}
+
+.analysis-pane .panel {
+  margin-top: 0;
+}
+
+/* Design and robustness draw nothing to put beside their controls, so they
+   are single column. The corner table earns the full width; a column of
+   single-number fields does not, so that one keeps a form's measure. */
+#pane-design,
+#pane-robust {
+  grid-template-columns: 1fr;
+}
+
+#pane-design .panel {
+  max-width: 46rem;
 }
 
 /* ---- the paper figures ----------------------------------------------- */
@@ -1613,7 +1706,8 @@ input {
 /* ---- narrow ---------------------------------------------------------------- */
 
 @media (max-width: 900px) {
-  .sim {
+  .sim,
+  .analysis-pane {
     grid-template-columns: 1fr;
   }
 

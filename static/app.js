@@ -694,16 +694,12 @@
   }
 
   function renderDesignPanel() {
-    if (isStatic) {
-      show(designPanel, false);
-      return;
-    }
+    // Visibility belongs to the tab controller; this only fills the panel.
     designIdle();
     clear(designGoalsEl);
     designInputs = {};
 
     var block = current.design;
-    show(designPanel, Boolean(block));
     if (!block) {
       return;
     }
@@ -1283,7 +1279,6 @@
     show(stepError, false);
     clear(stepMetrics);
     show(stepFigure, false);
-    show(stepPanel, Boolean(current.step) && !isStatic);
   }
 
   function stepValue(spec, result) {
@@ -1306,21 +1301,17 @@
   function renderStepResult(result) {
     clear(stepMetrics);
     (current.step.readout || []).forEach(function (spec) {
-      var row = el("div");
-      row.appendChild(el("span", "goal-label", spec.label));
-      row.appendChild(el("span", "goal-value", stepValue(spec, result)));
-      stepMetrics.appendChild(row);
+      stepMetrics.appendChild(el("span", "goal-label", spec.label));
+      stepMetrics.appendChild(el("span", "goal-value", stepValue(spec, result)));
     });
 
     // Both edges, because the reported rate is the worse of the two and the
     // reader should be able to see which one that was.
     if (result.slew_rise && result.slew_fall) {
-      var edges = el("div");
-      edges.appendChild(el("span", "goal-label", "rising / falling"));
-      edges.appendChild(el("span", "goal-value",
+      stepMetrics.appendChild(el("span", "goal-label", "rising / falling"));
+      stepMetrics.appendChild(el("span", "goal-value",
         (result.slew_rise / 1e6).toFixed(3) + "  /  "
         + (result.slew_fall / 1e6).toFixed(3) + " V/µs"));
-      stepMetrics.appendChild(edges);
     }
 
     stepCaption.textContent = (current.step && current.step.caption) || "";
@@ -1387,30 +1378,25 @@
     show(sheetError, false);
     clear(sheetMetrics);
     show(sheetFigure, false);
-    show(sheetPanel, Boolean(current.datasheet) && !isStatic);
   }
 
   function renderSheetResult(result) {
     clear(sheetMetrics);
     (current.datasheet.readout || []).forEach(function (spec) {
       var raw = result[spec.key];
-      var row = el("div");
-      row.appendChild(el("span", "goal-label", spec.label));
-      row.appendChild(el("span", "goal-value",
+      sheetMetrics.appendChild(el("span", "goal-label", spec.label));
+      sheetMetrics.appendChild(el("span", "goal-value",
         typeof raw === "number" && isFinite(raw)
           ? window.formatEngineering(raw, spec.unit || "")
           : "\u2014"));
-      sheetMetrics.appendChild(row);
     });
 
     // The range is two numbers, and which end it ran out at is the useful
     // half of the answer.
-    var span = el("div");
-    span.appendChild(el("span", "goal-label", "follows from"));
-    span.appendChild(el("span", "goal-value",
+    sheetMetrics.appendChild(el("span", "goal-label", "follows from"));
+    sheetMetrics.appendChild(el("span", "goal-value",
       result.input_low.toFixed(3) + " V to " + result.input_high.toFixed(3)
       + " V, on a " + result.supply.toFixed(2) + " V supply"));
-    sheetMetrics.appendChild(span);
 
     sheetCaption.textContent =
       (current.datasheet && current.datasheet.caption) || "";
@@ -1485,12 +1471,7 @@
   }
 
   function renderRobustPanel() {
-    if (isStatic) {
-      show(robustPanel, false);
-      return;
-    }
     robustIdle();
-    show(robustPanel, Boolean(current.pdk));
   }
 
   function robustValue(value) {
@@ -1703,6 +1684,78 @@
 
   window.addEventListener("resize", refitFigures);
 
+
+  /* ---- the analysis tabs -------------------------------------------------- */
+
+  /* The four deeper analyses share one strip below the form. Which of them
+     a circuit offers varies: only designable circuits can be designed to a
+     spec, only the SKY130 amplifiers have a step or a rejection testbench,
+     and only PDK circuits have corners. The strip is built from that, so a
+     tab never appears for something the circuit cannot do. */
+  var ANALYSES = [
+    { key: "design", label: "Design to spec",
+      available: function () { return Boolean(current.design); } },
+    { key: "step", label: "Step response",
+      available: function () { return Boolean(current.step); } },
+    { key: "sheet", label: "Rejection and range",
+      available: function () { return Boolean(current.datasheet); } },
+    { key: "robust", label: "Robustness",
+      available: function () { return Boolean(current.pdk); } }
+  ];
+
+  var analysisSection = id("analysis");
+  var analysisTabs = id("analysis-tabs");
+  var openAnalysis = null;
+
+  function showAnalysis(key) {
+    openAnalysis = key;
+    ANALYSES.forEach(function (item) {
+      show(id("pane-" + item.key), item.key === key);
+    });
+    Array.prototype.forEach.call(
+      analysisTabs.querySelectorAll(".analysis-tab"),
+      function (button) {
+        button.setAttribute("aria-selected",
+          button.getAttribute("data-analysis") === key ? "true" : "false");
+      }
+    );
+    // A plot drawn while its pane was hidden measured zero width, so it is
+    // redrawn on the way in, when the element finally has a size.
+    if (key === "step" && lastStep) {
+      window.drawStep(id("step-plot"), lastStep);
+    }
+    if (key === "sheet" && lastSheet) {
+      window.drawTransfer(id("sheet-plot"), lastSheet);
+    }
+  }
+
+  function renderAnalysis() {
+    clear(analysisTabs);
+    var offered = isStatic ? [] : ANALYSES.filter(function (item) {
+      return item.available();
+    });
+
+    show(analysisSection, offered.length > 0);
+    if (!offered.length) {
+      ANALYSES.forEach(function (item) { show(id("pane-" + item.key), false); });
+      openAnalysis = null;
+      return;
+    }
+
+    offered.forEach(function (item) {
+      var button = el("button", "analysis-tab", item.label);
+      button.type = "button";
+      button.setAttribute("role", "tab");
+      button.setAttribute("data-analysis", item.key);
+      button.addEventListener("click", function () { showAnalysis(item.key); });
+      analysisTabs.appendChild(button);
+    });
+
+    // Keep the open tab across a circuit change when the new circuit has it.
+    var keys = offered.map(function (item) { return item.key; });
+    showAnalysis(keys.indexOf(openAnalysis) === -1 ? keys[0] : openAnalysis);
+  }
+
   /* ---- selection --------------------------------------------------------- */
 
   function select(circuitId) {
@@ -1728,6 +1781,7 @@
     renderStepPanel();
     renderSheetPanel();
     renderRobustPanel();
+    renderAnalysis();
     hideNetlist();
     validate();
     dismissError();
@@ -1788,12 +1842,7 @@
     runLabel.textContent = "Simulation runs on your machine";
     show(netlistToggle, false);
     show(id("advise"), false);
-    show(designPanel, false);
-    show(id("robust"), false);
-    show(stepPanel, false);
-    show(stepFigure, false);
-    show(sheetPanel, false);
-    show(sheetFigure, false);
+    renderAnalysis();
   }
 
   async function start() {

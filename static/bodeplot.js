@@ -17,6 +17,8 @@
   //: measured at draw time, so nothing is scaled up and no text stretches.
   var VIEW = { width: 520, height: 360 };
   var MIN_WIDTH = 400;
+  //: The height of the box before there is anything to draw in it.
+  var EMPTY_HEIGHT = 96;
   var MAX_WIDTH = 1000;
   //: Top margin holds two staggered rows of marker labels. The left margin
   //: holds the tick values and, outside them, the rotated axis title.
@@ -180,6 +182,10 @@
     svg.setAttribute("role", "img");
 
     if (freq.length < 2 || magDb.length !== freq.length) {
+      // Nothing to plot yet, so do not reserve a full plot's worth of empty
+      // ground for it: a strip with the invitation in it is enough.
+      view.height = EMPTY_HEIGHT;
+      svg.setAttribute("viewBox", "0 0 " + view.width + " " + view.height);
       svg.setAttribute("aria-label", "Frequency response plot, no data yet.");
       text(svg, {
         x: view.width / 2,

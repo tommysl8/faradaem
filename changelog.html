@@ -54,6 +54,20 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.4.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>The page had grown wrong. Every analysis stacked under the form that only sets a circuit up, so the left column ran 6356 pixels against a 962 pixel right one and the whole page was 9262 pixels tall. The four analyses now share one tabbed section below the form, one open at a time, and the page is 2452 pixels: a bit over a quarter of what it was, with nothing removed.</li>
+            <li>Each analysis that draws something now keeps its plot beside its own numbers instead of a column away. Only the tabs a circuit can answer appear, so a resistor divider shows none and the SKY130 amplifiers show all four.</li>
+            <li>A badge marked hidden had been rendering anyway, as a small empty box next to every reading, and the statistics row was holding thirteen pixels of space while hidden. Both were the same fault: a utility class that says display none can be beaten by any rule further down the file at equal specificity. It cannot be beaten now, and a test says so.</li>
+            <li>The step and rejection panels had been drawing every label on top of its own value. Their rows were wrapped in a div, which put both halves of a pair into a single cell of a grid that lays out its own children. The numbers were correct and unreadable. They are cells now, and a test refuses a wrapper in either renderer.</li>
+            <li>An empty frequency plot no longer reserves a full plot of empty ground before there is anything to draw in it.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">1.3.0</span>
             <span class="entry-date">2026-08-24</span>
           </header>

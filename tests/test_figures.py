@@ -41,6 +41,55 @@ def test_a_wide_drawing_cannot_push_the_page():
     assert "min-width: 0;" in block[:80]
 
 
+def test_the_analyses_live_in_one_tabbed_section():
+    """They are not part of setting a circuit up, so they sit below the form
+    that is, one at a time. Stacked, they made the left column 6356 pixels
+    against a 962 pixel right one."""
+    page = read("index.html")
+    assert '<section class="analysis hidden" id="analysis"' in page
+    for key in ("design", "step", "sheet", "robust"):
+        assert '<div class="analysis-pane hidden" id="pane-%s">' % key in page
+        # The panel inside must not carry its own hidden class: the pane
+        # owns visibility now, and two owners means neither works.
+        panel = page[page.index('id="pane-%s"' % key):]
+        head = panel[:panel.index(">", panel.index("<section"))]
+        assert "hidden" not in head, key
+
+    app = read("static/app.js")
+    assert "function renderAnalysis()" in app
+    assert "function showAnalysis(" in app
+    # A plot drawn while its pane was hidden measures zero width, so it has
+    # to be drawn again on the way in.
+    reveal = app.split("function showAnalysis")[1][:900]
+    assert "drawStep" in reveal and "drawTransfer" in reveal
+
+
+def test_the_hidden_utility_cannot_be_overridden():
+    """At equal specificity a later display wins, which is how a badge
+    marked hidden went on rendering as an empty box beside the reading."""
+    css = read("static/style.css")
+    block = css[css.index(".hidden {"):]
+    assert "display: none !important;" in block[:60]
+
+
+def test_metric_pairs_are_cells_not_wrapped_rows():
+    """The grid lays out its own children. A pair wrapped in a div lands in
+    one cell with the label and the value drawn on top of each other."""
+    css = read("static/style.css")
+    grid = css[css.index(".metric-pairs {"):]
+    assert "display: grid;" in grid[:120]
+    assert "grid-template-columns: max-content 1fr;" in grid[:200]
+
+    app = read("static/app.js")
+    for container in ("stepMetrics", "sheetMetrics"):
+        assert container + '.appendChild(el("span", "goal-label"' in app
+        assert container + '.appendChild(el("span", "goal-value"' in app
+    # No wrapper survives in either renderer.
+    for renderer in ("renderStepResult", "renderSheetResult"):
+        body = app.split("function " + renderer)[1][:1200]
+        assert 'el("div")' not in body, renderer
+
+
 def test_the_scale_band_has_both_limits():
     """Growth stops so small circuits do not fill the column; shrinking
     stops so dense ones stay readable."""

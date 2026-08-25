@@ -72,10 +72,17 @@ def test_the_page_falls_back_to_the_published_catalogue():
     text = open(app, encoding="utf-8").read()
     assert 'fetch("catalogue.json")' in text
     assert "applyStaticMode" in text
-    # Static mode must put away everything that needs a measured number.
-    for element in ('id("advise")', "designPanel", 'id("robust")',
-                    "netlistToggle"):
-        assert element in text.split("function applyStaticMode")[1][:600]
+    # Static mode must put away everything that needs a measured number:
+    # the strategist, the netlist reader, and every analysis. The four
+    # analyses live behind one section now, so hiding them is one call.
+    body = text.split("function applyStaticMode")[1][:800]
+    for element in ('id("advise")', "netlistToggle", "renderAnalysis()"):
+        assert element in body, element
+
+    # And that call must actually be able to hide them all.
+    strip = text.split("function renderAnalysis")[1][:600]
+    assert "isStatic ? []" in strip
+    assert "show(analysisSection" in strip
 
 
 def test_the_host_configuration_builds_the_same_directory():

@@ -108,93 +108,6 @@
           <pre class="netlist-pre hidden" id="netlist-view"></pre>
         </div>
       </form>
-
-      <section class="panel design-panel hidden" id="design" aria-label="Design to spec">
-        <h2 class="panel-head">Design to spec</h2>
-        <div class="panel-body">
-          <p class="design-intro">Set targets, then start the search. Every step is a
-          real ngspice run, so the SKY130 circuits take minutes, not seconds.</p>
-          <div id="design-goals"></div>
-          <div class="design-actions">
-            <button class="run hidden" id="design-generate" type="button"><span id="design-generate-label">Generate design from specs</span></button>
-            <button class="chip design-secondary" id="design-start" type="button"><span id="design-start-label">Optimize from current values</span></button>
-          </div>
-          <div class="design-progress hidden" id="design-progress">
-            <div class="design-statusline">
-              <span id="design-state">Running</span>
-              <span class="design-evals" id="design-evals"></span>
-              <button class="chip" id="design-stop" type="button">Stop</button>
-            </div>
-            <div class="design-best" id="design-best"></div>
-            <p class="design-reason hidden" id="design-reason"></p>
-            <button class="chip design-apply hidden" id="design-apply" type="button">Apply result and run</button>
-          </div>
-          <p class="field-error hidden" id="design-error"></p>
-        </div>
-      </section>
-
-      <section class="panel design-panel hidden" id="step" aria-label="Step response">
-        <h2 class="panel-head">Step response</h2>
-        <div class="panel-body">
-          <p class="design-intro">A sweep measures the amplifier being polite.
-          This asks how fast it can actually move: the same circuit as a unity
-          buffer, hit with a 0.3 V step, up and back down. One transient run,
-          about twenty seconds.</p>
-          <div class="design-actions">
-            <button class="chip" id="step-run" type="button">Run step response</button>
-          </div>
-          <div class="design-progress hidden" id="step-progress">
-            <div class="design-statusline">
-              <span id="step-state">Running</span>
-            </div>
-            <div class="design-best" id="step-metrics"></div>
-          </div>
-          <p class="field-error hidden" id="step-error"></p>
-        </div>
-      </section>
-
-      <section class="panel design-panel hidden" id="sheet" aria-label="Rejection and range">
-        <h2 class="panel-head">Rejection and range</h2>
-        <div class="panel-body">
-          <p class="design-intro">The rest of the datasheet: how well the
-          amplifier ignores what both inputs do together and what its supply
-          does, and how far its input and output can travel before it stops
-          working. Four copies of the circuit in one run, about half a minute.</p>
-          <div class="design-actions">
-            <button class="chip" id="sheet-run" type="button">Run rejection and range</button>
-          </div>
-          <div class="design-progress hidden" id="sheet-progress">
-            <div class="design-statusline">
-              <span id="sheet-state">Running</span>
-            </div>
-            <div class="design-best" id="sheet-metrics"></div>
-          </div>
-          <p class="field-error hidden" id="sheet-error"></p>
-        </div>
-      </section>
-
-      <section class="panel robust-panel hidden" id="robust" aria-label="Robustness">
-        <h2 class="panel-head">Robustness</h2>
-        <div class="panel-body">
-          <p class="design-intro">One working simulation is a demonstration. These
-          rerun the same circuit across process corners, supply and temperature, or
-          across mismatch samples. Every row is a full simulation; expect minutes.</p>
-          <div class="design-actions">
-            <button class="chip" id="robust-pvt" type="button">Run PVT corners (11 simulations)</button>
-            <button class="chip" id="robust-mc" type="button">Run Monte Carlo (20 samples)</button>
-          </div>
-          <div class="design-progress hidden" id="robust-progress">
-            <div class="design-statusline">
-              <span id="robust-state">Running</span>
-              <span class="design-evals" id="robust-count"></span>
-              <button class="chip" id="robust-stop" type="button">Stop</button>
-            </div>
-            <div class="robust-table" id="robust-table"></div>
-          </div>
-          <p class="field-error hidden" id="robust-error"></p>
-        </div>
-      </section>
-
       </div>
 
       <section class="sim-figure" aria-label="Schematic and result">
@@ -215,19 +128,7 @@
           <svg id="bode" viewBox="0 0 520 360"></svg>
         </figure>
 
-        <figure class="figure hidden" id="sheet-panel">
-          <svg id="sheet-plot" viewBox="0 0 520 260"></svg>
-          <figcaption>
-            <span id="sheet-caption"></span>
-          </figcaption>
-        </figure>
 
-        <figure class="figure hidden" id="step-panel">
-          <svg id="step-plot" viewBox="0 0 520 260"></svg>
-          <figcaption>
-            <span id="step-caption"></span>
-          </figcaption>
-        </figure>
 
         <h2 class="section-label">Measurement</h2>
 
@@ -258,6 +159,121 @@
       </section>
 
     </div>
+
+    <section class="analysis hidden" id="analysis" aria-label="Analysis">
+      <h2 class="section-label">Analysis</h2>
+      <div class="analysis-tabs" role="tablist" aria-label="Analysis"
+           id="analysis-tabs"></div>
+      <div class="analysis-body" id="analysis-body">
+
+        <div class="analysis-pane hidden" id="pane-design">
+          <section class="panel design-panel" id="design" aria-label="Design to spec">
+            <h2 class="panel-head">Design to spec</h2>
+            <div class="panel-body">
+              <p class="design-intro">Set targets, then start the search. Every step is a
+              real ngspice run, so the SKY130 circuits take minutes, not seconds.</p>
+              <div id="design-goals"></div>
+              <div class="design-actions">
+                <button class="run hidden" id="design-generate" type="button"><span id="design-generate-label">Generate design from specs</span></button>
+                <button class="chip design-secondary" id="design-start" type="button"><span id="design-start-label">Optimize from current values</span></button>
+              </div>
+              <div class="design-progress hidden" id="design-progress">
+                <div class="design-statusline">
+                  <span id="design-state">Running</span>
+                  <span class="design-evals" id="design-evals"></span>
+                  <button class="chip" id="design-stop" type="button">Stop</button>
+                </div>
+                <div class="design-best" id="design-best"></div>
+                <p class="design-reason hidden" id="design-reason"></p>
+                <button class="chip design-apply hidden" id="design-apply" type="button">Apply result and run</button>
+              </div>
+              <p class="field-error hidden" id="design-error"></p>
+            </div>
+          </section>
+        </div>
+
+        <div class="analysis-pane hidden" id="pane-step">
+          <section class="panel design-panel" id="step" aria-label="Step response">
+            <h2 class="panel-head">Step response</h2>
+            <div class="panel-body">
+              <p class="design-intro">A sweep measures the amplifier being polite.
+              This asks how fast it can actually move: the same circuit as a unity
+              buffer, hit with a 0.3 V step, up and back down. One transient run,
+              about twenty seconds.</p>
+              <div class="design-actions">
+                <button class="chip" id="step-run" type="button">Run step response</button>
+              </div>
+              <div class="design-progress hidden" id="step-progress">
+                <div class="design-statusline">
+                  <span id="step-state">Running</span>
+                </div>
+                <div class="metric-pairs" id="step-metrics"></div>
+              </div>
+              <p class="field-error hidden" id="step-error"></p>
+            </div>
+          </section>
+          <figure class="figure hidden" id="step-panel">
+            <svg id="step-plot" viewBox="0 0 520 260"></svg>
+            <figcaption>
+              <span id="step-caption"></span>
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="analysis-pane hidden" id="pane-sheet">
+          <section class="panel design-panel" id="sheet" aria-label="Rejection and range">
+            <h2 class="panel-head">Rejection and range</h2>
+            <div class="panel-body">
+              <p class="design-intro">The rest of the datasheet: how well the
+              amplifier ignores what both inputs do together and what its supply
+              does, and how far its input and output can travel before it stops
+              working. Four copies of the circuit in one run, about half a minute.</p>
+              <div class="design-actions">
+                <button class="chip" id="sheet-run" type="button">Run rejection and range</button>
+              </div>
+              <div class="design-progress hidden" id="sheet-progress">
+                <div class="design-statusline">
+                  <span id="sheet-state">Running</span>
+                </div>
+                <div class="metric-pairs" id="sheet-metrics"></div>
+              </div>
+              <p class="field-error hidden" id="sheet-error"></p>
+            </div>
+          </section>
+          <figure class="figure hidden" id="sheet-panel">
+            <svg id="sheet-plot" viewBox="0 0 520 260"></svg>
+            <figcaption>
+              <span id="sheet-caption"></span>
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="analysis-pane hidden" id="pane-robust">
+          <section class="panel robust-panel" id="robust" aria-label="Robustness">
+            <h2 class="panel-head">Robustness</h2>
+            <div class="panel-body">
+              <p class="design-intro">One working simulation is a demonstration. These
+              rerun the same circuit across process corners, supply and temperature, or
+              across mismatch samples. Every row is a full simulation; expect minutes.</p>
+              <div class="design-actions">
+                <button class="chip" id="robust-pvt" type="button">Run PVT corners (11 simulations)</button>
+                <button class="chip" id="robust-mc" type="button">Run Monte Carlo (20 samples)</button>
+              </div>
+              <div class="design-progress hidden" id="robust-progress">
+                <div class="design-statusline">
+                  <span id="robust-state">Running</span>
+                  <span class="design-evals" id="robust-count"></span>
+                  <button class="chip" id="robust-stop" type="button">Stop</button>
+                </div>
+                <div class="robust-table" id="robust-table"></div>
+              </div>
+              <p class="field-error hidden" id="robust-error"></p>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </section>
   </div>
 </main>
 
