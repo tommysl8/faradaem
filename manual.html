@@ -451,23 +451,31 @@
             no wells and no routing in the file yet.
           </p>
           <p>
-            The geometry is then checked against five rules read from the same
+            The geometry is then checked against eight rules read from the same
             technology file: the minimum width of poly and of diffusion, the
             spacing between two diffusions, the diffusion that has to overhang
-            the gate to make a source and a drain, and the poly that has to
-            overhang the diffusion so the channel is not shorted around the end
-            of the gate. The panel says how many rules were checked as well as
+            the gate to make a source and a drain, the poly that has to overhang
+            the diffusion so the channel is not shorted around the end of the
+            gate, and three for the n-well the p-channel devices sit in: its
+            minimum width, the spacing between two separate wells, and how far
+            it has to reach past the diffusion it holds. The panel says how many rules were checked as well as
             what passed, because a clean result means nothing without knowing
             how much was looked at.
           </p>
           <p>
-            <strong>Five rules is not sign-off.</strong> The real deck has
+            <strong>Eight rules is not sign-off.</strong> The real deck has
             thousands and needs Magic or KLayout. Geometry that passes here has
             passed five rules and has not been checked against the rest.
           </p>
           <p>
+            The devices are also grouped by type, NMOS then PMOS, which is not
+            cosmetic: two separate wells have to stay 1.27 microns apart, and
+            PMOS scattered through the row would put two of them 1.18 apart.
+            Grouped, they share one well.
+          </p>
+          <p>
             <strong>It is a floorplan, not a layout.</strong> Nothing in it has
-            been routed, design rule checked, or extracted. Those need Magic and
+            been routed or extracted. Those need Magic and
             Netgen, which do not run on this machine, and until they do the area
             is the area of this placement rather than of a layout anyone has
             drawn. Devices are also drawn as single fingers, so a wide transistor

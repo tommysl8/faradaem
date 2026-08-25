@@ -171,10 +171,14 @@ def test_the_device_list_matches_the_schematic():
     that the form can change has to reach the floorplan."""
     params = circuits.defaults("opamp_two_stage")
     devices = circuits.opamp_devices(params)
-    assert [name for name, _, _ in devices] == [
-        "M8", "M1", "M2", "M3", "M4", "M5", "M6", "M7"
+    # NMOS first, then the PMOS group, so the wells can merge into one.
+    assert [entry[0] for entry in devices] == [
+        "M8", "M1", "M2", "M5", "M7", "M3", "M4", "M6"
     ]
-    widths = {name: width for name, width, _ in devices}
+    assert [entry[3] for entry in devices] == (
+        ["nfet"] * 5 + ["pfet"] * 3
+    )
+    widths = {entry[0]: entry[1] for entry in devices}
     assert widths["M6"] == params["w6"]
     assert widths["M7"] == params["w7"]
     assert widths["M1"] == params["wpair"]
@@ -183,13 +187,13 @@ def test_the_device_list_matches_the_schematic():
 
 
 def test_every_net_names_devices_that_exist():
-    names = {name for name, _, _ in
+    names = {entry[0] for entry in
              circuits.opamp_devices(circuits.defaults("opamp_two_stage"))}
     for net, members in circuits.OPAMP_NETS.items():
         for member in members:
             assert member in names, (net, member)
 
-    ota_names = {name for name, _, _ in
+    ota_names = {entry[0] for entry in
                  circuits.ota_devices(circuits.defaults("ota_5t"))}
     for net, members in circuits.OTA_NETS.items():
         for member in members:

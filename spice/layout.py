@@ -55,6 +55,11 @@ RULE_TAGS = {
     "poly_endcap": r"overhang\s+\*poly\s+allfetsstd\S*\s+(\d+)\s+\"poly overhang",
     # Diffusion cannot be drawn thinner than this anywhere.
     "diff_width": r"width\s+\*ndiff\S*[^\n]*\n\s*(\d+)\s+\"Diffusion width",
+    # An n-well has to surround the p-diffusion it holds, and two wells
+    # have to stay apart unless they are the same well.
+    "nwell_surround": r"surround\s+\*pdiff\S*[^\n]*\s+(\d+)\s+absence_illegal",
+    "nwell_width": r"width\s+allnwell\s+(\d+)\s+\"N-well width",
+    "nwell_spacing": r"spacing\s+allnwell\s+allnwell\s+(\d+)\s+touching_ok",
 }
 
 #: Capacitance per unit area and per unit edge, in attofarads. Magic writes
@@ -174,6 +179,9 @@ def floorplan_shapes(plan, layers, tech):
     poly = layers["POLY"]
 
     shapes = []
+    for well in plan.get("wells", []):
+        shapes.append((layers["NWELL"][0], layers["NWELL"][1],
+                       well["x1"], well["y1"], well["x2"], well["y2"]))
     for device in plan["devices"]:
         x1 = device["x"]
         x2 = device["x"] + device["width"]
@@ -231,10 +239,13 @@ def floorplan(devices, tech):
 
     placed = []
     cursor = 0.0
-    for name, width_m, length_m in devices:
+    for entry in devices:
+        name, width_m, length_m = entry[0], entry[1], entry[2]
+        kind = entry[3] if len(entry) > 3 else "nfet"
         cell = device_footprint(width_m, length_m, tech)
         placed.append({
             "name": name,
+            "kind": kind,
             "x": cursor,
             "y": 0.0,
             "width": cell["along"],
@@ -246,8 +257,33 @@ def floorplan(devices, tech):
 
     span = cursor - tech["diff_spacing"]
     tallest = max(item["height"] for item in placed)
+
+    # One well around the whole PMOS group. They are placed together for
+    # this reason: two wells that are not the same well have to stay a rule
+    # apart, which a row alternating types cannot manage.
+    wells = []
+    pmos = [item for item in placed if item["kind"] == "pfet"]
+    if pmos:
+        margin = tech["nwell_surround"]
+        left = min(item["x"] for item in pmos) - margin
+        right = max(item["x"] + item["width"] for item in pmos) + margin
+        bottom = min(item["y"] for item in pmos) - margin
+        top = max(item["y"] + item["height"] for item in pmos) + margin
+        # A well below the minimum width is not a well.
+        if right - left < tech["nwell_width"]:
+            centre = (left + right) / 2.0
+            left = centre - tech["nwell_width"] / 2.0
+            right = centre + tech["nwell_width"] / 2.0
+        if top - bottom < tech["nwell_width"]:
+            centre = (bottom + top) / 2.0
+            bottom = centre - tech["nwell_width"] / 2.0
+            top = centre + tech["nwell_width"] / 2.0
+        wells.append({"x1": left, "y1": bottom, "x2": right, "y2": top,
+                      "holds": [item["name"] for item in pmos]})
+
     return {
         "devices": placed,
+        "wells": wells,
         "width_um": span,
         "height_um": tallest,
         "area_um2": span * tallest,

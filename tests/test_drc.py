@@ -5,7 +5,7 @@ unchecked geometry into geometry someone believes. So every rule here is
 tested twice: once against a shape that satisfies it, and once against a
 shape built specifically to break it.
 
-What is checked is five rules. What is not checked is the rest of the deck,
+What is checked is eight rules. What is not checked is the rest of the deck,
 which needs Magic or KLayout. The last test makes sure the result says so
 in its own words.
 """
@@ -14,7 +14,7 @@ import pytest
 
 from spice import circuits, drc, layout
 
-LAYERS = {"DIFF": (65, 20), "POLY": (66, 20)}
+LAYERS = {"DIFF": (65, 20), "POLY": (66, 20), "NWELL": (64, 20)}
 
 TECH = {
     "poly_width": 0.15,
@@ -22,7 +22,16 @@ TECH = {
     "diff_spacing": 0.27,
     "diff_overhang": 0.25,
     "poly_endcap": 0.13,
+    "nwell_width": 0.84,
+    "nwell_spacing": 1.27,
+    "nwell_surround": 0.18,
 }
+
+LAYERS_WITH_WELL = {"DIFF": (65, 20), "POLY": (66, 20), "NWELL": (64, 20)}
+
+
+def well(x1, y1, x2, y2):
+    return (64, 20, x1, y1, x2, y2)
 
 
 def device(x=0.0, width=1.0, height=10.0, gate=0.5, endcap=0.13, overhang=None):
@@ -63,7 +72,7 @@ def test_exactly_the_minimum_spacing_is_allowed():
 
 
 # ---------------------------------------------------------------------------
-# and the five ways it can be drawn wrong
+# and the ways it can be drawn wrong
 # ---------------------------------------------------------------------------
 
 
@@ -122,9 +131,10 @@ def test_overlapping_shapes_are_not_a_spacing_violation():
 
 def test_the_result_states_its_own_coverage():
     result = drc.check(device(), LAYERS, TECH)
-    assert len(result["rules_checked"]) == 5
+    assert len(result["rules_checked"]) == 8
     assert {item["tag"] for item in result["rules_checked"]} == {
-        "poly.1a", "diff/tap.1", "diff/tap.3", "poly.7", "poly.8"
+        "poly.1a", "diff/tap.1", "diff/tap.3", "poly.7", "poly.8",
+        "nwell.1", "nwell.2a", "nwell.5"
     }
     coverage = result["coverage"].lower()
     assert "not the sign-off deck" in coverage
@@ -174,3 +184,54 @@ def test_a_minimum_length_device_still_passes():
     plan = layout.floorplan([("M1", 0.42e-6, 0.15e-6)], tech)
     shapes = layout.floorplan_shapes(plan, layers, tech)
     assert drc.check(shapes, layers, tech)["clean"]
+
+
+# ---------------------------------------------------------------------------
+# the well the p-channel devices sit in
+# ---------------------------------------------------------------------------
+
+
+def test_a_pmos_in_a_proper_well_passes():
+    diff = (65, 20, 1.0, 1.0, 2.0, 11.0)
+    shapes = [diff, (66, 20, 1.25, 0.87, 1.75, 11.13),
+              well(0.82, 0.82, 2.18, 11.18)]
+    result = drc.check(shapes, LAYERS_WITH_WELL, TECH,
+                       pmos=[(1.0, 1.0, 2.0, 11.0)])
+    assert result["clean"], result["violations"]
+
+
+def test_a_pmos_outside_any_well_is_caught():
+    """A p-channel device drawn in the substrate is not a device."""
+    shapes = device(x=1.0)
+    result = drc.check(shapes, LAYERS_WITH_WELL, TECH,
+                       pmos=[(1.0, 0.0, 2.0, 10.0)])
+    assert "nwell.5" in tags(result)
+
+
+def test_a_well_that_does_not_reach_far_enough_is_caught():
+    diff = (65, 20, 1.0, 1.0, 2.0, 11.0)
+    shapes = [diff, well(0.95, 0.82, 2.18, 11.18)]     # only 0.05 on the left
+    result = drc.check(shapes, LAYERS_WITH_WELL, TECH,
+                       pmos=[(1.0, 1.0, 2.0, 11.0)])
+    broken = [v for v in result["violations"] if v["tag"] == "nwell.5"]
+    assert broken
+    assert broken[0]["measured_um"] == pytest.approx(0.05)
+
+
+def test_a_well_narrower_than_the_minimum_is_caught():
+    shapes = [well(0.0, 0.0, 0.5, 10.0)]               # 0.5 against 0.84
+    assert "nwell.1" in tags(drc.check(shapes, LAYERS_WITH_WELL, TECH))
+
+
+def test_two_wells_too_close_are_caught():
+    shapes = [well(0.0, 0.0, 1.0, 10.0), well(1.5, 0.0, 2.5, 10.0)]
+    result = drc.check(shapes, LAYERS_WITH_WELL, TECH)
+    assert "nwell.2a" in tags(result)
+
+
+def test_one_merged_well_is_not_two_wells_too_close():
+    """Overlapping wells are the same well, which is why the PMOS are
+    placed together in the first place."""
+    shapes = [well(0.0, 0.0, 1.0, 10.0), well(0.9, 0.0, 2.0, 10.0)]
+    result = drc.check(shapes, LAYERS_WITH_WELL, TECH)
+    assert "nwell.2a" not in tags(result)

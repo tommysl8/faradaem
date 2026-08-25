@@ -1225,28 +1225,34 @@ def measure_nfet_cs_amp(bode, params, stdout=None):
 
 
 def opamp_devices(params):
-    """The eight transistors of the two-stage op-amp, in schematic order."""
+    """The eight transistors of the two-stage op-amp, with their types.
+
+    M3, M4 and M6 are the PMOS: the mirror load and the second stage driver.
+    The rest are NMOS. The floorplan groups them by type, because every PMOS
+    needs an n-well and wells that are not the same well have to stay 1.27
+    microns apart, which a row alternating types cannot do.
+    """
     return [
-        ("M8", OPAMP_W8, params["l"]),
-        ("M1", params["wpair"], params["l"]),
-        ("M2", params["wpair"], params["l"]),
-        ("M3", params["wload"], params["l"]),
-        ("M4", params["wload"], params["l"]),
-        ("M5", OPAMP_W5, params["l"]),
-        ("M6", params["w6"], params["l"]),
-        ("M7", params["w7"], params["l"]),
+        ("M8", OPAMP_W8, params["l"], "nfet"),
+        ("M1", params["wpair"], params["l"], "nfet"),
+        ("M2", params["wpair"], params["l"], "nfet"),
+        ("M5", OPAMP_W5, params["l"], "nfet"),
+        ("M7", params["w7"], params["l"], "nfet"),
+        ("M3", params["wload"], params["l"], "pfet"),
+        ("M4", params["wload"], params["l"], "pfet"),
+        ("M6", params["w6"], params["l"], "pfet"),
     ]
 
 
 def ota_devices(params):
-    """The six transistors of the OTA, bias diode included."""
+    """The six transistors of the OTA, NMOS first then the mirror load."""
     return [
-        ("M8", OPAMP_W8, params["l"]),
-        ("M1", params["wpair"], params["l"]),
-        ("M2", params["wpair"], params["l"]),
-        ("M3", params["wload"], params["l"]),
-        ("M4", params["wload"], params["l"]),
-        ("M5", OPAMP_W5, params["l"]),
+        ("M8", OPAMP_W8, params["l"], "nfet"),
+        ("M1", params["wpair"], params["l"], "nfet"),
+        ("M2", params["wpair"], params["l"], "nfet"),
+        ("M5", OPAMP_W5, params["l"], "nfet"),
+        ("M3", params["wload"], params["l"], "pfet"),
+        ("M4", params["wload"], params["l"], "pfet"),
     ]
 
 
@@ -2105,7 +2111,10 @@ def run_layout(circuit_id, params):
     try:
         layers = layout.gds_layers()
         shapes = layout.floorplan_shapes(plan, layers, tech)
-        checked = drc.check(shapes, layers, tech)
+        pmos = [(item["x"], item["y"],
+                 item["x"] + item["width"], item["y"] + item["height"])
+                for item in plan["devices"] if item.get("kind") == "pfet"]
+        checked = drc.check(shapes, layers, tech, pmos=pmos)
         stream = layout.floorplan_gds(plan, name=circuit_id.upper())
         encoded = base64.b64encode(stream).decode("ascii")
     except layout.LayoutDataError:

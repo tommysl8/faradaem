@@ -225,8 +225,10 @@ def test_a_real_floorplan_writes_a_readable_file():
     stream = layout.floorplan_gds(plan)
 
     shapes = boundaries(stream)
-    assert len(shapes) == 16                    # eight devices, two layers
-    assert {layer for layer, _, _ in shapes} == {65, 66}
+    # Eight devices on two layers, plus the one well the PMOS group shares.
+    assert len(shapes) == 17
+    assert {layer for layer, _, _ in shapes} == {64, 65, 66}
+    assert sum(1 for layer, _, _ in shapes if layer == 64) == 1
 
     # The widest device is forty microns, so some boundary has to be.
     tallest = max(max(y for _, y in points) - min(y for _, y in points)

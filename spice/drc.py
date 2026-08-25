@@ -9,10 +9,11 @@ checked so the coverage is never mistaken for the whole.
 The point is the difference between geometry nobody has looked at and
 geometry checked against the numbers it was supposed to satisfy. A drawing
 that has not been checked is a drawing; one that has been checked against
-five rules is a drawing that satisfies five rules, and says so.
+eight rules is a drawing that satisfies eight rules, and says so.
 
 Each rule carries the tag the foundry writes in its own error message
-(diff/tap.1, poly.1a, poly.7, poly.8), so a violation can be looked up.
+(diff/tap.1, poly.1a, poly.7, poly.8, nwell.1, nwell.2a, nwell.5), so a
+violation can be looked up.
 """
 
 from . import layout
@@ -25,6 +26,9 @@ CHECKED_RULES = (
     ("diff_spacing", "diff/tap.3", "minimum diffusion spacing"),
     ("diff_overhang", "poly.7", "diffusion overhang of the transistor"),
     ("poly_endcap", "poly.8", "poly overhang of the transistor"),
+    ("nwell_width", "nwell.1", "minimum n-well width"),
+    ("nwell_spacing", "nwell.2a", "minimum spacing between separate n-wells"),
+    ("nwell_surround", "nwell.5", "n-well surround of the p-diffusion in it"),
 )
 
 #: A dimension is allowed to be this far under a rule before it counts as a
@@ -148,7 +152,65 @@ def check_transistor_overhangs(shapes, layers, tech):
     return found
 
 
-def check(shapes, layers=None, tech=None):
+def check_wells(shapes, layers, tech, pmos=None):
+    """Wells must be wide enough, far enough apart, and actually surround
+    what they hold.
+
+    pmos is the diffusion the well is there for. Without it the surround
+    cannot be checked, and the result says only what it did check.
+    """
+    found = []
+    wells = [_rect(s) for s in shapes if s[0] == layers["NWELL"][0]]
+
+    for well in wells:
+        narrowest = min(well[2] - well[0], well[3] - well[1])
+        if _short(narrowest, tech["nwell_width"]):
+            found.append(_violation(
+                "nwell_width", "nwell.1", "the well is narrower than a well "
+                "may be", narrowest, tech["nwell_width"], list(well)
+            ))
+
+    for index, first in enumerate(wells):
+        for second in wells[index + 1:]:
+            gap_x = max(second[0] - first[2], first[0] - second[2])
+            gap_y = max(second[1] - first[3], first[1] - second[3])
+            if gap_x <= 0 and gap_y <= 0:
+                continue                      # the same well, merged
+            gap = max(gap_x, gap_y)
+            if _short(gap, tech["nwell_spacing"]):
+                found.append(_violation(
+                    "nwell_spacing", "nwell.2a",
+                    "two separate wells are closer than the rule allows",
+                    gap, tech["nwell_spacing"], [first, second]
+                ))
+
+    for held in pmos or []:
+        inside = [w for w in wells
+                  if w[0] <= held[0] and w[1] <= held[1]
+                  and w[2] >= held[2] and w[3] >= held[3]]
+        if not inside:
+            found.append(_violation(
+                "nwell_surround", "nwell.5",
+                "a p-diffusion is not inside any well", 0.0,
+                tech["nwell_surround"], list(held)
+            ))
+            continue
+        well = inside[0]
+        for measured, side in ((held[0] - well[0], "left"),
+                               (well[2] - held[2], "right"),
+                               (held[1] - well[1], "bottom"),
+                               (well[3] - held[3], "top")):
+            if _short(measured, tech["nwell_surround"]):
+                found.append(_violation(
+                    "nwell_surround", "nwell.5",
+                    "the well does not reach far enough past the "
+                    + side + " of its p-diffusion",
+                    measured, tech["nwell_surround"], [well, held]
+                ))
+    return found
+
+
+def check(shapes, layers=None, tech=None, pmos=None):
     """Every rule this module knows, against one piece of geometry.
 
     Returns what was checked as well as what failed, because a clean result
@@ -161,6 +223,7 @@ def check(shapes, layers=None, tech=None):
     violations += check_widths(shapes, layers, tech)
     violations += check_spacing(shapes, layers, tech)
     violations += check_transistor_overhangs(shapes, layers, tech)
+    violations += check_wells(shapes, layers, tech, pmos)
 
     return {
         "violations": violations,
@@ -174,7 +237,7 @@ def check(shapes, layers=None, tech=None):
         # Said in the result itself, so no caller can present this as more
         # than it is.
         "coverage": (
-            "Five rules, checked against the values in the PDK's technology "
+            "Eight rules, checked against the values in the PDK's technology "
             "file. This is not the sign-off deck, which has thousands and "
             "needs Magic or KLayout. Geometry that passes here has passed "
             "these five and has not been checked against the rest."

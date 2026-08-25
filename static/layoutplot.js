@@ -147,6 +147,18 @@
       x: originX, y: originY, width: drawnWidth, height: drawnHeight
     });
 
+    // The n-well the PMOS group sits in, drawn behind them.
+    (plan.wells || []).forEach(function (well) {
+      var x = originX + well.y1 * perMicron;
+      var y = originY + well.x1 * perMicron;
+      add(svg, "rect", {
+        "class": "fp-well",
+        x: x, y: y,
+        width: (well.y2 - well.y1) * perMicron,
+        height: (well.x2 - well.x1) * perMicron
+      });
+    });
+
     devices.forEach(function (device) {
       // Each device is a bar as long as it is wide: the channel width is
       // the dimension that varies between them, so it is the one to see.
@@ -156,7 +168,8 @@
       var y = originY + device.x * perMicron;
 
       add(svg, "rect", {
-        "class": "fp-device", x: x, y: y, width: w, height: h
+        "class": device.kind === "pfet" ? "fp-device is-pfet" : "fp-device",
+        x: x, y: y, width: w, height: h
       });
 
       // The name sits outside the bar, in the margin, where it cannot

@@ -1140,6 +1140,17 @@ input {
   stroke-dasharray: 3 3;
 }
 
+/* The n-well the p-channel devices sit in, behind them. */
+.figure svg .fp-well {
+  fill: rgba(138, 148, 166, 0.14);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.figure svg .fp-device.is-pfet {
+  fill: rgba(103, 232, 249, 0.28);
+}
+
 .figure svg .fp-device {
   fill: rgba(34, 211, 238, 0.16);
   stroke: var(--accent);
