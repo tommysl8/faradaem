@@ -248,6 +248,44 @@
           </figure>
         </div>
 
+        <div class="analysis-pane hidden" id="pane-layout">
+          <section class="panel design-panel" id="layout" aria-label="Floorplan">
+            <h2 class="panel-head">Floorplan</h2>
+            <div class="panel-body">
+              <p class="design-intro">A schematic pretends a wire is free and a
+              transistor takes no room. This places the devices in a row at the
+              foundry's own minimum spacing, reports what that costs in silicon,
+              and hangs the interconnect it implies back on the circuit to
+              measure what it costs in margin. Two simulations, about half a
+              minute.</p>
+              <p class="static-note">This is a floorplan, not a layout. Nothing
+              here has been routed, design rule checked or extracted: those need
+              Magic and Netgen, which are not on this machine. Every dimension
+              and capacitance is read from the PDK, and the area is the area of
+              this placement, not of a layout anyone has drawn.</p>
+              <div class="design-actions">
+                <button class="chip" id="layout-run" type="button">Run floorplan</button>
+              </div>
+              <div class="design-progress hidden" id="layout-progress">
+                <div class="design-statusline">
+                  <span id="layout-state">Running</span>
+                </div>
+                <div class="metric-pairs" id="layout-metrics"></div>
+              </div>
+              <p class="field-error hidden" id="layout-error"></p>
+            </div>
+          </section>
+
+          <figure class="figure hidden" id="layout-figure">
+            <div class="figure-scroll">
+              <svg id="layout-plot" viewBox="0 0 520 300"></svg>
+            </div>
+            <figcaption>
+              <span id="layout-caption"></span>
+            </figcaption>
+          </figure>
+        </div>
+
         <div class="analysis-pane hidden" id="pane-robust">
           <section class="panel robust-panel" id="robust" aria-label="Robustness">
             <h2 class="panel-head">Robustness</h2>
@@ -294,6 +332,7 @@
 <script src="/static/schematic.js"></script>
 <script src="/static/bodeplot.js"></script>
 <script src="/static/stepplot.js"></script>
+<script src="/static/layoutplot.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

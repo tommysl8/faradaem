@@ -101,6 +101,7 @@ def test_the_pages_and_their_assets_are_served():
         "/static/schematic.js",
         "/static/bodeplot.js",
         "/static/stepplot.js",
+        "/static/layoutplot.js",
         "/favicon.svg",
         "/favicon.ico",
         "/static/icon.svg",

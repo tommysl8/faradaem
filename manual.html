@@ -419,6 +419,42 @@
         </section>
 
         <section class="section prose">
+          <h2>Floorplan: what the sizing costs in silicon</h2>
+          <p>
+            A schematic pretends two things that are not true: that a transistor
+            takes no room, and that a wire is free. The <strong>Floorplan</strong>
+            tab answers both. It places the devices in a row at the foundry's own
+            minimum diffusion spacing, draws them to scale, and reports the area
+            that placement occupies.
+          </p>
+          <p>
+            Then it does the part that matters. The wires joining those devices
+            have a length, because the devices now have positions, and metal of
+            that length has a capacitance. That capacitance is hung back on the
+            nets and <strong>the same measurements run again</strong>, so the
+            column of numbers says what the interconnect cost: for the default
+            op-amp, about 21 femtofarads in total and about a fifth of a degree
+            of phase margin.
+          </p>
+          <p>
+            Every dimension and every capacitance is read out of the PDK's own
+            technology file when the run starts, never remembered here: the
+            minimum poly width, the diffusion overhang each transistor needs, the
+            spacing between devices, and the capacitance of a metal layer per
+            square micron and per micron of edge.
+          </p>
+          <p>
+            <strong>It is a floorplan, not a layout.</strong> Nothing in it has
+            been routed, design rule checked, or extracted. Those need Magic and
+            Netgen, which do not run on this machine, and until they do the area
+            is the area of this placement rather than of a layout anyone has
+            drawn. Devices are also drawn as single fingers, so a wide transistor
+            is drawn wide; a real layout would fold it, and would be shorter and
+            fatter than the picture here.
+          </p>
+        </section>
+
+        <section class="section prose">
           <h2>Robustness: corners and Monte Carlo</h2>
           <p>
             One passing simulation shows a circuit works at the typical process, room

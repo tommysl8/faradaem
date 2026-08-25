@@ -1677,6 +1677,9 @@
     if (lastSheet && !sheetFigure.classList.contains("hidden")) {
       window.drawTransfer(id("sheet-plot"), lastSheet);
     }
+    if (lastLayout && !layoutFigure.classList.contains("hidden")) {
+      window.drawFloorplan(id("layout-plot"), lastLayout);
+    }
     if (lastBode && !bodePanel.classList.contains("hidden")) {
       window.drawBode(id("bode"), lastBode);
     }
@@ -1684,6 +1687,99 @@
 
   window.addEventListener("resize", refitFigures);
 
+
+
+  /* ---- the floorplan ------------------------------------------------------ */
+
+  var layoutPanel = id("layout");
+  var layoutFigure = id("layout-figure");
+  var layoutRun = id("layout-run");
+  var layoutProgress = id("layout-progress");
+  var layoutState = id("layout-state");
+  var layoutMetrics = id("layout-metrics");
+  var layoutError = id("layout-error");
+  var layoutCaption = id("layout-caption");
+
+  var lastLayout = null;
+
+  function renderLayoutPanel() {
+    lastLayout = null;
+    layoutRun.disabled = false;
+    show(layoutProgress, false);
+    show(layoutError, false);
+    clear(layoutMetrics);
+    show(layoutFigure, false);
+  }
+
+  function pair(label, value) {
+    layoutMetrics.appendChild(el("span", "goal-label", label));
+    layoutMetrics.appendChild(el("span", "goal-value", value));
+  }
+
+  function renderLayoutResult(result) {
+    clear(layoutMetrics);
+    var plan = result.floorplan;
+
+    pair("area", plan.area_um2.toFixed(1) + " \u00b5m\u00b2");
+    pair("bounding box", plan.width_um.toFixed(2) + " \u00d7 "
+      + plan.height_um.toFixed(2) + " \u00b5m");
+    pair("device active area", plan.active_area_um2.toFixed(1) + " \u00b5m\u00b2");
+    pair("interconnect", window.formatEngineering(result.total_parasitic_f, "F"));
+
+    // What the interconnect actually cost, measured rather than asserted.
+    result.comparison.forEach(function (item) {
+      if (Math.abs(item.change) < 1e-12) {
+        return;
+      }
+      pair(item.key + " after wiring",
+        window.formatEngineering(item.after, "")
+        + "  (" + (item.change > 0 ? "+" : "")
+        + window.formatEngineering(item.change, "") + ")");
+    });
+
+    layoutCaption.textContent =
+      (current.floorplan && current.floorplan.caption) || "";
+    show(layoutFigure, true);
+    window.drawFloorplan(id("layout-plot"), result);
+  }
+
+  function runLayout() {
+    if (!current.floorplan || !validate()) {
+      return;
+    }
+    show(layoutError, false);
+    clear(layoutMetrics);
+    show(layoutFigure, false);
+    layoutRun.disabled = true;
+    layoutState.textContent = "Placing devices, then measuring twice";
+    show(layoutProgress, true);
+
+    fetch("/api/layout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ circuit: current.id, params: values() })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload && payload.error
+              ? payload.error : "The server refused the request.");
+          }
+          lastLayout = payload;
+          layoutState.textContent = "Measured";
+          layoutRun.disabled = false;
+          renderLayoutResult(payload);
+        });
+      })
+      .catch(function (error) {
+        layoutRun.disabled = false;
+        show(layoutProgress, false);
+        layoutError.textContent = String(error.message || error);
+        show(layoutError, true);
+      });
+  }
+
+  layoutRun.addEventListener("click", runLayout);
 
   /* ---- the analysis tabs -------------------------------------------------- */
 
@@ -1699,6 +1795,8 @@
       available: function () { return Boolean(current.step); } },
     { key: "sheet", label: "Rejection and range",
       available: function () { return Boolean(current.datasheet); } },
+    { key: "layout", label: "Floorplan",
+      available: function () { return Boolean(current.floorplan); } },
     { key: "robust", label: "Robustness",
       available: function () { return Boolean(current.pdk); } }
   ];
@@ -1726,6 +1824,9 @@
     }
     if (key === "sheet" && lastSheet) {
       window.drawTransfer(id("sheet-plot"), lastSheet);
+    }
+    if (key === "layout" && lastLayout) {
+      window.drawFloorplan(id("layout-plot"), lastLayout);
     }
   }
 
@@ -1780,6 +1881,7 @@
     renderDesignPanel();
     renderStepPanel();
     renderSheetPanel();
+    renderLayoutPanel();
     renderRobustPanel();
     renderAnalysis();
     hideNetlist();

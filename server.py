@@ -105,6 +105,7 @@ ROUTES = {
     "/static/schematic.js": ("static/schematic.js", JS),
     "/static/bodeplot.js": ("static/bodeplot.js", JS),
     "/static/stepplot.js": ("static/stepplot.js", JS),
+    "/static/layoutplot.js": ("static/layoutplot.js", JS),
     "/favicon.svg": ("static/favicon.svg", SVG),
     "/favicon.ico": ("static/icon-32.png", PNG),
     "/static/icon.svg": ("static/icon.svg", SVG),
@@ -583,7 +584,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/1.4.0"
+    server_version = "Faradaem/1.5.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
@@ -643,6 +644,8 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_step()
         elif path == "/api/datasheet":
             self._handle_datasheet()
+        elif path == "/api/layout":
+            self._handle_layout()
         elif path == "/api/robust":
             self._handle_robust_start()
         elif path == "/api/robust/stop":
@@ -727,6 +730,25 @@ class FaradaemHandler(BaseHTTPRequestHandler):
 
         try:
             self._send_json(200, circuits.run_datasheet(circuit_id, params))
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+
+    def _handle_layout(self):
+        """The floorplan and what its interconnect costs. Two simulations."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+
+        try:
+            circuit_id, params = validate_api_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
+        try:
+            self._send_json(200, circuits.run_layout(circuit_id, params))
         except INPUT_ERRORS as exc:
             self._send_json(400, {"error": str(exc)})
         except SIMULATION_ERRORS as exc:

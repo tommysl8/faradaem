@@ -54,6 +54,20 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.5.0</span>
+            <span class="entry-date">2026-08-25</span>
+          </header>
+          <ul>
+            <li>The first answer to a question a schematic cannot ask: how much silicon does this sizing cost. The devices are placed in a row at the foundry&#8217;s own minimum diffusion spacing and drawn to scale. The default op-amp comes to 395.6 square microns, and the picture shows why: the 40 micron output driver is four times the width of anything else and sets the whole height.</li>
+            <li>Then the part that matters. Those positions give the wires between the devices a length, and metal of that length has a capacitance, so the capacitance is hung back on the nets and the same measurements run again. The default op-amp carries about 21 femtofarads of its own interconnect and loses about a fifth of a degree of phase margin to it. Measured, twice, not asserted once.</li>
+            <li>Every dimension and every capacitance is read out of the PDK&#8217;s technology file at run time: minimum poly width, the diffusion overhang a transistor needs, device spacing, metal width, and the capacitance of each layer per square micron and per micron of edge. Nothing is a remembered constant, and a test checks four of the rules against their published SKY130 values.</li>
+            <li>That test caught a real error while it was being written. The scalefactor lines in the technology file belong to its GDS output styles, not to its design rules, and using one made every dimension ten times too large: a 0.15 micron minimum gate came out as 1.5 microns. The rules are in nanometres, confirmed against four independent published minimums.</li>
+            <li>What this is not, said plainly here and in the tool: a layout. There is no router, no design rule check, no layout versus schematic and no real extraction, because those need Magic and Netgen and neither runs on this machine. Devices are drawn as single fingers, so a wide transistor is drawn wide where a real layout would fold it. A test refuses any wording in the code that would claim otherwise.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">1.4.0</span>
             <span class="entry-date">2026-08-24</span>
           </header>

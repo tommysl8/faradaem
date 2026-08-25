@@ -30,7 +30,7 @@ import math
 import os
 import tempfile
 
-from . import runner
+from . import layout, runner
 from .runner import _fmt  # the shared netlist number formatter
 
 #: Sweeps span this many decades either side of the circuit's centre frequency.
@@ -1207,6 +1207,67 @@ def measure_nfet_cs_amp(bode, params, stdout=None):
 # the catalogue
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# the floorplan: what the sizing costs in silicon, and what its wires load it
+# with
+# ---------------------------------------------------------------------------
+#
+# Everything above this line treats a circuit as a schematic, where a wire is
+# free and a transistor takes no room. Neither is true. These describe each
+# amplifier as a row of devices so the area can be computed from the PDK's own
+# rules, and so the interconnect those positions imply can be hung back on the
+# nets and measured against.
+#
+# It is a floorplan, not a layout: no router, no design rule check, no layout
+# versus schematic. Those need tools that are not on this machine, and the
+# results say so wherever they appear.
+
+
+def opamp_devices(params):
+    """The eight transistors of the two-stage op-amp, in schematic order."""
+    return [
+        ("M8", OPAMP_W8, params["l"]),
+        ("M1", params["wpair"], params["l"]),
+        ("M2", params["wpair"], params["l"]),
+        ("M3", params["wload"], params["l"]),
+        ("M4", params["wload"], params["l"]),
+        ("M5", OPAMP_W5, params["l"]),
+        ("M6", params["w6"], params["l"]),
+        ("M7", params["w7"], params["l"]),
+    ]
+
+
+def ota_devices(params):
+    """The six transistors of the OTA, bias diode included."""
+    return [
+        ("M8", OPAMP_W8, params["l"]),
+        ("M1", params["wpair"], params["l"]),
+        ("M2", params["wpair"], params["l"]),
+        ("M3", params["wload"], params["l"]),
+        ("M4", params["wload"], params["l"]),
+        ("M5", OPAMP_W5, params["l"]),
+    ]
+
+
+#: Which devices each internal net has to reach. The supply and ground rails
+#: are left out: they are drawn as planes, not as runs between two devices,
+#: and treating them as point to point wires would overstate them.
+OPAMP_NETS = {
+    "nbias": ["M8", "M5", "M7"],
+    "d1": ["M1", "M3", "M4"],
+    "d2": ["M2", "M4", "M6"],
+    "tail": ["M1", "M2", "M5"],
+    "out": ["M6", "M7"],
+}
+
+OTA_NETS = {
+    "nbias": ["M8", "M5"],
+    "d1": ["M1", "M3", "M4"],
+    "tail": ["M1", "M2", "M5"],
+    "out": ["M2", "M4"],
+}
+
+
 CIRCUITS = {
     "divider": {
         "id": "divider",
@@ -1474,6 +1535,13 @@ CIRCUITS = {
             param("wload", "W3,4 (mirror load)", "m", 1e-5, 4.2e-7, 1e-4),
             param("cl", "CL (load)", "F", 2e-12, 1e-13, 1e-10),
         ],
+        "floorplan": {
+            "devices": ota_devices,
+            "nets": OTA_NETS,
+            "caption": "Figure 15: six devices in a row at the minimum "
+                       "diffusion spacing, drawn to scale. A floorplan, not a "
+                       "layout: nothing here has been design rule checked.",
+        },
         "datasheet": {
             "build": build_ota_datasheet,
             "caption": "Figure 13: the OTA measured four ways at once. A single "
@@ -1556,6 +1624,13 @@ CIRCUITS = {
             param("rz", "Rz (zero nulling)", "\u03a9", 2000.0, 1e-3, 1e5),
             param("cl", "CL (load)", "F", 2e-12, 1e-13, 1e-10),
         ],
+        "floorplan": {
+            "devices": opamp_devices,
+            "nets": OPAMP_NETS,
+            "caption": "Figure 14: the eight devices in a row at the minimum "
+                       "diffusion spacing, drawn to scale. A floorplan, not a "
+                       "layout: nothing here has been design rule checked.",
+        },
         "datasheet": {
             "build": build_opamp_datasheet,
             "caption": "Figure 12: the same op-amp measured four ways at once. "
@@ -1736,6 +1811,10 @@ def catalog():
             "pdk": bool(circuit.get("pdk")),
             # A circuit that declares a step testbench advertises what the
             # panel should show: no callables, same as everything else here.
+            "floorplan": (
+                {"caption": circuit["floorplan"]["caption"]}
+                if circuit.get("floorplan") else None
+            ),
             "datasheet": (
                 {
                     "caption": circuit["datasheet"]["caption"],
@@ -1963,6 +2042,68 @@ def run_datasheet(circuit_id, params, transform=None):
     measured = measure_datasheet(bodes, transfer, values)
     measured["transfer"] = _decimate(transfer, WAVEFORM_POINTS)
     return measured
+
+
+class NoFloorplanError(CircuitInputError):
+    """Raised when a circuit has no floorplan to compute."""
+
+
+def has_floorplan(circuit_id):
+    """True when this circuit can be floorplanned."""
+    return "floorplan" in get_circuit(circuit_id)
+
+
+def run_layout(circuit_id, params):
+    """Area, interconnect, and the specs measured again with it loading them.
+
+    Two simulations: the circuit as drawn on the schematic, and the same
+    circuit with each net's wire capacitance hung on it. The difference is
+    what the interconnect costs, and it is measured rather than asserted.
+    """
+    circuit = get_circuit(circuit_id)
+    block = circuit.get("floorplan")
+    if block is None:
+        raise NoFloorplanError(
+            "The circuit " + repr(circuit_id) + " has no floorplan. The two "
+            "SKY130 amplifiers do; pick one of those."
+        )
+
+    values = dict(params)
+    try:
+        tech = layout.tech_constants()
+    except layout.LayoutDataError as exc:
+        raise NoFloorplanError(str(exc)) from None
+
+    plan = layout.floorplan(block["devices"](values), tech)
+    parasitics = layout.net_parasitics(plan, block["nets"], tech)
+
+    clean = simulate(circuit_id, values)
+    loaded = simulate(circuit_id, values,
+                      transform=layout.parasitic_transform(parasitics))
+
+    keys = [item["key"] for item in
+            [circuit["readout"]["headline"]] + list(circuit["readout"]["stats"])]
+    comparison = []
+    for key in keys:
+        before = clean.get(key)
+        after = loaded.get(key)
+        if not isinstance(before, (int, float)) or not isinstance(after, (int, float)):
+            continue
+        comparison.append({
+            "key": key,
+            "before": before,
+            "after": after,
+            "change": after - before,
+        })
+
+    return {
+        "floorplan": plan,
+        "parasitics": parasitics,
+        "total_parasitic_f": sum(item["capacitance_f"]
+                                 for item in parasitics.values()),
+        "comparison": comparison,
+        "tech": {name: tech[name] for name in sorted(tech)},
+    }
 
 
 def simulate(circuit_id, params, transform=None):

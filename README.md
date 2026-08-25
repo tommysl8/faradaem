@@ -113,10 +113,12 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `static/schematic.js` | SVG symbol primitives plus one compose function per circuit. |
 | `static/bodeplot.js` | SVG Bode plot: stacked magnitude and phase axes over log frequency. |
 | `static/stepplot.js` | SVG plots with a linear x axis: the step response over time, and the DC transfer curve over input voltage. |
+| `static/layoutplot.js` | The floorplan drawn to scale in microns, with a scale bar. |
 | `static/app.js` | Mode switching, form handling, simulate calls, result and error rendering. |
 | `spice/design.py` | The design iterator: goals, margins, and a coordinate search with a real simulator in the loop. |
 | `spice/llm.py`, `spice/strategist.py` | The LLM layer: Anthropic and OpenAI clients over urllib, and the tool-driving strategist that never computes a value. |
 | `spice/pvt.py` | PVT corners and Monte Carlo mismatch, done by editing the finished netlist text. |
+| `spice/layout.py` | Floorplan and interconnect: device geometry and layer capacitance read from the PDK's own technology file. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `tools/make_brand.py` | The mark: the AE ligature lifted out of a font file and baked into the favicon, the touch icon and the Open Graph card, all from one geometry. |
 | `tools/build_static.py` | The published site: the pages, the assets and the catalogue, for a host that cannot run a simulator. |

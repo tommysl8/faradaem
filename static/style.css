@@ -1,4 +1,4 @@
-/* Faradaem 1.4.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.5.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -109,7 +109,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.4.0";
+  --app-version: "v1.5.0";
 }
 
 *,
@@ -1127,6 +1127,34 @@ input {
 
 #pane-design .panel {
   max-width: 46rem;
+}
+
+/* ---- the floorplan ---------------------------------------------------- */
+
+/* Devices to scale on silicon. The bounding box is the one whose area was
+   reported, so it is drawn as a frame rather than implied. */
+.figure svg .fp-bounds {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.figure svg .fp-device {
+  fill: rgba(34, 211, 238, 0.16);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.figure svg .fp-label {
+  fill: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.figure svg .fp-scale {
+  stroke: var(--fig-axis);
+  stroke-width: 1;
 }
 
 /* ---- the paper figures ----------------------------------------------- */
