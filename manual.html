@@ -428,13 +428,13 @@
             that placement occupies.
           </p>
           <p>
-            Then it does the part that matters. The wires joining those devices
-            have a length, because the devices now have positions, and metal of
-            that length has a capacitance. That capacitance is hung back on the
+            Then it does the part that matters. Each net is routed as metal on
+            its own track, and the capacitance is taken from the metal that was
+            actually drawn, stubs included. That capacitance is hung back on the
             nets and <strong>the same measurements run again</strong>, so the
             column of numbers says what the interconnect cost: for the default
-            op-amp, about 21 femtofarads in total and about a fifth of a degree
-            of phase margin.
+            op-amp, about 38 femtofarads and about three tenths of a degree of
+            phase margin.
           </p>
           <p>
             Every dimension and every capacitance is read out of the PDK's own
@@ -451,19 +451,18 @@
             no wells and no routing in the file yet.
           </p>
           <p>
-            The geometry is then checked against eight rules read from the same
+            The geometry is then checked against ten rules read from the same
             technology file: the minimum width of poly and of diffusion, the
             spacing between two diffusions, the diffusion that has to overhang
             the gate to make a source and a drain, the poly that has to overhang
             the diffusion so the channel is not shorted around the end of the
-            gate, and three for the n-well the p-channel devices sit in: its
-            minimum width, the spacing between two separate wells, and how far
-            it has to reach past the diffusion it holds. The panel says how many rules were checked as well as
+            gate, three for the n-well the p-channel devices sit in, and two
+            for the metal that routes between them. The panel says how many rules were checked as well as
             what passed, because a clean result means nothing without knowing
             how much was looked at.
           </p>
           <p>
-            <strong>Eight rules is not sign-off.</strong> The real deck has
+            <strong>Ten rules is not sign-off.</strong> The real deck has
             thousands and needs Magic or KLayout. Geometry that passes here has
             passed five rules and has not been checked against the rest.
           </p>

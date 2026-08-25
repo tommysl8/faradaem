@@ -9,11 +9,11 @@ checked so the coverage is never mistaken for the whole.
 The point is the difference between geometry nobody has looked at and
 geometry checked against the numbers it was supposed to satisfy. A drawing
 that has not been checked is a drawing; one that has been checked against
-eight rules is a drawing that satisfies eight rules, and says so.
+ten rules is a drawing that satisfies ten rules, and says so.
 
 Each rule carries the tag the foundry writes in its own error message
-(diff/tap.1, poly.1a, poly.7, poly.8, nwell.1, nwell.2a, nwell.5), so a
-violation can be looked up.
+(diff/tap.1, poly.1a, poly.7, poly.8, nwell.1, nwell.2a, nwell.5,
+met1.1, met1.2), so a violation can be looked up.
 """
 
 from . import layout
@@ -29,6 +29,8 @@ CHECKED_RULES = (
     ("nwell_width", "nwell.1", "minimum n-well width"),
     ("nwell_spacing", "nwell.2a", "minimum spacing between separate n-wells"),
     ("nwell_surround", "nwell.5", "n-well surround of the p-diffusion in it"),
+    ("metal1_width", "met1.1", "minimum metal1 width"),
+    ("metal1_spacing", "met1.2", "minimum metal1 spacing"),
 )
 
 #: A dimension is allowed to be this far under a rule before it counts as a
@@ -67,6 +69,9 @@ def check_widths(shapes, layers, tech):
         layers["POLY"][0]: ("poly_width", "poly.1a", tech["poly_width"]),
         layers["DIFF"][0]: ("diff_width", "diff/tap.1", tech["diff_width"]),
     }
+    if "MET1" in layers and "metal1_width" in tech:
+        limits[layers["MET1"][0]] = ("metal1_width", "met1.1",
+                                     tech["metal1_width"])
     for shape in shapes:
         limit = limits.get(shape[0])
         if limit is None:
@@ -104,6 +109,36 @@ def check_spacing(shapes, layers, tech):
                 found.append(_violation(
                     "diff_spacing", "diff/tap.3",
                     "two diffusions are closer than the rule allows",
+                    gap, required, [first, second]
+                ))
+    return found
+
+
+def check_metal_spacing(shapes, layers, tech):
+    """Wires on the same layer that are not the same wire must stay apart.
+
+    Two rectangles of one net touch by design, which is how a track meets
+    its stubs, so touching is not a violation. Anything with a real gap
+    smaller than the rule is.
+    """
+    if "MET1" not in layers or "metal1_spacing" not in tech:
+        return []
+
+    found = []
+    required = tech["metal1_spacing"]
+    wires = [_rect(s) for s in shapes if s[0] == layers["MET1"][0]]
+
+    for index, first in enumerate(wires):
+        for second in wires[index + 1:]:
+            gap_x = max(second[0] - first[2], first[0] - second[2])
+            gap_y = max(second[1] - first[3], first[1] - second[3])
+            if gap_x <= 0 and gap_y <= 0:
+                continue                      # touching, so one wire
+            gap = max(gap_x, gap_y)
+            if _short(gap, required):
+                found.append(_violation(
+                    "metal1_spacing", "met1.2",
+                    "two wires are closer than the rule allows",
                     gap, required, [first, second]
                 ))
     return found
@@ -224,6 +259,7 @@ def check(shapes, layers=None, tech=None, pmos=None):
     violations += check_spacing(shapes, layers, tech)
     violations += check_transistor_overhangs(shapes, layers, tech)
     violations += check_wells(shapes, layers, tech, pmos)
+    violations += check_metal_spacing(shapes, layers, tech)
 
     return {
         "violations": violations,
@@ -237,7 +273,7 @@ def check(shapes, layers=None, tech=None, pmos=None):
         # Said in the result itself, so no caller can present this as more
         # than it is.
         "coverage": (
-            "Eight rules, checked against the values in the PDK's technology "
+            "Ten rules, checked against the values in the PDK's technology "
             "file. This is not the sign-off deck, which has thousands and "
             "needs Magic or KLayout. Geometry that passes here has passed "
             "these five and has not been checked against the rest."

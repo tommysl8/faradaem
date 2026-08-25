@@ -31,7 +31,7 @@ import math
 import os
 import tempfile
 
-from . import drc, layout, runner
+from . import drc, gds, layout, runner
 from .runner import _fmt  # the shared netlist number formatter
 
 #: Sweeps span this many decades either side of the circuit's centre frequency.
@@ -2082,7 +2082,13 @@ def run_layout(circuit_id, params):
         raise NoFloorplanError(str(exc)) from None
 
     plan = layout.floorplan(block["devices"](values), tech)
-    parasitics = layout.net_parasitics(plan, block["nets"], tech)
+
+    # Route the nets, then take the capacitance off the metal that was
+    # actually drawn. The bounding-box estimate this replaces was
+    # optimistic by nearly half, because it counted the run across the row
+    # and not the stubs down onto devices tens of microns tall.
+    routed = layout.route(plan, block["nets"], tech)
+    parasitics = layout.routed_parasitics(routed, tech)
 
     clean = simulate(circuit_id, values)
     loaded = simulate(circuit_id, values,
@@ -2110,18 +2116,21 @@ def run_layout(circuit_id, params):
     checked = None
     try:
         layers = layout.gds_layers()
-        shapes = layout.floorplan_shapes(plan, layers, tech)
+        shapes = (layout.floorplan_shapes(plan, layers, tech)
+                  + layout.routing_shapes(routed, layers))
         pmos = [(item["x"], item["y"],
                  item["x"] + item["width"], item["y"] + item["height"])
                 for item in plan["devices"] if item.get("kind") == "pfet"]
         checked = drc.check(shapes, layers, tech, pmos=pmos)
-        stream = layout.floorplan_gds(plan, name=circuit_id.upper())
+        stream = gds.library(circuit_id.upper(), circuit_id.upper(),
+                             shapes)
         encoded = base64.b64encode(stream).decode("ascii")
     except layout.LayoutDataError:
         encoded = None
 
     return {
         "floorplan": plan,
+        "routing": routed,
         "gds_base64": encoded,
         "gds_bytes": len(stream) if encoded else 0,
         "drc": checked,

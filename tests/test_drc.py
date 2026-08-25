@@ -5,7 +5,7 @@ unchecked geometry into geometry someone believes. So every rule here is
 tested twice: once against a shape that satisfies it, and once against a
 shape built specifically to break it.
 
-What is checked is eight rules. What is not checked is the rest of the deck,
+What is checked is ten rules. What is not checked is the rest of the deck,
 which needs Magic or KLayout. The last test makes sure the result says so
 in its own words.
 """
@@ -131,10 +131,10 @@ def test_overlapping_shapes_are_not_a_spacing_violation():
 
 def test_the_result_states_its_own_coverage():
     result = drc.check(device(), LAYERS, TECH)
-    assert len(result["rules_checked"]) == 8
+    assert len(result["rules_checked"]) == 10
     assert {item["tag"] for item in result["rules_checked"]} == {
         "poly.1a", "diff/tap.1", "diff/tap.3", "poly.7", "poly.8",
-        "nwell.1", "nwell.2a", "nwell.5"
+        "nwell.1", "nwell.2a", "nwell.5", "met1.1", "met1.2"
     }
     coverage = result["coverage"].lower()
     assert "not the sign-off deck" in coverage

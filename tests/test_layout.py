@@ -304,3 +304,83 @@ def test_live_wiring_costs_margin_and_the_cost_is_measured(live_layout):
     assert margin["after"] == pytest.approx(
         margin["before"] + margin["change"], abs=1e-9
     )
+
+
+# ---------------------------------------------------------------------------
+# routing: wires that are drawn, and therefore measurable
+# ---------------------------------------------------------------------------
+
+
+def routing_tech():
+    tech = fake_tech()
+    tech["metal1_spacing"] = 0.14
+    return tech
+
+
+def test_a_net_gets_a_track_and_a_stub_for_each_device():
+    tech = routing_tech()
+    plan = layout.floorplan(
+        [("A", 10e-6, 0.5e-6), ("B", 10e-6, 0.5e-6)], tech
+    )
+    routed = layout.route(plan, {"n": ["A", "B"]}, tech)["n"]
+    # One horizontal run plus one stub per device it serves.
+    assert len(routed["segments"]) == 3
+    assert routed["devices"] == ["A", "B"]
+
+
+def test_every_net_gets_its_own_track():
+    """Two nets sharing a track would be one net."""
+    tech = routing_tech()
+    plan = layout.floorplan(
+        [("A", 10e-6, 0.5e-6), ("B", 10e-6, 0.5e-6), ("C", 10e-6, 0.5e-6)],
+        tech
+    )
+    routed = layout.route(plan, {"x": ["A", "B"], "y": ["B", "C"]}, tech)
+    assert routed["x"]["track"] != routed["y"]["track"]
+    gap = abs(routed["x"]["track"] - routed["y"]["track"])
+    assert gap >= tech["metal1_width"] + tech["metal1_spacing"] - 1e-9
+
+
+def test_a_net_reaching_one_device_is_not_routed():
+    tech = routing_tech()
+    plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
+    assert layout.route(plan, {"solo": ["A"]}, tech) == {}
+
+
+def test_the_length_is_the_metal_that_was_drawn():
+    """Not a bounding box: the sum of the segments, stubs included."""
+    tech = routing_tech()
+    plan = layout.floorplan(
+        [("A", 10e-6, 0.5e-6), ("B", 40e-6, 0.5e-6)], tech
+    )
+    routed = layout.route(plan, {"n": ["A", "B"]}, tech)["n"]
+    drawn = sum(part["length_um"] for part in routed["segments"])
+    assert routed["length_um"] == pytest.approx(drawn)
+    # The stub onto the short device has to climb past the tall one.
+    assert routed["length_um"] > plan["width_um"]
+
+
+def test_drawn_routing_costs_more_than_the_bounding_box_estimate():
+    """The estimate this replaced counted the run across the row and not
+    the climb down onto devices tens of microns tall."""
+    tech = routing_tech()
+    devices = [("A", 10e-6, 0.5e-6), ("B", 40e-6, 0.5e-6), ("C", 10e-6, 0.5e-6)]
+    plan = layout.floorplan(devices, tech)
+    nets = {"n": ["A", "C"]}
+
+    estimated = layout.net_parasitics(plan, nets, tech)["n"]["capacitance_f"]
+    drawn = layout.routed_parasitics(
+        layout.route(plan, nets, tech), tech
+    )["n"]["capacitance_f"]
+    assert drawn > estimated
+
+
+def test_routing_becomes_metal_shapes():
+    tech = routing_tech()
+    plan = layout.floorplan(
+        [("A", 10e-6, 0.5e-6), ("B", 10e-6, 0.5e-6)], tech
+    )
+    routed = layout.route(plan, {"n": ["A", "B"]}, tech)
+    shapes = layout.routing_shapes(routed, {"MET1": (68, 20)})
+    assert len(shapes) == 3
+    assert all(shape[0] == 68 for shape in shapes)

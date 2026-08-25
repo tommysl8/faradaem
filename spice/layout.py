@@ -60,6 +60,7 @@ RULE_TAGS = {
     "nwell_surround": r"surround\s+\*pdiff\S*[^\n]*\s+(\d+)\s+absence_illegal",
     "nwell_width": r"width\s+allnwell\s+(\d+)\s+\"N-well width",
     "nwell_spacing": r"spacing\s+allnwell\s+allnwell\s+(\d+)\s+touching_ok",
+    "metal1_spacing": r"spacing\s+allm1\S*\s+\S+\s+(\d+)\s+touching_ok\s+\"Metal1 spacing",
 }
 
 #: Capacitance per unit area and per unit edge, in attofarads. Magic writes
@@ -290,6 +291,87 @@ def floorplan(devices, tech):
         "active_area_um2": sum(item["width"] * item["height"] for item in placed),
         "spacing_um": tech["diff_spacing"],
     }
+
+
+def route(plan, nets, tech):
+    """Draw each net as metal on its own track above the devices.
+
+    A channel router in its simplest honest form: every net gets one
+    horizontal track, far enough above the row and from its neighbours to
+    satisfy the metal spacing rule, with a vertical stub down to each
+    device it connects. No two nets share a track, so nothing shorts.
+
+    Returns the drawn segments per net, with the length that was drawn.
+    The point is that the length is now measured off geometry rather than
+    guessed from a bounding box.
+    """
+    index = {item["name"]: item for item in plan["devices"]}
+    width = tech["metal1_width"]
+    pitch = width + tech["metal1_spacing"]
+
+    routed = {}
+    track = plan["height_um"] + tech["diff_spacing"]
+
+    for net in sorted(nets):
+        members = [index[name] for name in nets[net] if name in index]
+        if len(members) < 2:
+            continue
+
+        left = min(item["x"] for item in members) + width / 2.0
+        right = max(item["x"] + item["width"] for item in members) - width / 2.0
+        segments = [{
+            "x1": left, "y1": track,
+            "x2": right, "y2": track + width,
+            "length_um": right - left,
+        }]
+
+        # A stub from the track down onto each device it serves.
+        for item in members:
+            centre = item["x"] + item["width"] / 2.0
+            drop = track - (item["y"] + item["height"])
+            if drop <= 0:
+                continue
+            segments.append({
+                "x1": centre - width / 2.0,
+                "y1": item["y"] + item["height"],
+                "x2": centre + width / 2.0,
+                "y2": track,
+                "length_um": drop,
+            })
+
+        routed[net] = {
+            "segments": segments,
+            "length_um": sum(part["length_um"] for part in segments),
+            "track": track,
+            "devices": [item["name"] for item in members],
+        }
+        track += pitch
+
+    return routed
+
+
+def routed_parasitics(routed, tech):
+    """Capacitance per net, from the metal that was actually drawn."""
+    return {
+        net: {
+            "length_um": item["length_um"],
+            "capacitance_f": wire_capacitance(item["length_um"], tech),
+            "devices": item["devices"],
+            "segments": len(item["segments"]),
+        }
+        for net, item in routed.items()
+    }
+
+
+def routing_shapes(routed, layers):
+    """The drawn wires, as rectangles on metal1."""
+    metal = layers["MET1"]
+    shapes = []
+    for item in routed.values():
+        for part in item["segments"]:
+            shapes.append((metal[0], metal[1],
+                           part["x1"], part["y1"], part["x2"], part["y2"]))
+    return shapes
 
 
 def wire_capacitance(length_um, tech, layer="metal1"):
