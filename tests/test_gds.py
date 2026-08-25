@@ -156,12 +156,13 @@ def fake_tech():
         "contact_width": 0.17, "metal1_width": 0.14,
         "metal1_area": 25.78e-18, "metal1_edge": 44.0e-18,
         "li_area": 36.99e-18, "li_edge": 25.5e-18, "poly_area": 106.13e-18,
+        "poly_endcap": 0.13, "diff_width": 0.15,
     }
 
 
 def test_each_device_becomes_a_diffusion_and_a_gate():
     plan = layout.floorplan([("M1", 10e-6, 0.5e-6)], fake_tech())
-    shapes = layout.floorplan_shapes(plan, {"DIFF": (65, 20), "POLY": (66, 20)})
+    shapes = layout.floorplan_shapes(plan, {"DIFF": (65, 20), "POLY": (66, 20)}, fake_tech())
     assert len(shapes) == 2
     assert shapes[0][0] == 65
     assert shapes[1][0] == 66
@@ -171,7 +172,7 @@ def test_the_gate_sits_in_the_channel_and_overhangs_it():
     """A gate that does not cross the diffusion is not a transistor, and one
     that stops at its edge would fail the rule that says it must not."""
     plan = layout.floorplan([("M1", 10e-6, 0.5e-6)], fake_tech())
-    shapes = layout.floorplan_shapes(plan, {"DIFF": (65, 20), "POLY": (66, 20)})
+    shapes = layout.floorplan_shapes(plan, {"DIFF": (65, 20), "POLY": (66, 20)}, fake_tech())
     _, _, dx1, dy1, dx2, dy2 = shapes[0]
     _, _, gx1, gy1, gx2, gy2 = shapes[1]
 
@@ -186,7 +187,7 @@ def test_devices_keep_their_spacing_in_the_geometry():
     plan = layout.floorplan(
         [("M1", 10e-6, 0.5e-6), ("M2", 10e-6, 0.5e-6)], fake_tech()
     )
-    shapes = layout.floorplan_shapes(plan, {"DIFF": (65, 20), "POLY": (66, 20)})
+    shapes = layout.floorplan_shapes(plan, {"DIFF": (65, 20), "POLY": (66, 20)}, fake_tech())
     first = shapes[0]
     second = shapes[2]
     assert second[2] - first[4] == pytest.approx(0.27)

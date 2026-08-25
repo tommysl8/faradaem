@@ -120,6 +120,7 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `spice/pvt.py` | PVT corners and Monte Carlo mismatch, done by editing the finished netlist text. |
 | `spice/layout.py` | Floorplan and interconnect: device geometry and layer capacitance read from the PDK's own technology file. |
 | `spice/gds.py` | A GDSII writer in the standard library, so the geometry can be opened in a layout tool. |
+| `spice/drc.py` | The five design rules that apply to the drawn geometry, checked against the PDK's own values. Not the sign-off deck. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `tools/make_brand.py` | The mark: the AE ligature lifted out of a font file and baked into the favicon, the touch icon and the Open Graph card, all from one geometry. |
 | `tools/build_static.py` | The published site: the pages, the assets and the catalogue, for a host that cannot run a simulator. |

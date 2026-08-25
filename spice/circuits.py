@@ -31,7 +31,7 @@ import math
 import os
 import tempfile
 
-from . import layout, runner
+from . import drc, layout, runner
 from .runner import _fmt  # the shared netlist number formatter
 
 #: Sweeps span this many decades either side of the circuit's centre frequency.
@@ -2097,10 +2097,15 @@ def run_layout(circuit_id, params):
             "change": after - before,
         })
 
-    # The geometry, in the format every layout tool reads. It is the same
-    # placement the area was measured over, so the file and the number
-    # cannot disagree.
+    # The geometry, in the format every layout tool reads, checked against
+    # the rules it was drawn to satisfy. It is the same placement the area
+    # was measured over, so the file, the picture and the numbers cannot
+    # disagree with each other.
+    checked = None
     try:
+        layers = layout.gds_layers()
+        shapes = layout.floorplan_shapes(plan, layers, tech)
+        checked = drc.check(shapes, layers, tech)
         stream = layout.floorplan_gds(plan, name=circuit_id.upper())
         encoded = base64.b64encode(stream).decode("ascii")
     except layout.LayoutDataError:
@@ -2110,6 +2115,7 @@ def run_layout(circuit_id, params):
         "floorplan": plan,
         "gds_base64": encoded,
         "gds_bytes": len(stream) if encoded else 0,
+        "drc": checked,
         "parasitics": parasitics,
         "total_parasitic_f": sum(item["capacitance_f"]
                                  for item in parasitics.values()),

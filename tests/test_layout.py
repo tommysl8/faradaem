@@ -30,6 +30,8 @@ def fake_tech():
         "li_area": 36.99e-18,
         "li_edge": 25.5e-18,
         "poly_area": 106.13e-18,
+        "poly_endcap": 0.13,
+        "diff_width": 0.15,
     }
 
 

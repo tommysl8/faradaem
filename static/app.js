@@ -1729,6 +1729,13 @@
     if (result.gds_bytes) {
       pair("geometry", result.gds_bytes + " bytes of GDS");
     }
+    // What was checked, and how much of the deck that is.
+    if (result.drc) {
+      pair("rule check", result.drc.clean
+        ? "clean on " + result.drc.rules_checked.length + " rules"
+        : result.drc.violations.length + " violations of "
+          + result.drc.rules_checked.length + " rules");
+    }
 
     // What the interconnect actually cost, measured rather than asserted.
     result.comparison.forEach(function (item) {

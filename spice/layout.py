@@ -51,6 +51,10 @@ RULE_TAGS = {
     "diff_spacing": r"spacing\s+alldifflv\S*\s+\S+\s+(\d+)\s+touching_illegal",
     "contact_width": r"width\s+ndc/li\s+(\d+)\s+\"N-diffusion contact",
     "metal1_width": r"width\s+\*m1\S*\s+(\d+)\s+\"Metal1 width",
+    # The rule that says a gate must not stop at the edge of its diffusion.
+    "poly_endcap": r"overhang\s+\*poly\s+allfetsstd\S*\s+(\d+)\s+\"poly overhang",
+    # Diffusion cannot be drawn thinner than this anywhere.
+    "diff_width": r"width\s+\*ndiff\S*[^\n]*\n\s*(\d+)\s+\"Diffusion width",
 }
 
 #: Capacitance per unit area and per unit edge, in attofarads. Magic writes
@@ -157,7 +161,7 @@ def gds_layers():
     return layers
 
 
-def floorplan_shapes(plan, layers):
+def floorplan_shapes(plan, layers, tech):
     """The floorplan as rectangles on real layers, in microns.
 
     Each device is its diffusion, with the poly gate crossing it where the
@@ -182,14 +186,17 @@ def floorplan_shapes(plan, layers):
         overhang = (device["width"] - device["gate_length"]) / 2.0
         gate_x1 = x1 + overhang
         gate_x2 = gate_x1 + device["gate_length"]
-        shapes.append((poly[0], poly[1], gate_x1, y1 - 0.13, gate_x2, y2 + 0.13))
+        endcap = tech["poly_endcap"]
+        shapes.append((poly[0], poly[1],
+                       gate_x1, y1 - endcap, gate_x2, y2 + endcap))
 
     return shapes
 
 
 def floorplan_gds(plan, name="FARADAEM_FLOORPLAN", when=None):
     """The floorplan as a GDSII stream, ready to open in a layout tool."""
-    return gds.library(name, name, floorplan_shapes(plan, gds_layers()),
+    return gds.library(name, name,
+                       floorplan_shapes(plan, gds_layers(), tech_constants()),
                        when=when)
 
 

@@ -258,11 +258,12 @@
               and hangs the interconnect it implies back on the circuit to
               measure what it costs in margin. Two simulations, about half a
               minute.</p>
-              <p class="static-note">This is a floorplan, not a layout. Nothing
-              here has been routed, design rule checked or extracted: those need
-              Magic and Netgen, which are not on this machine. Every dimension
-              and capacitance is read from the PDK, and the area is the area of
-              this placement, not of a layout anyone has drawn.</p>
+              <p class="static-note">This is a floorplan, not a layout. The
+              geometry is checked against five rules read from the PDK, which is
+              not the sign-off deck: that has thousands and needs Magic or
+              KLayout, neither of which is on this machine. Nothing here is
+              routed or extracted, and the area is the area of this placement,
+              not of a layout anyone has drawn.</p>
               <div class="design-actions">
                 <button class="chip" id="layout-run" type="button">Run floorplan</button>
                 <button class="chip hidden" id="layout-gds" type="button">Download GDS</button>
