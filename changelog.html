@@ -54,6 +54,22 @@
 
         <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.3.0</span>
+            <span class="entry-date">2026-08-24</span>
+          </header>
+          <ul>
+            <li>The rest of the datasheet. Both amplifiers now report CMRR, PSRR, input common-mode range and output swing, which are the numbers that tell the two topologies apart. The two-stage op-amp measures 76.5 dB of CMRR, 67.1 dB of PSRR and 1.24 V of range; the OTA measures 57.0, 36.2 and 0.91. The OTA needs no compensation and is worse at all three, which is a trade the strategist can now reason about instead of guessing.</li>
+            <li>An AC analysis excites every source in a netlist at once, so one copy of a circuit cannot be asked three questions and give three separable answers. The deck holds four identical copies instead, each with a single stimulus: a differential drive, a common-mode drive, a moving supply, and a buffer swept from ground to the supply. One library load, four answers, about half a minute.</li>
+            <li>The first attempt reported supply rejection as supply gain, which is impossible. The servo inductor that closes the loop at DC is an open circuit above it, which left the inverting gate floating and the answer meaningless. Holding that gate still for the signal, while leaving the DC servo alone, turned an absurd 29 dB at 1 kHz into 67 dB flat from 10 Hz upward.</li>
+            <li>A second plot, the DC transfer curve, with the ends of the measured range marked on it, so the range is a number you can see where it came from rather than one you have to trust.</li>
+            <li>Following means tracking, not agreeing. At the bottom of a sweep the amplifier is off and its output sits at zero, which matches a zero input to well inside any error tolerance. The measurement asks for unit slope as well, and a test builds exactly that trap to make sure it is not fallen into.</li>
+            <li>The device list now lives in one place per topology instead of one per testbench. Four builders had been about to hold four copies of the same eight transistors, and a copy that drifts is a testbench quietly measuring a different circuit. The refactor was checked by generating every existing netlist before and after and requiring them to be byte for byte identical.</li>
+            <li>The strategist gained both new measurements as tools, and its instructions now say which analysis each number comes from, so it cannot state a slew rate or a CMRR it has not measured.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">1.2.0</span>
             <span class="entry-date">2026-08-24</span>
           </header>

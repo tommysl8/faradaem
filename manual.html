@@ -365,6 +365,43 @@
         </section>
 
         <section class="section prose">
+          <h2>Rejection and range: the rest of the datasheet</h2>
+          <p>
+            Gain, bandwidth and phase margin describe the path you want. Two
+            numbers describe the paths you do not: <strong>CMRR</strong> is how
+            much better the amplifier amplifies a difference between its inputs
+            than something both inputs do together, and <strong>PSRR</strong> is
+            how much better it amplifies that difference than noise arriving on
+            its own supply. Both are quoted in dB, and bigger is better.
+          </p>
+          <p>
+            <strong>Input range</strong> and <strong>output swing</strong> are
+            the other half. An amplifier only works while its transistors have
+            room to stay in saturation, so there is a band of input voltage where
+            it behaves and rails on either side where it does not. The panel
+            wires the circuit as a buffer, sweeps its input from ground to the
+            supply, and reports where the output actually tracked the input.
+            Tracking means unit slope, not merely agreeing: at the bottom of the
+            sweep the amplifier is off and its output sits at zero, which matches
+            a zero input and means nothing.
+          </p>
+          <p>
+            An AC analysis excites every source in a netlist at once, so one copy
+            of a circuit cannot be asked three questions and give three separable
+            answers. <strong>Run rejection and range</strong> puts four identical
+            copies in one deck, gives each a single stimulus, and sweeps them
+            together: one library load, four answers, about half a minute.
+          </p>
+          <p>
+            These are the numbers that tell the two topologies apart. The
+            two-stage op-amp measures about 76 dB of CMRR and 67 dB of PSRR with
+            1.24 V of range; the five-transistor OTA measures about 57 dB, 36 dB
+            and 0.91 V. The OTA is simpler and needs no compensation, and it is
+            worse at all three, which is a trade rather than a defect.
+          </p>
+        </section>
+
+        <section class="section prose">
           <h2>Robustness: corners and Monte Carlo</h2>
           <p>
             One passing simulation shows a circuit works at the typical process, room

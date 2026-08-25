@@ -1366,6 +1366,96 @@
 
   stepRun.addEventListener("click", runStep);
 
+
+  /* ---- rejection and range ------------------------------------------------ */
+
+  var sheetPanel = id("sheet");
+  var sheetFigure = id("sheet-panel");
+  var sheetRun = id("sheet-run");
+  var sheetProgress = id("sheet-progress");
+  var sheetState = id("sheet-state");
+  var sheetMetrics = id("sheet-metrics");
+  var sheetError = id("sheet-error");
+  var sheetCaption = id("sheet-caption");
+
+  var lastSheet = null;
+
+  function renderSheetPanel() {
+    lastSheet = null;
+    sheetRun.disabled = false;
+    show(sheetProgress, false);
+    show(sheetError, false);
+    clear(sheetMetrics);
+    show(sheetFigure, false);
+    show(sheetPanel, Boolean(current.datasheet) && !isStatic);
+  }
+
+  function renderSheetResult(result) {
+    clear(sheetMetrics);
+    (current.datasheet.readout || []).forEach(function (spec) {
+      var raw = result[spec.key];
+      var row = el("div");
+      row.appendChild(el("span", "goal-label", spec.label));
+      row.appendChild(el("span", "goal-value",
+        typeof raw === "number" && isFinite(raw)
+          ? window.formatEngineering(raw, spec.unit || "")
+          : "\u2014"));
+      sheetMetrics.appendChild(row);
+    });
+
+    // The range is two numbers, and which end it ran out at is the useful
+    // half of the answer.
+    var span = el("div");
+    span.appendChild(el("span", "goal-label", "follows from"));
+    span.appendChild(el("span", "goal-value",
+      result.input_low.toFixed(3) + " V to " + result.input_high.toFixed(3)
+      + " V, on a " + result.supply.toFixed(2) + " V supply"));
+    sheetMetrics.appendChild(span);
+
+    sheetCaption.textContent =
+      (current.datasheet && current.datasheet.caption) || "";
+    show(sheetFigure, true);
+    window.drawTransfer(id("sheet-plot"), result);
+  }
+
+  function runSheet() {
+    if (!current.datasheet || !validate()) {
+      return;
+    }
+    show(sheetError, false);
+    clear(sheetMetrics);
+    show(sheetFigure, false);
+    sheetRun.disabled = true;
+    sheetState.textContent = "Running four amplifiers, about half a minute";
+    show(sheetProgress, true);
+
+    fetch("/api/datasheet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ circuit: current.id, params: values() })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload && payload.error
+              ? payload.error : "The server refused the request.");
+          }
+          lastSheet = payload;
+          sheetState.textContent = "Measured";
+          sheetRun.disabled = false;
+          renderSheetResult(payload);
+        });
+      })
+      .catch(function (error) {
+        sheetRun.disabled = false;
+        show(sheetProgress, false);
+        sheetError.textContent = String(error.message || error);
+        show(sheetError, true);
+      });
+  }
+
+  sheetRun.addEventListener("click", runSheet);
+
   /* ---- robustness --------------------------------------------------------- */
 
   var robustPanel = id("robust");
@@ -1603,6 +1693,9 @@
     if (lastStep && !stepFigure.classList.contains("hidden")) {
       window.drawStep(id("step-plot"), lastStep);
     }
+    if (lastSheet && !sheetFigure.classList.contains("hidden")) {
+      window.drawTransfer(id("sheet-plot"), lastSheet);
+    }
     if (lastBode && !bodePanel.classList.contains("hidden")) {
       window.drawBode(id("bode"), lastBode);
     }
@@ -1633,6 +1726,7 @@
     renderInputs(memory[current.id]);
     renderDesignPanel();
     renderStepPanel();
+    renderSheetPanel();
     renderRobustPanel();
     hideNetlist();
     validate();
@@ -1698,6 +1792,8 @@
     show(id("robust"), false);
     show(stepPanel, false);
     show(stepFigure, false);
+    show(sheetPanel, false);
+    show(sheetFigure, false);
   }
 
   async function start() {

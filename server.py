@@ -583,7 +583,7 @@ def resolve_route(path):
 class FaradaemHandler(BaseHTTPRequestHandler):
     """Routes whitelisted GETs and the two POST endpoints; anything else is a JSON 404."""
 
-    server_version = "Faradaem/1.2.0"
+    server_version = "Faradaem/1.3.0"
     protocol_version = "HTTP/1.1"
 
     # ---- routing -------------------------------------------------------
@@ -641,6 +641,8 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_advise_reply()
         elif path == "/api/step":
             self._handle_step()
+        elif path == "/api/datasheet":
+            self._handle_datasheet()
         elif path == "/api/robust":
             self._handle_robust_start()
         elif path == "/api/robust/stop":
@@ -705,6 +707,26 @@ class FaradaemHandler(BaseHTTPRequestHandler):
 
         try:
             self._send_json(200, circuits.run_step(circuit_id, params))
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+
+    def _handle_datasheet(self):
+        """Rejection and range. Four amplifiers in one deck, about half a
+        minute, synchronous like the other measurements."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+
+        try:
+            circuit_id, params = validate_api_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
+        try:
+            self._send_json(200, circuits.run_datasheet(circuit_id, params))
         except INPUT_ERRORS as exc:
             self._send_json(400, {"error": str(exc)})
         except SIMULATION_ERRORS as exc:

@@ -531,6 +531,84 @@ def build_twopole_amp(params, fstart, fstop, out_paths):
     )
 
 
+def _opamp_core(params, tag="", inverting="inn", non_inverting="inp",
+                supply="vdd"):
+    """The two-stage amplifier itself: bias, devices, compensation, load.
+
+    Everything that makes it an amplifier and nothing about how it is being
+    measured. tag prefixes every internal node and device name, so a deck
+    can hold several copies driven differently without them touching. The
+    gates and the rail are arguments for the same reason: one copy sees a
+    differential drive, another a common-mode one, another a moving supply.
+
+    M1's gate is the inverting input, the diode side of the mirror.
+    """
+    nf = " " + NFET_MODEL + " "
+    pf = " sky130_fd_pr__pfet_01v8 "
+    length = "L=" + _microns(params["l"], "l")
+
+    def node(name):
+        return tag + name
+
+    def nfet(name, drain, gate, source, width):
+        return ("XM" + tag + name + " " + drain + " " + gate + " " + source
+                + " 0" + nf + "W=" + _microns(width, "w") + " " + length)
+
+    def pfet(name, drain, gate, source, width):
+        return ("XM" + tag + name + " " + drain + " " + gate + " " + source
+                + " " + supply + pf + "W=" + _microns(width, "w") + " " + length)
+
+    return [
+        "Ib" + tag + " " + supply + " " + node("nbias") + " DC "
+        + _fmt(params["ibias"], "ibias"),
+        nfet("8", node("nbias"), node("nbias"), "0", OPAMP_W8),
+        nfet("1", node("d1"), inverting, node("tail"), params["wpair"]),
+        nfet("2", node("d2"), non_inverting, node("tail"), params["wpair"]),
+        pfet("3", node("d1"), node("d1"), supply, params["wload"]),
+        pfet("4", node("d2"), node("d1"), supply, params["wload"]),
+        nfet("5", node("tail"), node("nbias"), "0", OPAMP_W5),
+        pfet("6", node("out"), node("d2"), supply, params["w6"]),
+        nfet("7", node("out"), node("nbias"), "0", params["w7"]),
+        "Rz" + tag + " " + node("d2") + " " + node("zx") + " "
+        + _fmt(params["rz"], "rz"),
+        "Cc" + tag + " " + node("zx") + " " + node("out") + " "
+        + _fmt(params["cc"], "cc"),
+        "CL" + tag + " " + node("out") + " 0 " + _fmt(params["cl"], "cl"),
+    ]
+
+
+def _ota_core(params, tag="", inverting="inn", non_inverting="inp",
+              supply="vdd"):
+    """The five-transistor OTA itself. One stage, so the output is M2's
+    drain and M2's gate is the inverting input, the non-diode side."""
+    nf = " " + NFET_MODEL + " "
+    pf = " sky130_fd_pr__pfet_01v8 "
+    length = "L=" + _microns(params["l"], "l")
+
+    def node(name):
+        return tag + name
+
+    def nfet(name, drain, gate, source, width):
+        return ("XM" + tag + name + " " + drain + " " + gate + " " + source
+                + " 0" + nf + "W=" + _microns(width, "w") + " " + length)
+
+    def pfet(name, drain, gate, source, width):
+        return ("XM" + tag + name + " " + drain + " " + gate + " " + source
+                + " " + supply + pf + "W=" + _microns(width, "w") + " " + length)
+
+    return [
+        "Ib" + tag + " " + supply + " " + node("nbias") + " DC "
+        + _fmt(params["ibias"], "ibias"),
+        nfet("8", node("nbias"), node("nbias"), "0", OPAMP_W8),
+        nfet("1", node("d1"), non_inverting, node("tail"), params["wpair"]),
+        nfet("2", node("out"), inverting, node("tail"), params["wpair"]),
+        pfet("3", node("d1"), node("d1"), supply, params["wload"]),
+        pfet("4", node("out"), node("d1"), supply, params["wload"]),
+        nfet("5", node("tail"), node("nbias"), "0", OPAMP_W5),
+        "CL" + tag + " " + node("out") + " 0 " + _fmt(params["cl"], "cl"),
+    ]
+
+
 def build_opamp_two_stage(params, fstart, fstop, out_paths):
     """SKY130 two-stage Miller op-amp, measured open loop.
 
@@ -551,34 +629,12 @@ def build_opamp_two_stage(params, fstart, fstop, out_paths):
     netlist, so the written vector is +a(s) and the phase starts at zero.
     """
     loop_path = out_paths[0]
-    nf = " " + NFET_MODEL + " "
-    pf = " sky130_fd_pr__pfet_01v8 "
-    length = "L=" + _microns(params["l"], "l")
-
-    def nfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " 0" + nf
-                + "W=" + _microns(w, "w") + " " + length)
-
-    def pfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " vdd" + pf
-                + "W=" + _microns(w, "w") + " " + length)
 
     devices = [
         ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
         "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
         "Vcm inp 0 DC " + _fmt(OPAMP_VCM, "vcm"),
-        "Ib vdd nbias DC " + _fmt(params["ibias"], "ibias"),
-        nfet("8", "nbias", "nbias", "0", OPAMP_W8),
-        nfet("1", "d1", "inn", "tail", params["wpair"]),
-        nfet("2", "d2", "inp", "tail", params["wpair"]),
-        pfet("3", "d1", "d1", "vdd", params["wload"]),
-        pfet("4", "d2", "d1", "vdd", params["wload"]),
-        nfet("5", "tail", "nbias", "0", OPAMP_W5),
-        pfet("6", "out", "d2", "vdd", params["w6"]),
-        nfet("7", "out", "nbias", "0", params["w7"]),
-        "Rz d2 zx " + _fmt(params["rz"], "rz"),
-        "Cc zx out " + _fmt(params["cc"], "cc"),
-        "CL out 0 " + _fmt(params["cl"], "cl"),
+    ] + _opamp_core(params) + [
         "Lfb out inn 1e9",
         "Vs ac 0 DC 0 AC 1",
         "Cin ac inn 1e9",
@@ -607,30 +663,12 @@ def build_ota_5t(params, fstart, fstop, out_paths):
     two-stage op-amp, with Einv restoring the sign of the written vector.
     """
     loop_path = out_paths[0]
-    nf = " " + NFET_MODEL + " "
-    pf = " sky130_fd_pr__pfet_01v8 "
-    length = "L=" + _microns(params["l"], "l")
-
-    def nfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " 0" + nf
-                + "W=" + _microns(w, "w") + " " + length)
-
-    def pfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " vdd" + pf
-                + "W=" + _microns(w, "w") + " " + length)
 
     devices = [
         ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
         "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
         "Vcm inp 0 DC " + _fmt(OPAMP_VCM, "vcm"),
-        "Ib vdd nbias DC " + _fmt(params["ibias"], "ibias"),
-        nfet("8", "nbias", "nbias", "0", OPAMP_W8),
-        nfet("1", "d1", "inp", "tail", params["wpair"]),
-        nfet("2", "out", "inn", "tail", params["wpair"]),
-        pfet("3", "d1", "d1", "vdd", params["wload"]),
-        pfet("4", "out", "d1", "vdd", params["wload"]),
-        nfet("5", "tail", "nbias", "0", OPAMP_W5),
-        "CL out 0 " + _fmt(params["cl"], "cl"),
+    ] + _ota_core(params) + [
         "Lfb out inn 1e9",
         "Vs ac 0 DC 0 AC 1",
         "Cin ac inn 1e9",
@@ -750,35 +788,12 @@ def build_opamp_step(params, window, out_paths):
     loop is closed for real. Nothing here is servoed and nothing is
     fictional; what the output does is what the amplifier does.
     """
-    nf = " " + NFET_MODEL + " "
-    pf = " sky130_fd_pr__pfet_01v8 "
-    length = "L=" + _microns(params["l"], "l")
-
-    def nfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " 0" + nf
-                + "W=" + _microns(w, "w") + " " + length)
-
-    def pfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " vdd" + pf
-                + "W=" + _microns(w, "w") + " " + length)
-
     devices = [
         ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
         "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
         _pulse_source(window),
-        "Ib vdd nbias DC " + _fmt(params["ibias"], "ibias"),
-        nfet("8", "nbias", "nbias", "0", OPAMP_W8),
-        # M1's gate is the inverting input and takes the feedback directly.
-        nfet("1", "d1", "out", "tail", params["wpair"]),
-        nfet("2", "d2", "inp", "tail", params["wpair"]),
-        pfet("3", "d1", "d1", "vdd", params["wload"]),
-        pfet("4", "d2", "d1", "vdd", params["wload"]),
-        nfet("5", "tail", "nbias", "0", OPAMP_W5),
-        pfet("6", "out", "d2", "vdd", params["w6"]),
-        nfet("7", "out", "nbias", "0", params["w7"]),
-        "Rz d2 zx " + _fmt(params["rz"], "rz"),
-        "Cc zx out " + _fmt(params["cc"], "cc"),
-        "CL out 0 " + _fmt(params["cl"], "cl"),
+        # The output feeds the inverting gate directly: a real closed loop.
+    ] + _opamp_core(params, inverting="out") + [
         ".nodeset v(out)=" + _fmt(OPAMP_VCM - STEP_VOLTS / 2.0, "start")
         + " v(d2)=1.1",
     ]
@@ -796,30 +811,12 @@ def build_ota_step(params, window, out_paths):
     M2's gate is the inverting input on this topology, the non-diode side,
     so that is where the output feeds back.
     """
-    nf = " " + NFET_MODEL + " "
-    pf = " sky130_fd_pr__pfet_01v8 "
-    length = "L=" + _microns(params["l"], "l")
-
-    def nfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " 0" + nf
-                + "W=" + _microns(w, "w") + " " + length)
-
-    def pfet(name, d, g, s_, w):
-        return ("XM" + name + " " + d + " " + g + " " + s_ + " vdd" + pf
-                + "W=" + _microns(w, "w") + " " + length)
-
     devices = [
         ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
         "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
         _pulse_source(window),
-        "Ib vdd nbias DC " + _fmt(params["ibias"], "ibias"),
-        nfet("8", "nbias", "nbias", "0", OPAMP_W8),
-        nfet("1", "d1", "inp", "tail", params["wpair"]),
-        nfet("2", "out", "out", "tail", params["wpair"]),
-        pfet("3", "d1", "d1", "vdd", params["wload"]),
-        pfet("4", "out", "d1", "vdd", params["wload"]),
-        nfet("5", "tail", "nbias", "0", OPAMP_W5),
-        "CL out 0 " + _fmt(params["cl"], "cl"),
+        # M2's gate is the inverting input here, and it takes the feedback.
+    ] + _ota_core(params, inverting="out") + [
         ".nodeset v(out)=" + _fmt(OPAMP_VCM - STEP_VOLTS / 2.0, "start"),
     ]
 
@@ -849,6 +846,156 @@ def measure_step_response(points, params, window):
     measured = runner.measure_step(points, window, 2.0 * window, window)
     measured["window"] = window
     measured["rise_at"] = window
+    return measured
+
+
+# ---------------------------------------------------------------------------
+# rejection and range: what a sweep of the signal path cannot answer
+# ---------------------------------------------------------------------------
+#
+# An AC analysis superposes every source in the deck at once, so one copy of
+# an amplifier cannot be asked three questions. It can be asked one question
+# three times, in three identical copies, which is what this does: a
+# differential drive for the gain, a common-mode drive for CMRR, a moving
+# supply for PSRR, and a fourth copy wired as a real buffer and swept from
+# rail to rail for the range. One process, one library load, four answers.
+
+#: Rejection is quoted where it is flat, below the dominant pole.
+REJECTION_FSTART = 10.0
+REJECTION_FSTOP = 1e6
+REJECTION_POINTS_PER_DECADE = 10
+
+#: The transfer curve is swept in steps this size across the whole supply.
+SWEEP_STEP_V = 0.01
+
+#: Below this the deck did not bias and its numbers would be noise.
+MIN_USABLE_GAIN_DB = 10.0
+
+
+def datasheet_control_block(out_paths):
+    """One DC sweep and one AC sweep, four files, in that order."""
+    dc_path, dm_path, cm_path, ps_path = out_paths
+
+    def wr(path, vector):
+        return "wrdata " + str(path).replace("\\", "/") + " " + vector
+
+    return [
+        ".control",
+        "dc Vbin 0 " + _fmt(OPAMP_VDD, "vdd") + " " + _fmt(SWEEP_STEP_V, "step"),
+        wr(dc_path, "v(bout)"),
+        "ac dec " + _fmt(REJECTION_POINTS_PER_DECADE, "points")
+        + " " + _fmt(REJECTION_FSTART, "fstart")
+        + " " + _fmt(REJECTION_FSTOP, "fstop"),
+        wr(dm_path, "v(aout)"),
+        wr(cm_path, "v(cout)"),
+        wr(ps_path, "v(sout)"),
+        "quit",
+        ".endc",
+        ".end",
+    ]
+
+
+def _rejection_instances(core, params):
+    """The four copies, each with one stimulus, sharing nothing but ground.
+
+    a  differential, through the same DC servo the open-loop sweep uses
+    c  common mode, both gates driven together
+    s  supply, its own rail carrying the signal
+    b  a real unity buffer, for the DC sweep
+    """
+    lines = []
+
+    lines += core(params, tag="a", inverting="ainn", non_inverting="ainp")
+    lines += [
+        "Vacm ainp 0 DC " + _fmt(OPAMP_VCM, "vcm"),
+        "Lfba aout ainn 1e9",
+        "Vsa asrc 0 DC 0 AC 1",
+        "Cina asrc ainn 1e9",
+    ]
+
+    lines += core(params, tag="c", inverting="cinn", non_inverting="ccm")
+    lines += [
+        "Vccm ccm 0 DC " + _fmt(OPAMP_VCM, "vcm") + " AC 1",
+        "Lfbc cout cinn 1e9",
+        # Both gates have to move together, so the inverting one is tied to
+        # the driven node for the signal while the servo still sets its DC.
+        "Ccinj ccm cinn 1e9",
+    ]
+
+    lines += core(params, tag="s", inverting="sinn", non_inverting="sinp",
+                  supply="svdd")
+    lines += [
+        "Vsvdd svdd 0 DC " + _fmt(OPAMP_VDD, "vdd") + " AC 1",
+        "Vscm sinp 0 DC " + _fmt(OPAMP_VCM, "vcm"),
+        "Lfbs sout sinn 1e9",
+        # The servo inductor is an open circuit above DC, which would leave
+        # this gate floating and the answer meaningless. Hold it still for
+        # the signal and leave the DC servo alone.
+        "Cgnds sinn 0 1e9",
+    ]
+
+    lines += core(params, tag="b", inverting="bout", non_inverting="binp")
+    lines += ["Vbin binp 0 DC " + _fmt(OPAMP_VCM, "vcm")]
+
+    lines += [
+        ".nodeset v(aout)=" + _fmt(OPAMP_VCM, "vcm")
+        + " v(ainn)=" + _fmt(OPAMP_VCM, "vcm"),
+        ".nodeset v(cout)=" + _fmt(OPAMP_VCM, "vcm")
+        + " v(cinn)=" + _fmt(OPAMP_VCM, "vcm"),
+        ".nodeset v(sout)=" + _fmt(OPAMP_VCM, "vcm")
+        + " v(sinn)=" + _fmt(OPAMP_VCM, "vcm"),
+    ]
+    return lines
+
+
+def build_opamp_datasheet(params, out_paths):
+    """Four two-stage op-amps in one deck: rejection and range together."""
+    devices = [
+        ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
+        "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
+    ] + _rejection_instances(_opamp_core, params)
+
+    return "\n".join(
+        ["* Faradaem SKY130 two-stage op-amp, rejection and range"]
+        + devices + datasheet_control_block(out_paths)
+    ) + "\n"
+
+
+def build_ota_datasheet(params, out_paths):
+    """Four OTAs in one deck: rejection and range together."""
+    devices = [
+        ".lib " + runner.find_sky130_lib() + " " + runner.SKY130_DEFAULT_CORNER,
+        "Vdd vdd 0 DC " + _fmt(OPAMP_VDD, "vdd"),
+    ] + _rejection_instances(_ota_core, params)
+
+    return "\n".join(
+        ["* Faradaem SKY130 5T OTA, rejection and range"]
+        + devices + datasheet_control_block(out_paths)
+    ) + "\n"
+
+
+def measure_datasheet(bodes, transfer, params):
+    """CMRR, PSRR and the range, with the deck checked for having biased."""
+    differential, common, supply = bodes
+
+    gain_db = differential["mag_db"][0]
+    if gain_db < MIN_USABLE_GAIN_DB:
+        raise BiasError(
+            "The amplifier measured " + ("%.1f" % gain_db) + " dB of gain in "
+            "this testbench, too little to reject anything, so its rejection "
+            "figures would be noise. Check the bias current and the device "
+            "widths, then run again."
+        )
+
+    measured = {
+        "gain_db": gain_db,
+        "cmrr_db": runner.rejection_db(differential, common),
+        "psrr_db": runner.rejection_db(differential, supply),
+        # The rail the range is measured against travels with the numbers,
+        # so nothing downstream has to keep its own copy of it.
+        "supply": OPAMP_VDD,
+    }
+    measured.update(runner.measure_follower_range(transfer))
     return measured
 
 
@@ -1327,6 +1474,18 @@ CIRCUITS = {
             param("wload", "W3,4 (mirror load)", "m", 1e-5, 4.2e-7, 1e-4),
             param("cl", "CL (load)", "F", 2e-12, 1e-13, 1e-10),
         ],
+        "datasheet": {
+            "build": build_ota_datasheet,
+            "caption": "Figure 13: the OTA measured four ways at once. A single "
+                       "stage rejects a moving supply differently from a "
+                       "two-stage, which is what these numbers show.",
+            "readout": [
+                metric("cmrr_db", "CMRR", "eng", "dB"),
+                metric("psrr_db", "PSRR", "eng", "dB"),
+                metric("input_range", "input range", "eng", "V"),
+                metric("output_swing", "output swing", "eng", "V"),
+            ],
+        },
         "step": {
             "build": build_ota_step,
             "window": ota_step_window,
@@ -1397,6 +1556,18 @@ CIRCUITS = {
             param("rz", "Rz (zero nulling)", "\u03a9", 2000.0, 1e-3, 1e5),
             param("cl", "CL (load)", "F", 2e-12, 1e-13, 1e-10),
         ],
+        "datasheet": {
+            "build": build_opamp_datasheet,
+            "caption": "Figure 12: the same op-amp measured four ways at once. "
+                       "Three copies take a differential, a common-mode and a "
+                       "supply drive; a fourth is swept rail to rail as a buffer.",
+            "readout": [
+                metric("cmrr_db", "CMRR", "eng", "dB"),
+                metric("psrr_db", "PSRR", "eng", "dB"),
+                metric("input_range", "input range", "eng", "V"),
+                metric("output_swing", "output swing", "eng", "V"),
+            ],
+        },
         "step": {
             "build": build_opamp_step,
             "window": opamp_step_window,
@@ -1565,6 +1736,14 @@ def catalog():
             "pdk": bool(circuit.get("pdk")),
             # A circuit that declares a step testbench advertises what the
             # panel should show: no callables, same as everything else here.
+            "datasheet": (
+                {
+                    "caption": circuit["datasheet"]["caption"],
+                    "readout": [dict(item) for item
+                                in circuit["datasheet"]["readout"]],
+                }
+                if circuit.get("datasheet") else None
+            ),
             "step": (
                 {
                     "caption": circuit["step"]["caption"],
@@ -1739,6 +1918,50 @@ def run_step(circuit_id, params, transform=None):
     points = runner.parse_wrdata_real(texts[0])
     measured = measure_step_response(points, values, window)
     measured["waveform"] = _decimate(points, WAVEFORM_POINTS)
+    return measured
+
+
+class NoDatasheetError(CircuitInputError):
+    """Raised when a circuit has no rejection testbench to run."""
+
+
+def has_datasheet(circuit_id):
+    """True when this circuit declares a rejection and range run."""
+    return "datasheet" in get_circuit(circuit_id)
+
+
+def run_datasheet(circuit_id, params, transform=None):
+    """Measure rejection and range, and return the transfer curve with them.
+
+    Four copies of the amplifier go into one deck so that a single library
+    load answers four questions. The curve comes back for drawing, because
+    a range without the curve it was read off is a number nobody can check.
+    """
+    circuit = get_circuit(circuit_id)
+    sheet = circuit.get("datasheet")
+    if sheet is None:
+        raise NoDatasheetError(
+            "The circuit " + repr(circuit_id) + " has no rejection testbench. "
+            "The two SKY130 amplifiers do; pick one of those."
+        )
+
+    values = dict(params)
+    paths = [_reserve_data_path() for _ in range(4)]
+    netlist = sheet["build"](values, paths)
+    if transform is not None:
+        netlist = transform(netlist)
+
+    texts = runner.run_data_netlist(
+        netlist, paths, timeout_s=runner.DATASHEET_TIMEOUT_S
+    )
+    transfer = runner.parse_wrdata_real(texts[0])
+    bodes = [
+        runner.compute_bode(runner.parse_wrdata_complex(text))
+        for text in texts[1:]
+    ]
+
+    measured = measure_datasheet(bodes, transfer, values)
+    measured["transfer"] = _decimate(transfer, WAVEFORM_POINTS)
     return measured
 
 

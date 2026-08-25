@@ -1,8 +1,10 @@
-/* Faradaem step plot -- pure SVG, no libraries.
+/* Faradaem step and transfer plots -- pure SVG, no libraries.
  *
- * One linear time axis and one voltage axis: the amplifier's output when it
- * is asked to move as fast as it can. The Bode plot next door shows the
- * amplifier being polite; this shows its limit.
+ * The two plots with a linear x axis, sharing their frame, ticks and scales.
+ * drawStep puts time on it: the amplifier's output when it is asked to move
+ * as fast as it can. drawTransfer puts input volts on it: where a buffer
+ * follows and where it runs out of headroom. The Bode plot next door shows
+ * the amplifier being polite; these show its limits.
  *
  * Drawn at the width it will occupy so nothing is scaled up, in the same
  * idiom as the schematic and the sweep: dark ground, hairline frame, one
@@ -242,5 +244,111 @@
     return svg;
   }
 
+  /* The DC transfer curve: output against input, swept across the supply,
+     with the ends of the range that was measured marked on it. */
+  function drawTransfer(svg, data) {
+    var points = (data && data.transfer) || [];
+
+    clear(svg);
+
+    var measured = svg.getBoundingClientRect();
+    var view = {
+      width: Math.round(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH,
+        measured && measured.width ? measured.width : VIEW.width))),
+      height: VIEW.height
+    };
+    svg.setAttribute("viewBox", "0 0 " + view.width + " " + view.height);
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    svg.setAttribute("role", "img");
+
+    if (points.length < 2) {
+      svg.setAttribute("aria-label", "Transfer curve, no data yet.");
+      text(svg, {
+        x: view.width / 2, y: view.height / 2,
+        text: "run rejection and range to plot the transfer curve",
+        anchor: "middle", size: 12, className: "bode-placeholder"
+      });
+      return svg;
+    }
+
+    var left = MARGIN.left;
+    var right = view.width - MARGIN.right;
+    var top = MARGIN.top;
+    var bottom = view.height - MARGIN.bottom;
+
+    var xMin = points[0][0];
+    var xMax = points[points.length - 1][0];
+    var yMin = points[0][1];
+    var yMax = points[0][1];
+    for (var i = 1; i < points.length; i++) {
+      if (points[i][1] < yMin) { yMin = points[i][1]; }
+      if (points[i][1] > yMax) { yMax = points[i][1]; }
+    }
+    var pad = Math.max((yMax - yMin) * 0.08, 0.01);
+
+    var xOf = scale(xMin, xMax, left, right);
+    var yOf = scale(yMax + pad, yMin - pad, top, bottom);
+
+    svg.setAttribute(
+      "aria-label",
+      "Transfer curve: output from " + yMin.toFixed(2) + " to "
+      + yMax.toFixed(2) + " volts as the input sweeps the supply."
+    );
+
+    var xTicks = ticks(xMin, xMax);
+    var xStep = xTicks.length > 1 ? xTicks[1] - xTicks[0] : (xMax - xMin);
+    xTicks.forEach(function (value) {
+      var x = xOf(value);
+      line(svg, x, top, x, bottom, "bode-grid");
+      text(svg, {
+        x: x, y: bottom + 15,
+        text: (xStep < 0.1 ? value.toFixed(2) : value.toFixed(1)),
+        anchor: "middle"
+      });
+    });
+
+    ticks(yMin - pad, yMax + pad).forEach(function (value) {
+      var y = yOf(value);
+      line(svg, left, y, right, y, "bode-grid");
+      text(svg, { x: left - 8, y: y + 3.5, text: value.toFixed(2), anchor: "end" });
+    });
+
+    add(svg, "rect", {
+      "class": "bode-axis",
+      x: left, y: top, width: right - left, height: bottom - top
+    });
+
+    var path = [];
+    for (var p = 0; p < points.length; p++) {
+      path.push(xOf(points[p][0]).toFixed(2) + "," + yOf(points[p][1]).toFixed(2));
+    }
+    add(svg, "polyline", { "class": "bode-mag", points: path.join(" ") });
+
+    // The ends of the range that was measured, so the reader can see which
+    // part of this curve the numbers came from.
+    [data.input_low, data.input_high].forEach(function (edge) {
+      if (typeof edge !== "number") {
+        return;
+      }
+      var x = xOf(edge);
+      if (x >= left && x <= right) {
+        line(svg, x, top, x, bottom, "bode-marker");
+      }
+    });
+
+    var middle = (top + bottom) / 2;
+    text(svg, {
+      x: 13, y: middle, text: "OUTPUT (V)", anchor: "middle",
+      className: "bode-title", transform: "rotate(-90 13 " + middle + ")"
+    });
+    text(svg, {
+      x: (left + right) / 2, y: view.height - 7, text: "INPUT (V)",
+      anchor: "middle", className: "bode-title"
+    });
+
+    return svg;
+  }
+
   window.drawStep = drawStep;
+  window.drawTransfer = drawTransfer;
 })(window, document);

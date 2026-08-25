@@ -930,6 +930,72 @@ def measure_step(points, rise_at, fall_at, window,
     return result
 
 
+# ---------------------------------------------------------------------------
+# rejection, and the range over which a follower follows
+# ---------------------------------------------------------------------------
+
+#: Four amplifiers, a DC sweep and an AC sweep in one process.
+DATASHEET_TIMEOUT_S = 300.0
+
+#: A follower is following when the error is under this and the slope is
+#: near one. The error alone is not enough: at the bottom of a sweep a dead
+#: amplifier sits at zero, which matches a zero input and means nothing.
+FOLLOW_ERROR_V = 0.01
+FOLLOW_SLOPE_TOLERANCE = 0.1
+
+
+def rejection_db(wanted, unwanted):
+    """How far the wanted gain sits above the unwanted one, in dB.
+
+    Both are read at the low-frequency end of the same sweep, where each is
+    flat, which is the number a datasheet quotes as CMRR or PSRR.
+    """
+    if not wanted.get("mag_db") or not unwanted.get("mag_db"):
+        raise NgspiceParseError("A rejection sweep produced no magnitudes.")
+    return wanted["mag_db"][0] - unwanted["mag_db"][0]
+
+
+def measure_follower_range(points, error_v=FOLLOW_ERROR_V,
+                           slope_tolerance=FOLLOW_SLOPE_TOLERANCE):
+    """Where a unity buffer tracks its input, swept across the supply.
+
+    Returns the input range that works and the output range it produced.
+    For a buffer these are the same measurement seen twice: how far the
+    common mode can go before the input pair loses its headroom, and how
+    far the output can swing before the output devices lose theirs.
+    """
+    if len(points) < 5:
+        raise NgspiceParseError(
+            "The sweep produced " + str(len(points)) + " points. Expected a "
+            "transfer curve across the supply."
+        )
+
+    following = []
+    for index in range(1, len(points) - 1):
+        vin, vout = points[index]
+        span = points[index + 1][0] - points[index - 1][0]
+        if span == 0:
+            continue
+        slope = (points[index + 1][1] - points[index - 1][1]) / span
+        if abs(vout - vin) < error_v and abs(slope - 1.0) <= slope_tolerance:
+            following.append((vin, vout))
+
+    if not following:
+        raise NgspiceParseError(
+            "The buffer never followed its input anywhere across the supply, "
+            "so it has no usable range. The bias is probably wrong."
+        )
+
+    return {
+        "input_low": following[0][0],
+        "input_high": following[-1][0],
+        "output_low": following[0][1],
+        "output_high": following[-1][1],
+        "input_range": following[-1][0] - following[0][0],
+        "output_swing": following[-1][1] - following[0][1],
+    }
+
+
 def pdk_root():
     r"""Return the PDK install root: $PDK_ROOT, or C:\pdk if it is unset.
 

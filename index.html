@@ -153,6 +153,26 @@
         </div>
       </section>
 
+      <section class="panel design-panel hidden" id="sheet" aria-label="Rejection and range">
+        <h2 class="panel-head">Rejection and range</h2>
+        <div class="panel-body">
+          <p class="design-intro">The rest of the datasheet: how well the
+          amplifier ignores what both inputs do together and what its supply
+          does, and how far its input and output can travel before it stops
+          working. Four copies of the circuit in one run, about half a minute.</p>
+          <div class="design-actions">
+            <button class="chip" id="sheet-run" type="button">Run rejection and range</button>
+          </div>
+          <div class="design-progress hidden" id="sheet-progress">
+            <div class="design-statusline">
+              <span id="sheet-state">Running</span>
+            </div>
+            <div class="design-best" id="sheet-metrics"></div>
+          </div>
+          <p class="field-error hidden" id="sheet-error"></p>
+        </div>
+      </section>
+
       <section class="panel robust-panel hidden" id="robust" aria-label="Robustness">
         <h2 class="panel-head">Robustness</h2>
         <div class="panel-body">
@@ -193,6 +213,13 @@
 
         <figure class="figure hidden" id="bode-panel">
           <svg id="bode" viewBox="0 0 520 360"></svg>
+        </figure>
+
+        <figure class="figure hidden" id="sheet-panel">
+          <svg id="sheet-plot" viewBox="0 0 520 260"></svg>
+          <figcaption>
+            <span id="sheet-caption"></span>
+          </figcaption>
         </figure>
 
         <figure class="figure hidden" id="step-panel">

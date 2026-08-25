@@ -50,6 +50,10 @@ seed_design if available, simulate the seed, and if any target is missed, \
 run_design to iterate. Quote measured numbers from the tool results.
 - If the request is impossible or targets should be relaxed, do not decide \
 alone: end your reply with a clear question to the user and no tool calls.
+- Gain, bandwidth, phase margin and power come from the sweep. Slew rate and \
+settling come from measure_step; CMRR, PSRR, input range and output swing come \
+from measure_rejection. Never state one of those without having measured it: a \
+sweep does not contain them.
 - When a design meets its targets at the typical corner, verify it with \
 run_corners and report the worst case. A target that fails at a corner is a \
 finding to report, with the corner named.
@@ -116,6 +120,44 @@ TOOLS = [
         },
     },
     {
+        "name": "measure_step",
+        "description": "Measure what a frequency sweep cannot: slew rate, "
+                       "settling time and overshoot, from a real step into "
+                       "the amplifier wired as a unity buffer. One transient "
+                       "run, about twenty seconds. Use it when the request "
+                       "mentions speed, slewing, settling or a step, and to "
+                       "check that a compensated design is not ringing.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "circuit": _CIRCUIT_PROP,
+                "params": {"type": "object",
+                           "additionalProperties": {"type": "number"}},
+            },
+            "required": ["circuit", "params"],
+        },
+    },
+    {
+        "name": "measure_rejection",
+        "description": "Measure the rest of the datasheet: CMRR, PSRR, input "
+                       "common-mode range and output swing, from four copies "
+                       "of the amplifier in one run of about half a minute. "
+                       "These are the numbers that separate the topologies "
+                       "from each other, so use them when the request "
+                       "mentions rejection, supply noise, common mode, "
+                       "headroom or swing, and when choosing between the "
+                       "op-amp and the OTA on anything other than gain.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "circuit": _CIRCUIT_PROP,
+                "params": {"type": "object",
+                           "additionalProperties": {"type": "number"}},
+            },
+            "required": ["circuit", "params"],
+        },
+    },
+    {
         "name": "run_corners",
         "description": "Rerun a SKY130 circuit across the PVT suite: five "
                        "process corners, supply and temperature extremes, "
@@ -154,6 +196,8 @@ TOOLS = [
 #: Errors a tool may raise that are the candidate's fault, not the server's.
 TOOL_ERRORS = (
     pvt.PvtError,
+    circuits.NoStepResponseError,
+    circuits.NoDatasheetError,
     circuits.UnknownCircuitError,
     circuits.CircuitInputError,
     design.DesignError,
@@ -262,6 +306,27 @@ def run_tool(name, arguments, on_progress=None):
             },
         }
         return payload, dict(payload, circuit=arguments["circuit"])
+
+    if name == "measure_step":
+        measured = circuits.run_step(
+            arguments["circuit"],
+            _full_params(arguments["circuit"], arguments.get("params")),
+        )
+        # The waveform is for drawing, not for reading aloud; the model gets
+        # the numbers it can reason about.
+        payload = {key: value for key, value in measured.items()
+                   if key != "waveform"}
+        return payload, dict(payload, circuit=arguments["circuit"], mode="step")
+
+    if name == "measure_rejection":
+        measured = circuits.run_datasheet(
+            arguments["circuit"],
+            _full_params(arguments["circuit"], arguments.get("params")),
+        )
+        payload = {key: value for key, value in measured.items()
+                   if key != "transfer"}
+        return payload, dict(payload, circuit=arguments["circuit"],
+                             mode="rejection")
 
     if name == "run_corners":
         result = pvt.run_pvt(
