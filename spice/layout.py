@@ -32,7 +32,7 @@ spec once it is built".
 import os
 import re
 
-from . import runner
+from . import gds, runner
 
 #: The DRC section states its dimensions in nanometres. The scalefactor
 #: lines in this file belong to the GDS output styles and do not apply
@@ -64,6 +64,11 @@ CAP_PATTERNS = {
 }
 
 _ATTO = 1e-18
+
+#: The GDS layer and datatype of each drawn layer, by the name the Magic
+#: technology file gives it in its gdsii output style. Read, never recalled:
+#: a wrong number here produces a file that looks right and means nothing.
+GDS_LAYER_NAMES = ("DIFF", "POLY", "NWELL", "LI", "MET1")
 
 
 class LayoutDataError(RuntimeError):
@@ -121,6 +126,71 @@ def tech_constants():
 
     rules.update(caps)
     return rules
+
+
+def gds_layers():
+    """Layer and datatype numbers for the drawn layers, from the PDK.
+
+    The technology file states them in its gdsii output style as calma
+    records, one per layer block.
+    """
+    text = _read_tech()
+    try:
+        section = text[text.index("style gdsii"):]
+    except ValueError:
+        raise LayoutDataError(
+            "The technology file has no gdsii output style, so the layer "
+            "numbers cannot be read from it."
+        ) from None
+
+    layers = {}
+    for name in GDS_LAYER_NAMES:
+        pattern = (r"^\s*layer\s+" + name + r"\b[^\n]*\n"
+                   r"(?:(?!^\s*layer\s)[^\n]*\n)*?\s*calma\s+(\d+)\s+(\d+)")
+        found = re.search(pattern, section, re.M)
+        if not found:
+            raise LayoutDataError(
+                "The technology file states no GDS number for layer "
+                + repr(name) + "."
+            )
+        layers[name] = (int(found.group(1)), int(found.group(2)))
+    return layers
+
+
+def floorplan_shapes(plan, layers):
+    """The floorplan as rectangles on real layers, in microns.
+
+    Each device is its diffusion, with the poly gate crossing it where the
+    channel is. That is the least a transistor can be drawn as and still be
+    recognisable as one when the file is opened somewhere else. It is not a
+    complete device: there are no contacts, no wells, no implants, and no
+    routing between the devices.
+    """
+    diff = layers["DIFF"]
+    poly = layers["POLY"]
+
+    shapes = []
+    for device in plan["devices"]:
+        x1 = device["x"]
+        x2 = device["x"] + device["width"]
+        y1 = device["y"]
+        y2 = device["y"] + device["height"]
+        shapes.append((diff[0], diff[1], x1, y1, x2, y2))
+
+        # The gate sits in the middle of the cell, its length wide, and
+        # overhangs the diffusion at both ends as poly has to.
+        overhang = (device["width"] - device["gate_length"]) / 2.0
+        gate_x1 = x1 + overhang
+        gate_x2 = gate_x1 + device["gate_length"]
+        shapes.append((poly[0], poly[1], gate_x1, y1 - 0.13, gate_x2, y2 + 0.13))
+
+    return shapes
+
+
+def floorplan_gds(plan, name="FARADAEM_FLOORPLAN", when=None):
+    """The floorplan as a GDSII stream, ready to open in a layout tool."""
+    return gds.library(name, name, floorplan_shapes(plan, gds_layers()),
+                       when=when)
 
 
 def device_footprint(width_m, length_m, tech):

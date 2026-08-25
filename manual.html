@@ -444,6 +444,13 @@
             square micron and per micron of edge.
           </p>
           <p>
+            <strong>Download GDS</strong> writes the placement out in the format
+            every layout tool reads, on the real SKY130 layer numbers, so it can
+            be opened in KLayout or Magic and looked at properly. Each device is
+            its diffusion with the poly gate crossing it. There are no contacts,
+            no wells and no routing in the file yet.
+          </p>
+          <p>
             <strong>It is a floorplan, not a layout.</strong> Nothing in it has
             been routed, design rule checked, or extracted. Those need Magic and
             Netgen, which do not run on this machine, and until they do the area

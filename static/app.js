@@ -1709,6 +1709,7 @@
     show(layoutError, false);
     clear(layoutMetrics);
     show(layoutFigure, false);
+    show(id("layout-gds"), false);
   }
 
   function pair(label, value) {
@@ -1725,6 +1726,9 @@
       + plan.height_um.toFixed(2) + " \u00b5m");
     pair("device active area", plan.active_area_um2.toFixed(1) + " \u00b5m\u00b2");
     pair("interconnect", window.formatEngineering(result.total_parasitic_f, "F"));
+    if (result.gds_bytes) {
+      pair("geometry", result.gds_bytes + " bytes of GDS");
+    }
 
     // What the interconnect actually cost, measured rather than asserted.
     result.comparison.forEach(function (item) {
@@ -1740,6 +1744,7 @@
     layoutCaption.textContent =
       (current.floorplan && current.floorplan.caption) || "";
     show(layoutFigure, true);
+    show(id("layout-gds"), Boolean(result.gds_base64));
     window.drawFloorplan(id("layout-plot"), result);
   }
 
@@ -1780,6 +1785,34 @@
   }
 
   layoutRun.addEventListener("click", runLayout);
+
+  var layoutGds = id("layout-gds");
+
+  /* The geometry, as the file every layout tool reads. Built in the page
+     from the bytes the server computed, so nothing is written to disk
+     unless the reader asks for it. */
+  function downloadGds() {
+    if (!lastLayout || !lastLayout.gds_base64) {
+      return;
+    }
+    var binary = window.atob(lastLayout.gds_base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    var url = URL.createObjectURL(new Blob([bytes],
+      { type: "application/octet-stream" }));
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = current.id + "-floorplan.gds";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  layoutGds.addEventListener("click", downloadGds);
+
 
   /* ---- the analysis tabs -------------------------------------------------- */
 

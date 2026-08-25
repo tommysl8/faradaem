@@ -26,6 +26,7 @@ what we expected, and disagreement is reported, never silently reconciled.
 
 from __future__ import annotations
 
+import base64
 import math
 import os
 import tempfile
@@ -2096,8 +2097,19 @@ def run_layout(circuit_id, params):
             "change": after - before,
         })
 
+    # The geometry, in the format every layout tool reads. It is the same
+    # placement the area was measured over, so the file and the number
+    # cannot disagree.
+    try:
+        stream = layout.floorplan_gds(plan, name=circuit_id.upper())
+        encoded = base64.b64encode(stream).decode("ascii")
+    except layout.LayoutDataError:
+        encoded = None
+
     return {
         "floorplan": plan,
+        "gds_base64": encoded,
+        "gds_bytes": len(stream) if encoded else 0,
         "parasitics": parasitics,
         "total_parasitic_f": sum(item["capacitance_f"]
                                  for item in parasitics.values()),
