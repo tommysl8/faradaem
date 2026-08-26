@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notebook - Faradaem</title>
+<meta name="description" content="The lab notebook that writes itself: every run, every simulation, every verdict, with the provenance that makes a number evidence.">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="application-name" content="Faradaem">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/">
+      <span class="wordmark-name">FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span></span>
+      <span class="wordmark-version"></span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="/notebook" aria-current="page">Notebook</a></li>
+        <li><a href="/manual">Manual</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/changelog">Changelog</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="wrap">
+
+    <div class="page-head">
+      <h1 class="page-title">Notebook</h1>
+      <p class="page-sub">Every run this machine has made, written down as it
+      happened. Engineers keep lab notebooks badly; this one is a side
+      effect of the provenance rule, so it cannot be forgotten.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-body">
+        <h2 class="panel-head">Stored datasheets</h2>
+        <div id="notebook-sheets">
+          <p class="hint">Loading.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-body">
+        <h2 class="panel-head">Runs</h2>
+        <p class="design-intro">Newest first. A run is one ledger file:
+        its simulations were counted at the simulator boundary, and a
+        damaged line count above zero is what a crash left behind, shown
+        rather than hidden.</p>
+        <div id="notebook-runs">
+          <p class="hint">Loading.</p>
+        </div>
+        <div class="design-actions">
+          <button class="chip hidden" id="notebook-more" type="button">
+          Show 20 more</button>
+          <button class="chip" id="notebook-export" type="button">
+          Export what is shown as Markdown</button>
+        </div>
+        <p class="field-error hidden" id="notebook-error"></p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/manual">Manual</a>
+        <a href="/about">About</a>
+        <a href="/changelog">Changelog</a>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+<script src="/static/notebook.js"></script>
+</body>
+</html>

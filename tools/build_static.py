@@ -37,7 +37,7 @@ PAGES = ("index.html", "manual.html", "about.html", "changelog.html")
 #: static/ cannot end up published by accident.
 ASSETS = (
     "style.css", "app.js", "schematic.js", "bodeplot.js", "stepplot.js",
-    "layoutplot.js", "hero-layout.svg",
+    "layoutplot.js", "hero-layout.svg", "panel-datasheet.js",
     "panel-step.js", "panel-sheet.js", "panel-robust.js", "panel-layout.js",
     "icon.svg", "icon-32.png", "apple-touch-icon.png", "og.png",
     "favicon.svg",

@@ -14,6 +14,15 @@
 - UI copy is sentence case and directive: say what to do, not just what went wrong.
 - Presets live in the registry alongside the circuit they demonstrate.
 
+## The workbench (added for 1.12.0)
+- `spice/charact.py` runs the whole bench in one pass; its store lives at `<ledger-root>/charact/`, beside the ledger, never in the project. `charact.describes()` is the exact staleness check.
+- Pins (`spice/pins.py`) freeze sizing AND numbers; a check re-simulates the pinned sizing, never the form's. History never crosses a re-pin. Pins and history live beside the ledger.
+- Datasheet extremes are labelled "worst observed", never min/max; the note says how many corners measured. The sweep is a one-knob slice and its copy must never say Pareto.
+- Autopsy headroom is |vds| - |vdsat|, which is correct in either sign convention: SKY130 pfet primitives report magnitude-positive values (measured on the diode-tied mirror input), classical conventions report both negative. Never branch on device kind for this. Instances are read from the emitted deck (`autopsy._instances`), never guessed from the registry. A vector the model does not expose renders "not exposed", never 0.
+- The packet (`spice/packet.py`) builds and verifies in one call and refuses over any failing verdict; the README carries the GDS SHA-256. Never assemble a packet from cached results.
+- One workbench job per circuit at a time, enforced in `workbench.py` where it cannot be raced. Job sim counts come from `runner.SimObserver` at the subprocess boundary, reported as observed.
+- The doctor resolves every dependency through the same functions the tool uses. Optional pieces are "absent", not failures.
+
 ## Matching and the experiment (added for 1.11.0)
 - Matched pairs are declared per circuit in the registry as `"matched": [["M1","M2"], ...]`, and drawn common centroid: two fingers each, interleaved A B B A, with a dummy at each end. The test is exact: both centroids must be equal.
 - A finger is named `M1@1`. `layout.device_of()` maps it back; `layout.is_dummy()` spots a dummy. Dummies are drawn, tied to their body rail, and declared in the LVS netlist, because the layout has them.

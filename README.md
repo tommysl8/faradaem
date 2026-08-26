@@ -151,6 +151,14 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `spice/closeloop.py` | When the drawn wiring breaks a target, size against the wiring and draw again. |
 | `spice/ledger.py` | Every attempt, measurement and decision, with the provenance that makes a run evidence. |
 | `spice/experiment.py` | The four-way comparison, built so its answer would survive review. |
+| `spice/charact.py` | The whole bench in one pass: the datasheet's numbers, stamped with what measured them. |
+| `spice/pins.py` | Pin a sizing and its numbers; a later check says whether the stack drifted underneath. |
+| `spice/blame.py` | Which knob moves the failing number, measured by finite differences, never intuited. |
+| `spice/triage.py` | Is the spec feasible at this sizing, and the one-knob trade the bias current buys. |
+| `spice/autopsy.py` | Which transistor gave up at which corner, in millivolts of saturation headroom. |
+| `spice/packet.py` | The tapeout zip that verifies as it builds and refuses over a failing verdict. |
+| `workbench.py` | One background job per circuit, counts observed at the simulator boundary. |
+| `doctor.py` | Every dependency checked at once, with the exact fix for anything missing. |
 | `spice/lvs.py` | Layout versus schematic: what the drawing connects, worked out from the geometry, compared against the netlist that was simulated. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `tools/make_brand.py` | The mark: the AE ligature lifted out of a font file and baked into the favicon, the touch icon and the Open Graph card, all from one geometry. |

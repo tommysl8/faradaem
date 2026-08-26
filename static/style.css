@@ -1,4 +1,4 @@
-/* Faradaem 1.11.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.12.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -109,7 +109,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.11.0";
+  --app-version: "v1.12.0";
 }
 
 *,
@@ -2175,4 +2175,345 @@ kbd {
     grid-template-columns: 1fr;
     gap: var(--s4);
   }
+}
+
+
+/* ---- the mentor: triage, blame, the sweep -------------------------------
+   Three questions under the design goals, answered by measurement. The
+   verdict line is a sentence, not a widget, because that is how a senior
+   engineer answers. */
+.mentor {
+  margin-top: var(--s5);
+  border-top: var(--hairline);
+  padding-top: var(--s4);
+}
+
+.mentor-head {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: var(--s4) 0 var(--s2);
+}
+
+.triage-line {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  padding: var(--s2) var(--s3);
+  border-left: calc(var(--hairline-w) * 3) solid var(--muted);
+  margin: var(--s3) 0;
+}
+
+.triage-line.is-met { border-left-color: var(--ok); }
+.triage-line.is-missed { border-left-color: var(--err); }
+
+/* ---- shared measurement tables ------------------------------------------ */
+.sheet-table-wrap {
+  overflow-x: auto;
+  margin: var(--s3) 0;
+}
+
+.sheet-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+}
+
+.sheet-table th {
+  text-align: left;
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: normal;
+  padding: var(--s1) var(--s3) var(--s1) 0;
+  border-bottom: var(--hairline-strong);
+}
+
+.sheet-table td {
+  padding: var(--s2) var(--s3) var(--s2) 0;
+  border-bottom: var(--hairline);
+  vertical-align: top;
+}
+
+.sheet-table .num {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.sheet-table .num.is-binding { color: var(--accent); }
+.sheet-table .num.is-negative { color: var(--err); }
+.sheet-table tr.is-missed td { color: var(--err); }
+.sheet-at {
+  color: var(--muted);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  white-space: nowrap;
+}
+
+.sheet-note {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--muted);
+  max-width: 70ch;
+  margin: var(--s2) 0 var(--s4);
+}
+
+.sheet-provenance {
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--muted);
+  margin: var(--s2) 0 var(--s3);
+}
+
+.sheet-links a { color: var(--accent); }
+
+.sheet-verdicts { margin: var(--s3) 0; }
+
+/* ---- the sweep plot ------------------------------------------------------ */
+.sweep-line {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.sweep-dot { fill: var(--accent); }
+.sweep-dot.is-missed { fill: var(--err); }
+
+.sweep-axis {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+/* ---- the pin row and its sparkline -------------------------------------- */
+.pin-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  flex-wrap: wrap;
+}
+
+.pin-note {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--muted);
+}
+
+.pin-spark {
+  height: 20px;
+  display: block;
+  margin: var(--s3) 0 var(--s2);
+}
+
+.spark-ok { fill: var(--ok); opacity: 0.7; }
+.spark-bad { fill: var(--err); }
+.spark-first { stroke: var(--err); stroke-width: 1.5; }
+
+/* ---- stored datasheets --------------------------------------------------- */
+.stored-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: var(--hairline);
+  flex-wrap: wrap;
+}
+
+.stored-when, .stored-circuit {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+}
+
+.stored-met { color: var(--ok); font-size: var(--t-label); }
+.stored-missed { color: var(--err); font-size: var(--t-label); }
+.stored-open { color: var(--muted); font-size: var(--t-label); }
+.stored-print { color: var(--accent); font-size: var(--t-label); }
+
+/* ---- the compare picker -------------------------------------------------- */
+.compare-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s3) 0;
+}
+
+.compare-pick select {
+  background: var(--panel);
+  color: var(--text);
+  border: var(--hairline-strong);
+  font: inherit;
+  font-size: var(--t-small);
+  padding: var(--s1) var(--s2);
+  max-width: 100%;
+}
+
+.compare-vs {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.static-warn {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--err);
+  border-left: calc(var(--hairline-w) * 3) solid currentColor;
+  padding-left: var(--s3);
+  margin: var(--s3) 0;
+}
+
+/* ---- the notebook -------------------------------------------------------- */
+.run-row {
+  padding: var(--s3) 0;
+  border-bottom: var(--hairline);
+}
+
+.run-head {
+  display: flex;
+  gap: var(--s3);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.run-id {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+}
+
+.run-sims {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.run-damaged {
+  font-size: var(--t-label);
+  color: var(--err);
+}
+
+.run-facts {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--muted);
+  margin: var(--s1) 0;
+}
+
+.run-results {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s1) 0 0;
+}
+
+.run-result {
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  border: var(--hairline);
+  padding: 0 var(--s2);
+}
+
+.run-result.is-met { color: var(--ok); }
+.run-result.is-missed { color: var(--err); }
+
+/* ---- the printable datasheet ---------------------------------------------
+   Black on white on purpose: this page is for the printer and the PDF,
+   the artifact that leaves the bench. On screen it wears paper white
+   inside the dark chrome, so what you see is what prints. */
+.sheet-wrap { max-width: 880px; }
+
+.sheet-toolbar {
+  display: flex;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+  align-items: center;
+}
+
+.sheet-toolbar a { text-decoration: none; }
+
+.printsheet {
+  background: #FFFFFF;
+  color: #14181F;
+  padding: var(--s6) var(--s6);
+  border: var(--hairline);
+}
+
+.printsheet h1 {
+  font-size: var(--t-title);
+  line-height: var(--lh-title);
+  margin: 0 0 var(--s1);
+}
+
+.printsheet h2 {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  margin: var(--s5) 0 var(--s2);
+  border-bottom: 1px solid #C6CDDA;
+  padding-bottom: var(--s1);
+}
+
+.printsheet-sub {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  color: #55677F;
+  margin: 0;
+}
+
+.printsheet-prov {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: #55677F;
+  border-left: 3px solid #C6CDDA;
+  padding-left: var(--s3);
+  margin: var(--s3) 0 var(--s4);
+  max-width: 70ch;
+}
+
+.printsheet .sheet-table th {
+  color: #55677F;
+  border-bottom-color: #8A94A6;
+}
+
+.printsheet .sheet-table td { border-bottom-color: #E3E7EE; }
+.printsheet .sheet-note { color: #55677F; }
+.printsheet .sheet-at { color: #55677F; }
+.printsheet tr.is-missed td { color: #B42318; }
+
+.printsheet-foot {
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: #55677F;
+  margin-top: var(--s5);
+  border-top: 1px solid #C6CDDA;
+  padding-top: var(--s3);
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body.print-page { background: #FFFFFF; }
+  .page { padding: 0; }
+  .sheet-wrap { max-width: none; }
+  .printsheet { border: none; padding: 0; }
+}
+
+/* ---- small shared bits --------------------------------------------------- */
+.blame-out, .autopsy-out, .compare-out { margin-top: var(--s3); }
+
+.charact-doc {
+  margin-top: var(--s4);
+  border-top: var(--hairline);
+  padding-top: var(--s3);
+}
+
+.charact-stored, .charact-compare, .charact-pins {
+  margin-top: var(--s5);
+  border-top: var(--hairline);
+  padding-top: var(--s3);
 }

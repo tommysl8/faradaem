@@ -399,6 +399,7 @@ CIRCUITS = {
         },
         "design": {
             "tunable": ["ibias", "l", "wpair", "wload"],
+            "sweep": "ibias",
             "seed": ota_seed,
             "goals": [
                 goal("loop_gain_db", "open-loop gain", ">=", "dB", 35.0),
@@ -472,6 +473,7 @@ CIRCUITS = {
             # Bias is what trades gain against speed in this topology, and
             # the two pair widths set how much of each the bias buys.
             "tunable": ["ibias", "wpair", "wfold", "wcasc"],
+            "sweep": "ibias",
             "seed": folded_cascode_seed,
             "goals": [
                 goal("loop_gain_db", "open-loop gain", ">=", "dB", 45.0),
@@ -583,6 +585,7 @@ CIRCUITS = {
         },
         "design": {
             "tunable": ["ibias", "wpair", "w6", "cc", "rz"],
+            "sweep": "ibias",
             "seed": opamp_seed,
             "goals": [
                 goal("loop_gain_db", "open-loop gain", ">=", "dB", 60.0),
@@ -701,6 +704,7 @@ def catalog():
             "design": (
                 {
                     "tunable": list(circuit["design"]["tunable"]),
+                    "sweep": circuit["design"].get("sweep"),
                     "goals": [dict(item) for item in circuit["design"]["goals"]],
                     "seeded": "seed" in circuit["design"],
                 }

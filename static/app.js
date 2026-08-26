@@ -579,6 +579,10 @@
 
     // And the bench hears it.
     benchSet("sim", "pass", present(result[headline.key], headline));
+
+    // A number worth keeping can be pinned where it landed.
+    show(id("pin-row"), true);
+    id("pin-note").textContent = "";
   }
 
   /* ---- errors ------------------------------------------------------------ */
@@ -687,6 +691,14 @@
     if (netlistShown) {
       refreshNetlist();
     }
+    // An edited sizing outdates anything measured at the old one.
+    show(id("pin-row"), false);
+    show(id("triage-line"), false);
+    panels.forEach(function (panel) {
+      if (panel.onValuesEdited) {
+        panel.onValuesEdited();
+      }
+    });
   }
 
   async function run(event) {
@@ -1531,11 +1543,32 @@
     { key: "layout", label: "Layout",
       available: function () { return Boolean(current.floorplan); } },
     { key: "robust", label: "Robustness",
-      available: function () { return Boolean(current.pdk); } }
+      available: function () { return Boolean(current.pdk); } },
+    { key: "datasheet", label: "Datasheet",
+      available: function () {
+        return Boolean(current.design || current.pdk);
+      } }
   ];
 
   var analysisSection = id("analysis");
   var analysisTabs = id("analysis-tabs");
+
+  /* The circuit chips already rove with the arrow keys; the analysis
+     strip carries the same role="tab" markup, so it keeps the same
+     promise. */
+  analysisTabs.addEventListener("keydown", function (event) {
+    var delta = event.key === "ArrowRight" ? 1
+      : event.key === "ArrowLeft" ? -1 : 0;
+    if (!delta) { return; }
+    var buttons = Array.prototype.slice.call(
+      analysisTabs.querySelectorAll(".analysis-tab"));
+    var index = buttons.indexOf(document.activeElement);
+    if (index < 0) { return; }
+    event.preventDefault();
+    var next = (index + delta + buttons.length) % buttons.length;
+    buttons[next].focus();
+    buttons[next].click();
+  });
   var openAnalysis = null;
 
   function showAnalysis(key) {
@@ -1609,6 +1642,17 @@
     renderPresets();
     renderInputs(memory[current.id]);
     renderDesignPanel();
+    // The mentor's answers were about the previous circuit.
+    show(id("pin-row"), false);
+    show(id("triage-line"), false);
+    show(id("blame-out"), false);
+    show(id("sweep-panel"), false);
+    show(id("mentor-error"), false);
+    show(id("mentor-state"), false);
+    show(id("mentor"), Boolean(current.design));
+    show(id("sweep-run"),
+         Boolean(current.design && current.design.sweep));
+
     panels.forEach(function (panel) {
       panel.render(current);
     });
@@ -1662,6 +1706,11 @@
 
   function applyStaticMode() {
     show(id("static-note"), true);
+    // The notebook is the server's ledger; the published site has none.
+    var notebook = id("nav-notebook");
+    if (notebook && notebook.parentNode) {
+      notebook.parentNode.removeChild(notebook);
+    }
     // The headline action points at a panel that is about to be put away.
     var cta = document.querySelector(".hero-cta");
     if (cta) {
@@ -1691,6 +1740,295 @@
     if (isStatic) {
       applyStaticMode();
     }
+  }
+
+  /* ---- the pin chip ------------------------------------------------------
+     A pin is the server's own measurement of this sizing, frozen. The
+     chip re-measures rather than trusting the page, so what is pinned is
+     what ngspice said, not what the DOM held. */
+  id("pin-set").addEventListener("click", function () {
+    var chip = id("pin-set");
+    var note = id("pin-note");
+    chip.disabled = true;
+    note.textContent = "measuring";
+    tickStart(note);
+    fetch("/api/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ circuit: current.id, params: values() })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload.error || "Could not pin.");
+          }
+          tickStop(note, "Pinned " + payload.pinned.pinned_utc +
+            ". Checks live in the Datasheet tab.");
+        });
+      })
+      .catch(function (error) {
+        tickStop(note, String(error.message || error));
+      })
+      .then(function () { chip.disabled = false; });
+  });
+
+  /* ---- the mentor: triage, blame, the sweep ------------------------------
+     Three questions against the same targets the design panel holds.
+     Every number rendered here is a difference or a point ngspice
+     measured; the page only arranges them. */
+  var mentorState = id("mentor-state");
+  var mentorError = id("mentor-error");
+
+  function mentorTargets() {
+    // The design inputs are the targets when they are filled; otherwise
+    // the registry's own goals stand, which triage reports as such.
+    var targets = {};
+    var any = false;
+    Object.keys(designInputs).forEach(function (key) {
+      var value = Number(designInputs[key].value);
+      if (isFinite(value) && value > 0) {
+        targets[key] = value;
+        any = true;
+      }
+    });
+    return any ? targets : null;
+  }
+
+  function mentorFail(error) {
+    show(mentorState, false);
+    mentorError.textContent = String(error.message || error);
+    show(mentorError, true);
+  }
+
+  id("triage-run").addEventListener("click", function () {
+    show(mentorError, false);
+    mentorState.textContent = "Measuring once";
+    show(mentorState, true);
+    tickStart(mentorState);
+    fetch("/api/triage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ circuit: current.id, params: values(),
+                             targets: mentorTargets() })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload.error || "Refused.");
+          }
+          tickStop(mentorState, null);
+          show(mentorState, false);
+          var line = id("triage-line");
+          line.textContent = payload.sentence +
+            " Measured at tt, nominal supply, 27 \u00b0C.";
+          line.className = "triage-line " +
+            (payload.feasible_here === false ? "is-missed" : "is-met");
+          show(line, true);
+        });
+      })
+      .catch(mentorFail);
+  });
+
+  var blameJob = null;
+
+  function pollMentorJob(kind, onDone) {
+    fetch("/api/workbench/status?job=" + blameJob)
+      .then(function (r) { return r.json(); })
+      .then(function (snap) {
+        if (snap.status === "running") {
+          mentorState.textContent = "Running: " + snap.stage + " · " +
+            Math.round(snap.seconds) + " s";
+          setTimeout(function () { pollMentorJob(kind, onDone); }, 1200);
+          return;
+        }
+        if (snap.status === "failed") {
+          mentorFail(new Error(snap.error || "The run failed."));
+          return;
+        }
+        show(mentorState, false);
+        onDone(snap);
+      })
+      .catch(function () {
+        setTimeout(function () { pollMentorJob(kind, onDone); }, 2500);
+      });
+  }
+
+  function startMentorJob(kind, onDone) {
+    show(mentorError, false);
+    mentorState.textContent = "Starting";
+    show(mentorState, true);
+    fetch("/api/workbench", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ circuit: current.id, params: values(),
+                             kind: kind, targets: mentorTargets() })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload.error || "Refused.");
+          }
+          blameJob = payload.job;
+          pollMentorJob(kind, onDone);
+        });
+      })
+      .catch(mentorFail);
+  }
+
+  id("blame-run").addEventListener("click", function () {
+    startMentorJob("blame", renderBlame);
+  });
+
+  function renderBlame(snap) {
+    var found = snap.result;
+    var out = id("blame-out");
+    clear(out);
+
+    var binding = null;
+    (found.margins || []).forEach(function (m) {
+      if (m.binding) { binding = m; }
+    });
+
+    if (binding) {
+      var opening = binding.label + " is " +
+        (binding.met ? "the binding target" : "failing") + " at " +
+        present(binding.measured, findSpec(binding.key)) + " against " +
+        binding.op + " " + present(binding.target, findSpec(binding.key)) +
+        ".";
+      out.appendChild(el("p", "triage-line " +
+        (binding.met ? "is-met" : "is-missed"), opening));
+    }
+
+    var table = el("table", "sheet-table");
+    var head = el("tr");
+    head.appendChild(el("th", null, "knob"));
+    head.appendChild(el("th", null, "step measured"));
+    (found.margins || []).forEach(function (m) {
+      head.appendChild(el("th", null, m.label));
+    });
+    table.appendChild(head);
+
+    var ranked = found.knobs.slice();
+    if (binding) {
+      ranked.sort(function (a, b) {
+        return Math.abs(b.slopes[binding.key] || 0) -
+          Math.abs(a.slopes[binding.key] || 0);
+      });
+    }
+    ranked.forEach(function (knob) {
+      var row = el("tr");
+      row.appendChild(el("td", null, knob.label));
+      row.appendChild(el("td", "sheet-at",
+        window.formatEngineering(knob.step_lo, knob.unit) + " to " +
+        window.formatEngineering(knob.step_hi, knob.unit)));
+      (found.margins || []).forEach(function (m) {
+        var slope = knob.slopes[m.key];
+        var cell = el("td", "num");
+        if (typeof slope === "number") {
+          cell.textContent = present(slope, findSpec(m.key)) + " / " +
+            (knob.unit || "unit");
+          if (binding && m.key === binding.key) {
+            cell.className = "num is-binding";
+          }
+        } else {
+          cell.textContent = "\u2014";
+        }
+        row.appendChild(cell);
+      });
+      table.appendChild(row);
+    });
+
+    var wrap = el("div", "sheet-table-wrap");
+    wrap.appendChild(table);
+    out.appendChild(wrap);
+    out.appendChild(el("p", "sheet-note",
+      "Measured: " + found.method + ". " + found.sims +
+      " simulations. Local slopes at this sizing, not a model."));
+    show(out, true);
+  }
+
+  function findSpec(key) {
+    var readout = current.readout || {};
+    var all = [readout.headline].concat(readout.stats || []);
+    for (var i = 0; i < all.length; i++) {
+      if (all[i] && all[i].key === key) { return all[i]; }
+    }
+    return { key: key };
+  }
+
+  id("sweep-run").addEventListener("click", function () {
+    startMentorJob("sweep", renderSweep);
+  });
+
+  function renderSweep(snap) {
+    var found = snap.result;
+    var svg = id("sweep-plot");
+    clear(svg);
+    var good = found.points.filter(function (p) {
+      return p.measured && typeof p.measured.power === "number" &&
+        typeof p.measured.f_crossover === "number";
+    });
+    var broken = found.points.filter(function (p) { return p.error; });
+
+    if (good.length) {
+      var xs = good.map(function (p) { return p.measured.power; });
+      var ys = good.map(function (p) { return p.measured.f_crossover; });
+      var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+      var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+      function px(v) {
+        return 46 + 440 * (Math.log(v / x0) / Math.log(x1 / x0 || 2));
+      }
+      function py(v) {
+        return 262 - 230 * (Math.log(v / y0) / Math.log(y1 / y0 || 2));
+      }
+      var ns = "http://www.w3.org/2000/svg";
+      var path = document.createElementNS(ns, "path");
+      path.setAttribute("d", good.map(function (p, i) {
+        return (i ? "L" : "M") + px(p.measured.power).toFixed(1) + " " +
+          py(p.measured.f_crossover).toFixed(1);
+      }).join(" "));
+      path.setAttribute("class", "sweep-line");
+      svg.appendChild(path);
+      good.forEach(function (p) {
+        var dot = document.createElementNS(ns, "circle");
+        dot.setAttribute("cx", px(p.measured.power).toFixed(1));
+        dot.setAttribute("cy", py(p.measured.f_crossover).toFixed(1));
+        dot.setAttribute("r", "4");
+        var pm = p.measured.phase_margin;
+        dot.setAttribute("class", "sweep-dot" +
+          (typeof pm === "number" && pm < 45 ? " is-missed" : ""));
+        var title = document.createElementNS(ns, "title");
+        title.textContent =
+          found.knob_label + " = " +
+          window.formatEngineering(p.value, found.knob_unit) + ": " +
+          window.formatEngineering(p.measured.power, "W") + ", " +
+          window.formatEngineering(p.measured.f_crossover, "Hz") +
+          (typeof pm === "number"
+            ? ", " + pm.toFixed(1) + "\u00b0 margin" : "");
+        dot.appendChild(title);
+        svg.appendChild(dot);
+      });
+      var xa = document.createElementNS(ns, "text");
+      xa.setAttribute("x", "266"); xa.setAttribute("y", "292");
+      xa.setAttribute("class", "sweep-axis");
+      xa.textContent = "power, log";
+      svg.appendChild(xa);
+      var ya = document.createElementNS(ns, "text");
+      ya.setAttribute("x", "10"); ya.setAttribute("y", "20");
+      ya.setAttribute("class", "sweep-axis");
+      ya.textContent = "crossover, log";
+      svg.appendChild(ya);
+    }
+
+    var caption = "One-knob slice along " + found.knob_label +
+      ", everything else at this sizing. Not a Pareto front. " +
+      found.sims + " simulations at tt.";
+    if (broken.length) {
+      caption += " " + broken.length + " point" +
+        (broken.length > 1 ? "s" : "") + " did not bias.";
+    }
+    id("sweep-caption").textContent = caption;
+    show(id("sweep-panel"), true);
   }
 
   /* Ctrl+Enter runs from anywhere on the page -- except the advise box,

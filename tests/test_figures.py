@@ -281,3 +281,78 @@ def test_the_manual_contents_is_a_rail_on_wide_screens():
     assert "grid-template-columns" in rail
     assert "position: sticky" in css.split(".manual-grid .toc {")[1][:300]
     assert '<div class="manual-grid">' in read("manual.html")
+
+
+# ---------------------------------------------------------------------------
+# the workbench
+# ---------------------------------------------------------------------------
+
+
+def test_the_datasheet_tab_and_its_sections_exist():
+    page = read("index.html")
+    for anchor in ("pane-datasheet", "charact-run", "charact-stored",
+                   "compare-a", "compare-b", "pin-state", "packet-run",
+                   "charact-stale"):
+        assert 'id="%s"' % anchor in page, anchor
+
+
+def test_the_pin_chip_lives_with_the_numbers():
+    """Pinning is offered where the result lands, not in a tab the user
+    would have to know to open."""
+    page = read("index.html")
+    result = page.split('id="result"')[1].split("</div>\n\n")[0]
+    assert 'id="pin-set"' in page
+    app = read("static/app.js")
+    assert '"/api/pin"' in app
+    # The chip appears only after a successful run.
+    assert 'show(id("pin-row"), true)' in app
+
+
+def test_the_mentor_asks_three_questions():
+    page = read("index.html")
+    for anchor in ("triage-run", "blame-run", "sweep-run"):
+        assert 'id="%s"' % anchor in page, anchor
+    # Each button that costs simulations says so before it is pressed.
+    assert "1 simulation" in page
+    assert "8 simulations" in page
+
+
+def test_the_sweep_is_never_called_a_pareto_front():
+    """The honesty rule from the review: a one-knob slice must not wear
+    the name of the thing it is not."""
+    for path in ("static/app.js", "spice/triage.py"):
+        text = read(path)
+        lowered = text.lower()
+        for line in lowered.splitlines():
+            if "pareto" in line:
+                assert "not a pareto" in line, (path, line.strip())
+
+
+def test_the_autopsy_lives_in_the_robustness_pane():
+    page = read("index.html")
+    assert 'id="autopsy-run"' in page
+    panel = read("static/panel-robust.js")
+    assert '"autopsy"' in panel
+    assert "not exposed" in panel
+
+
+def test_the_workbench_pages_are_wired():
+    for path, needle in (
+        ("notebook.html", "notebook.js"),
+        ("datasheet.html", "datasheet.js"),
+    ):
+        assert needle in read(path), path
+    server = read("server.py")
+    for route in ("/api/workbench", "/api/triage", "/api/pin",
+                  "/api/packet", "/api/notebook", "/api/doctor"):
+        assert '"%s"' % route in server, route
+
+
+def test_the_datasheet_columns_are_honest():
+    """worst observed, never min or max: eleven deterministic corners are
+    a sample, not a guarantee."""
+    panel = read("static/panel-datasheet.js")
+    assert "worst observed" in panel
+    assert "no guardband" in panel
+    printable = read("static/datasheet.js")
+    assert "worst observed" in printable

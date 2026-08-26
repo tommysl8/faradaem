@@ -88,6 +88,19 @@
                 <li><a href="#if-something-goes-wrong">If something goes wrong</a></li>
               </ol>
             </div>
+            <div class="toc-group">
+              <p class="toc-group-name">The workbench</p>
+              <ol class="toc-list">
+                <li><a href="#the-datasheet-that-writes-itself">The datasheet that writes itself</a></li>
+                <li><a href="#pinned-numbers">Pinned numbers</a></li>
+                <li><a href="#comparing-two-runs">Comparing two runs</a></li>
+                <li><a href="#asking-the-numbers">Asking the numbers: triage, blame, the sweep</a></li>
+                <li><a href="#the-corner-autopsy">The corner autopsy</a></li>
+                <li><a href="#the-tapeout-packet">The tapeout packet</a></li>
+                <li><a href="#the-notebook">The notebook</a></li>
+                <li><a href="#the-doctor">The doctor</a></li>
+              </ol>
+            </div>
           </div>
         </nav>
 
@@ -696,6 +709,172 @@
             The strategist uses the same corner suite: once a design meets its targets
             at the typical corner, it verifies across PVT and reports the worst case.
           </p>
+        </section>
+
+
+        <section class="section prose">
+          <h2 id="the-datasheet-that-writes-itself">The datasheet that writes itself</h2>
+          <p>Engineers lose days assembling characterization reports: the
+          gain from one run, the corners from another, the layout verdicts
+          from a third, pasted into a document that is stale before it is
+          finished. Everything in that document is something this tool
+          already measures, so the Datasheet tab measures it all in one
+          pass and writes the document itself.</p>
+          <p>The button states its cost before you press it, and after the
+          run it reports the count that was actually observed at the
+          simulator boundary, which is the only place simulations are ever
+          counted here. The document that appears carries the sizing it
+          measured, the margins against the circuit's own targets, an
+          electrical characteristics table, and the layout verdicts,
+          headed by a provenance line: the git commit, the simulator
+          version and the PDK the numbers came out of. A number without
+          provenance is an anecdote.</p>
+          <p>Two honesty rules are visible in the table. The extremes
+          column is titled worst observed, not min or max, because eleven
+          deterministic corner simulations are a sample, not a guarantee;
+          the note under the table says exactly how many corners measured
+          and names any that did not bias. And if you edit a value after
+          characterizing, a banner says the datasheet no longer describes
+          the circuit on the bench. The check is exact on purpose.</p>
+          <p>Every characterization is stored beside the ledger and listed
+          under the button, newest first. Open renders it in place; Print
+          view opens a black-on-white page built for the printer, so your
+          browser's print-to-PDF produces the document you would hand a
+          reviewer.</p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="pinned-numbers">Pinned numbers</h2>
+          <p>Software engineers pin behaviour in tests and a machine tells
+          them when it drifts. Analog engineers diff waveforms by eye.
+          The pin gives a circuit the same deal: after a successful run,
+          the result strip offers Pin these numbers. The pin re-measures
+          the sizing on the server and freezes the sizing and the numbers
+          together, so what is pinned is what ngspice said, never what the
+          page happened to hold.</p>
+          <p>The semantics are deliberately narrow. A check re-simulates
+          the pinned sizing, never the values in the form. Editing an
+          input can therefore never fail a check: drift means the stack
+          moved under the circuit, a model library update, a simulator
+          upgrade, an edit to a bench deck. That is what the feature
+          watches for, and it is why each check records the stack it ran
+          on. The history renders as a row of marks in the Datasheet tab,
+          the first breaking check outlined, and history never crosses a
+          re-pin, because a trend stitched across two different pins would
+          be an invention.</p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="comparing-two-runs">Comparing two runs</h2>
+          <p>A design review is two hours of "wait, which version is
+          this?" The compare section in the Datasheet tab puts side A and
+          side B in one table: every number both carry, with the
+          difference in the third column. Side A defaults to the current
+          sizing measured fresh, one simulation; side B is any stored
+          characterization. When both sides carry corner data the table
+          extends corner by corner.</p>
+          <p>Rows only one side measured show a dash, and a bench-only
+          side says so in as many words. If the two runs were measured by
+          different simulator versions, PDKs or commits, a warning says to
+          treat cross-run deltas with care, because two stacks are two
+          experiments.</p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="asking-the-numbers">Asking the numbers: triage, blame, the sweep</h2>
+          <p>Under the design goals live three questions, each answered by
+          measurement and nothing else.</p>
+          <p><strong>Check feasibility</strong> is one simulation: every
+          goal gets its margin at the current sizing, and the sentence
+          names the one that binds. It says "at this sizing" and means it;
+          one point at the typical corner proves nothing about the rest of
+          the design space, and the sentence never claims otherwise.</p>
+          <p><strong>Explain the margins</strong> is the question every
+          junior engineer carries to a senior one: which knob moves the
+          number that is failing. The tool measures the answer instead of
+          intuiting it: each tunable is stepped five percent down and up,
+          two simulations per knob, and the table reports how much every
+          goal moved per natural unit of that knob, sorted by effect on
+          the binding goal. The method line under the table says exactly
+          what these are: central differences at this sizing, local
+          slopes, not a model. Extrapolating a five percent secant to a
+          fifty percent move is on you.</p>
+          <p><strong>Sweep the bias</strong> traces the trade the bias
+          current buys: eight simulations along its declared range,
+          plotted as power against crossover. The caption is precise about
+          what this is: a one-knob slice with everything else frozen, not
+          a Pareto front. A real front would need an optimization per
+          point. A point where the amplifier stopped biasing is reported,
+          not dropped, because omitting it would make the reachable range
+          look wider than it is.</p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="the-corner-autopsy">The corner autopsy</h2>
+          <p>A corner fails and the traditional next move is an afternoon
+          in a waveform viewer. The autopsy asks the short question
+          directly: which transistor gave up. After any corner suite run,
+          Explain the corners re-runs the eleven conditions with the
+          operating point captured, and tabulates every device's
+          saturation headroom at every corner, in millivolts, negative in
+          red.</p>
+          <p>Headroom is vds minus vdsat for an n-channel device and the
+          sign-aware mirror for a p-channel one, both read from the
+          foundry's own model card through ngspice at each corner's real
+          operating point. The sentence above the table names the tightest
+          device even when everything holds, because knowing the closest
+          call is worth eleven simulations before tapeout, not after. A
+          device whose model does not expose the number says "not
+          exposed"; it is never shown as zero, and never as fine.</p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="the-tapeout-packet">The tapeout packet</h2>
+          <p>A foundry, a collaborator or a shuttle wants the same short
+          list: the GDS, the netlist it was verified against, the
+          verdicts, and a README saying what everything is. Assembling
+          that by hand is error-prone in exactly the way that ruins
+          tapeouts: a clean report from Tuesday zipped next to Wednesday's
+          GDS.</p>
+          <p>So the packet button refuses to assemble. It builds: one
+          click renders the geometry, runs the foundry's own deck over
+          those shapes, runs layout-versus-schematic at the same sizing,
+          and only if both pass does a zip exist. The README records the
+          SHA-256 of the GDS it describes, so the binding between the
+          drawing and its verdicts is checkable by anyone holding the
+          file. A failing verdict produces a refusal that names the
+          failure, never a partial packet.</p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="the-notebook">The notebook</h2>
+          <p>Everything this machine measures is recorded as it happens:
+          one ledger file per run, one line per event, the provenance
+          stamped at the head. The notebook page renders that record as
+          the lab notebook engineers mean to keep and do not: every run,
+          its circuits, its simulation count as observed at the simulator
+          boundary, its verdicts, newest first, with older pages a click
+          away.</p>
+          <p>A damaged line count above zero is shown, never hidden: a
+          truncated record is what a crash leaves behind, and the notebook
+          is exactly where that fact belongs. The stored datasheets live
+          here too, and the whole visible view exports as Markdown for
+          pasting into a report.</p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="the-doctor">The doctor</h2>
+          <p>Setting up ngspice, a PDK and KLayout on Windows is the worst
+          afternoon of the project, and the errors arrive one at a time,
+          each after a failed run. The doctor runs every check at once:</p>
+          <pre class="code-block">python doctor.py</pre>
+          <p>Each line is one dependency, resolved through the same
+          functions the tool itself uses, so a green check is the tool's
+          own opinion. A missing one prints the exact fix. Optional pieces
+          -- the strategist's API keys -- report as absent rather than
+          failed, because absent and broken are different facts. The exit
+          code is the number of missing checks, so the doctor also works
+          in a script.</p>
         </section>
 
         <section class="section prose">

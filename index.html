@@ -33,6 +33,7 @@
     </a>
     <nav aria-label="Primary">
       <ul class="nav-links">
+        <li><a href="/notebook" id="nav-notebook">Notebook</a></li>
         <li><a href="/manual">Manual</a></li>
         <li><a href="/about">About</a></li>
         <li><a href="/changelog">Changelog</a></li>
@@ -182,6 +183,11 @@
           </div>
           <p class="result-note hidden" id="note"></p>
           <div class="stat-row hidden" id="stats"></div>
+          <div class="pin-row hidden" id="pin-row">
+            <button class="chip" id="pin-set" type="button">Pin these
+            numbers (re-measures once)</button>
+            <span class="pin-note" id="pin-note"></span>
+          </div>
         </div>
 
         <div class="error-panel hidden" id="error" role="alert">
@@ -224,6 +230,26 @@
                 <button class="chip design-apply hidden" id="design-apply" type="button">Apply result and run</button>
               </div>
               <p class="field-error hidden" id="design-error"></p>
+
+              <div class="mentor" id="mentor">
+                <h3 class="mentor-head">Ask the numbers</h3>
+                <p class="triage-line hidden" id="triage-line"></p>
+                <div class="design-actions">
+                  <button class="chip" id="triage-run" type="button">Check
+                  feasibility (1 simulation)</button>
+                  <button class="chip" id="blame-run" type="button"><span
+                  id="blame-label">Explain the margins</span></button>
+                  <button class="chip hidden" id="sweep-run" type="button">
+                  Sweep the bias (8 simulations)</button>
+                </div>
+                <p class="design-statusline hidden" id="mentor-state"></p>
+                <div class="blame-out hidden" id="blame-out"></div>
+                <figure class="figure hidden" id="sweep-panel">
+                  <svg id="sweep-plot" viewBox="0 0 520 300"></svg>
+                  <figcaption id="sweep-caption"></figcaption>
+                </figure>
+                <p class="field-error hidden" id="mentor-error"></p>
+              </div>
             </div>
           </section>
         </div>
@@ -332,6 +358,73 @@
           </figure>
         </div>
 
+        <div class="analysis-pane hidden" id="pane-datasheet">
+          <section class="panel design-panel" id="charact"
+                   aria-label="Datasheet">
+            <h2 class="panel-head">Datasheet</h2>
+            <div class="panel-body">
+              <p class="design-intro">The whole bench in one pass: gain,
+              margins, the step, rejection and range, all eleven corners,
+              the layout and its verdicts, stamped with what measured them.
+              The document engineers assemble by hand, written by the
+              measurements themselves.</p>
+              <div class="design-actions">
+                <button class="run" id="charact-run" type="button"><span
+                id="charact-run-label">Characterize and write the datasheet
+                </span></button>
+                <button class="chip hidden" id="charact-stop" type="button">
+                Stop</button>
+                <button class="chip hidden" id="packet-run" type="button">
+                Export the tapeout packet</button>
+              </div>
+              <p class="design-statusline hidden" id="charact-state"></p>
+              <p class="field-error hidden" id="charact-error"></p>
+              <p class="static-warn hidden" id="charact-stale">This
+              datasheet measured a different sizing than the one on the
+              bench now. Characterize again to refresh it.</p>
+              <div class="charact-doc hidden" id="charact-doc"></div>
+
+              <div class="charact-stored" id="charact-stored-wrap">
+                <h3 class="mentor-head">Stored datasheets</h3>
+                <div id="charact-stored"></div>
+              </div>
+
+              <div class="charact-compare" id="charact-compare-wrap">
+                <h3 class="mentor-head">Compare two runs</h3>
+                <p class="design-intro">Side A against side B, every number
+                both of them carry. Rows only one side measured show a dash;
+                that is a fact about coverage, not a fault.</p>
+                <div class="compare-pick">
+                  <select id="compare-a" aria-label="Side A"></select>
+                  <span class="compare-vs">vs</span>
+                  <select id="compare-b" aria-label="Side B"></select>
+                  <button class="chip" id="compare-run" type="button">
+                  Compare</button>
+                </div>
+                <p class="static-warn hidden" id="compare-warn"></p>
+                <div class="compare-out hidden" id="compare-out"></div>
+              </div>
+
+              <div class="charact-pins" id="charact-pins-wrap">
+                <h3 class="mentor-head">Pinned numbers</h3>
+                <p class="design-intro">A pin freezes a sizing and what it
+                measured. A check re-measures that frozen sizing, so drift
+                means the stack changed under the circuit, never that you
+                edited a value.</p>
+                <div id="pin-state"></div>
+                <div class="design-actions">
+                  <button class="chip hidden" id="pin-check" type="button">
+                  Re-measure the pinned sizing (1 simulation)</button>
+                  <button class="chip hidden" id="pin-unpin" type="button">
+                  Remove the pin</button>
+                </div>
+                <div id="pin-history"></div>
+                <p class="field-error hidden" id="pin-error"></p>
+              </div>
+            </div>
+          </section>
+        </div>
+
         <div class="analysis-pane hidden" id="pane-robust">
           <section class="panel robust-panel" id="robust" aria-label="Robustness">
             <h2 class="panel-head">Robustness</h2>
@@ -352,6 +445,12 @@
                 <div class="robust-table" id="robust-table"></div>
               </div>
               <p class="field-error hidden" id="robust-error"></p>
+
+              <div class="design-actions">
+                <button class="chip hidden" id="autopsy-run" type="button">
+                Explain the corners (11 more simulations)</button>
+              </div>
+              <div class="autopsy-out hidden" id="autopsy-out"></div>
             </div>
           </section>
         </div>
@@ -382,6 +481,7 @@
 <script src="/static/panel-step.js"></script>
 <script src="/static/panel-sheet.js"></script>
 <script src="/static/panel-robust.js"></script>
+<script src="/static/panel-datasheet.js"></script>
 <script src="/static/panel-layout.js"></script>
 <script src="/static/app.js"></script>
 </body>

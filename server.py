@@ -38,7 +38,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from spice import circuits, design, llm, pvt, signoff, strategist
+import doctor as doctor_checks
+import workbench
+from spice import (charact, circuits, design, llm, packet, pins, pvt,
+                   signoff, strategist, triage)
 from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
@@ -113,6 +116,11 @@ ROUTES = {
     "/static/panel-step.js": ("static/panel-step.js", JS),
     "/static/panel-sheet.js": ("static/panel-sheet.js", JS),
     "/static/panel-robust.js": ("static/panel-robust.js", JS),
+    "/static/panel-datasheet.js": ("static/panel-datasheet.js", JS),
+    "/notebook": ("notebook.html", HTML),
+    "/static/notebook.js": ("static/notebook.js", JS),
+    "/datasheet": ("datasheet.html", HTML),
+    "/static/datasheet.js": ("static/datasheet.js", JS),
     "/static/panel-layout.js": ("static/panel-layout.js", JS),
     "/favicon.svg": ("static/favicon.svg", SVG),
     "/favicon.ico": ("static/icon-32.png", PNG),
@@ -488,6 +496,30 @@ def continue_advise_job(job, message):
     threading.Thread(target=_advise_worker, args=(job, client), daemon=True).start()
 
 
+def validate_targets(circuit_id, payload):
+    """The optional targets dict: goal keys only, numbers only.
+
+    The same shape the design panel sends; a triage or blame run measures
+    against the user's numbers when given and the registry's otherwise.
+    """
+    raw = payload.get("targets")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValidationError("targets must be an object of goal: number.")
+    goals = {g["key"] for g in
+             (circuits.get_circuit(circuit_id).get("design") or {})
+             .get("goals", [])}
+    found = {}
+    for key, value in raw.items():
+        if key not in goals:
+            raise ValidationError("Unknown goal " + repr(key) + ".")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValidationError("Goal " + repr(key) + " must be a number.")
+        found[key] = float(value)
+    return found or None
+
+
 def validate_robust_request(payload):
     """Validate a /api/robust body: circuit, params, mode, optional runs."""
     circuit_id, params = validate_api_request(payload)
@@ -626,6 +658,40 @@ class FaradaemHandler(BaseHTTPRequestHandler):
         if path == "/api/robust/status":
             self._handle_robust_status(parts.query)
             return
+        if path == "/api/workbench/status":
+            self._handle_workbench_status(parts.query)
+            return
+        if path == "/api/charact/list":
+            query = parse_qs(parts.query)
+            circuit_id = (query.get("circuit") or [None])[0]
+            self._send_json(200, {"stored": charact.listing(circuit_id)})
+            return
+        if path == "/api/charact/get":
+            query = parse_qs(parts.query)
+            ident = (query.get("id") or [""])[0]
+            found = charact.load(ident)
+            if found is None:
+                self._send_json(404, {"error": "No stored characterization "
+                                      + repr(ident) + "."})
+            else:
+                self._send_json(200, found)
+            return
+        if path == "/api/pin/status":
+            query = parse_qs(parts.query)
+            circuit_id = (query.get("circuit") or [""])[0]
+            self._send_json(200, workbench.pin_state(circuit_id))
+            return
+        if path == "/api/doctor":
+            self._send_json(200, {"checks": doctor_checks.checks()})
+            return
+        if path == "/api/notebook":
+            query = parse_qs(parts.query)
+            try:
+                offset = max(0, int((query.get("offset") or ["0"])[0]))
+            except ValueError:
+                offset = 0
+            self._send_json(200, workbench.notebook_page(offset=offset))
+            return
 
         route = resolve_route(path)
         if route is None:
@@ -661,6 +727,20 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_robust_start()
         elif path == "/api/robust/stop":
             self._handle_robust_stop()
+        elif path == "/api/workbench":
+            self._handle_workbench_start()
+        elif path == "/api/workbench/stop":
+            self._handle_workbench_stop()
+        elif path == "/api/triage":
+            self._handle_triage()
+        elif path == "/api/pin":
+            self._handle_pin()
+        elif path == "/api/pin/delete":
+            self._handle_pin_delete()
+        elif path == "/api/pin/check":
+            self._handle_pin_check()
+        elif path == "/api/packet":
+            self._handle_packet()
         elif path == "/simulate":
             self._handle_simulate()
         elif path == "/simulate_ac":
@@ -903,6 +983,150 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
             return
         self._send_json(200, {"job": job_id})
+
+    def _handle_workbench_start(self):
+        """One background job: charact, blame, sweep, or autopsy.
+
+        One job per circuit at a time; a second request is refused with
+        the name of the one in the way, so the page can say why."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        try:
+            circuit_id, params = validate_api_request(payload)
+            targets = validate_targets(circuit_id, payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        kind = payload.get("kind")
+        try:
+            job_id = workbench.start(circuit_id, params, kind,
+                                     targets=targets)
+        except workbench.Busy as exc:
+            self._send_json(409, {"error": str(exc)})
+            return
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        self._send_json(200, {"job": job_id})
+
+    def _handle_workbench_status(self, query):
+        job_id = (parse_qs(query).get("job") or [""])[0]
+        snapshot = workbench.status(job_id)
+        if snapshot is None:
+            self._send_json(404, {"error": "Unknown workbench job "
+                                  + repr(job_id) + "."})
+            return
+        self._send_json(200, snapshot)
+
+    def _handle_workbench_stop(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        job_id = str(payload.get("job") or "")
+        if workbench.stop(job_id):
+            self._send_json(200, {"stopping": True})
+        else:
+            self._send_json(404, {"error": "Unknown workbench job "
+                                  + repr(job_id) + "."})
+
+    def _handle_triage(self):
+        """One simulation, every margin, the binding goal. Synchronous."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        try:
+            circuit_id, params = validate_api_request(payload)
+            targets = validate_targets(circuit_id, payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        try:
+            self._send_json(200, triage.verdict(circuit_id, params,
+                                                targets=targets))
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+
+    def _handle_pin(self):
+        """Measure this sizing now and pin exactly what was measured.
+
+        The client never supplies the numbers: a pin is the server's own
+        measurement or it is nothing."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        try:
+            circuit_id, params = validate_api_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        try:
+            entry = workbench.pin_now(circuit_id, params)
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, {"pinned": entry})
+
+    def _handle_pin_delete(self):
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        circuit_id = str(payload.get("circuit") or "")
+        self._send_json(200, {"removed": pins.unpin(circuit_id)})
+
+    def _handle_pin_check(self):
+        """Re-measure the pinned sizing and report what moved."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        circuit_id = str(payload.get("circuit") or "")
+        try:
+            record = pins.check(circuit_id)
+        except KeyError as exc:
+            message = exc.args[0] if exc.args else str(exc)
+            self._send_json(400, {"error": message})
+            return
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, record)
+
+    def _handle_packet(self):
+        """Build the tapeout packet and stream the zip.
+
+        The packet module verifies as it builds; a refusal comes back as
+        a plain error naming what failed, never as a partial zip."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        try:
+            circuit_id, params = validate_api_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        try:
+            built = packet.build(circuit_id, params)
+        except packet.PacketRefused as exc:
+            self._send_json(409, {"error": str(exc)})
+            return
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001 - tool boundary
+            self._send_json(500, {"error": str(exc)})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition",
+                         'attachment; filename="%s"' % built["filename"])
+        self.send_header("Content-Length", str(len(built["bytes"])))
+        self.end_headers()
+        self.wfile.write(built["bytes"])
 
     def _handle_robust_start(self):
         payload = self._read_json_body()

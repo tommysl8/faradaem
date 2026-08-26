@@ -54,6 +54,24 @@
 
                 <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.12.0</span>
+            <span class="entry-date">2026-08-26</span>
+          </header>
+          <ul>
+            <li>The datasheet writes itself. One button runs the whole bench for the sizing on the page -- gain, margins, the step, rejection and range, all eleven corners, the layout with its four verdicts -- and renders the document engineers assemble by hand, headed by the commit, the simulator version and the PDK the numbers came out of. The extremes column says worst observed, never min or max, because eleven deterministic corners are a sample and not a guarantee, and the note beneath says exactly how many measured. Edit a value afterwards and a banner says the document no longer describes the circuit on the bench; the check is exact. Every characterization is stored beside the ledger, and a print view renders it black on white for the PDF a reviewer actually receives.</li>
+            <li>Pinned numbers, the regression test analog circuits never had. Pin a good result and the server freezes the sizing and its measurements together; a later check re-simulates the frozen sizing, so drift can only mean the stack moved underneath -- a model update, a simulator upgrade, an edited deck -- never that you turned a knob. The history draws as a row of marks with the first break outlined, and it never stitches across a re-pin, because a trend across two different pins would be an invention.</li>
+            <li>Compare two runs side by side: every number both carry, the delta, corner by corner when both have corners. A bench-only side says so instead of showing blanks, and two runs measured by different stacks earn a warning, because two stacks are two experiments.</li>
+            <li>The design panel answers three questions by measurement. Check feasibility: one simulation, every margin, the binding goal named, "at this sizing" and meaning it. Explain the margins: every tunable stepped five percent each way, two simulations per knob, the table sorted by what moves the binding goal, labelled as the local slopes they are. Sweep the bias: eight points along the declared knob, plotted power against crossover and captioned as a one-knob slice, not a Pareto front, with points that failed to bias drawn as facts rather than dropped.</li>
+            <li>The corner autopsy. After any corner suite, one click re-runs the eleven conditions with the operating point captured and tabulates every transistor's saturation headroom at every corner, sign-aware for PMOS, negative in red, the tightest device named even when everything holds. vds and vdsat come from the foundry's model card through ngspice at each corner's real bias; a value the model does not expose says so, and is never shown as zero.</li>
+            <li>The tapeout packet refuses to assemble. It builds: one click renders the geometry, runs the foundry's own deck over those shapes, runs layout-versus-schematic at the same sizing, and only if both pass does a zip exist -- the GDS with named ports, the verified netlist with its dummies, the sign-off report, and a README carrying the SHA-256 that binds the verdicts to exactly this drawing. A clean report from Tuesday can no longer ship beside Wednesday's GDS.</li>
+            <li>The notebook. Every run this machine makes is already recorded as it happens; the new page renders that ledger as the lab notebook engineers mean to keep and do not -- every run, its circuits, its simulation count as observed at the subprocess boundary, its verdicts, damaged lines shown rather than hidden, exportable as Markdown. The stored datasheets live there too.</li>
+            <li>python doctor.py checks every dependency at once -- ngspice, the PDK, the technology data, both halves of KLayout, the writable directories, the optional keys -- through the same resolution functions the tool itself uses, and prints the exact fix for anything missing. Optional pieces report absent, not failed, because absent and broken are different facts.</li>
+            <li>Around all of it: one background job per circuit at a time, refused with the name of the job in the way; simulation counts reported as observed, never estimated; the analysis tabs answer to the arrow keys like the circuit chips always have.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">1.11.0</span>
             <span class="entry-date">2026-08-26</span>
           </header>

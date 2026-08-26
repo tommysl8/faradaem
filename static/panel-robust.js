@@ -141,6 +141,9 @@
             snapshot.status === "done" ? "Finished"
             : snapshot.status === "stopped" ? "Stopped" : "Failed";
           markTab("robust", snapshot.status === "failed");
+          if (snapshot.status === "done" && snapshot.mode === "pvt") {
+            show(id("autopsy-run"), true);
+          }
           robustPvt.disabled = false;
           robustMc.disabled = false;
           show(robustStop, false);
@@ -204,10 +207,133 @@
       }
     });
 
+    /* ---- the autopsy ---------------------------------------------------
+       Per-device saturation headroom at every corner, read from the
+       model card through ngspice. The table is the answer to "which
+       transistor gave up": negative headroom in red, the closest call
+       named even when everything holds. */
+
+    var autopsyJob = null;
+
+    function pollAutopsy() {
+      fetch("/api/workbench/status?job=" + autopsyJob)
+        .then(function (response) { return response.json(); })
+        .then(function (snap) {
+          if (snap.status === "running") {
+            robustState.textContent = "Autopsy: " + snap.stage +
+              " · " + Math.round(snap.seconds) + " s";
+            setTimeout(pollAutopsy, 1200);
+            return;
+          }
+          id("autopsy-run").disabled = false;
+          if (snap.status === "failed") {
+            robustError.textContent = snap.error || "The autopsy failed.";
+            show(robustError, true);
+            robustState.textContent = "Finished";
+            return;
+          }
+          robustState.textContent = "Finished";
+          renderAutopsy(snap.result);
+        })
+        .catch(function () { setTimeout(pollAutopsy, 2500); });
+    }
+
+    function renderAutopsy(found) {
+      var out = id("autopsy-out");
+      clear(out);
+
+      var worst = found.tightest;
+      var sentence;
+      if (!worst) {
+        sentence = "No operating point could be read at any corner.";
+      } else if (worst.headroom < 0) {
+        sentence = worst.device + " leaves saturation at " + worst.label +
+          ": " + (worst.headroom * 1000).toFixed(0) + " mV of headroom.";
+      } else {
+        sentence = "Every device holds saturation at every corner. The " +
+          "tightest is " + worst.device + " with " +
+          (worst.headroom * 1000).toFixed(0) + " mV at " + worst.label + ".";
+      }
+      out.appendChild(el("p", "triage-line " +
+        (worst && worst.headroom < 0 ? "is-missed" : "is-met"), sentence));
+
+      var wrap = el("div", "sheet-table-wrap");
+      var table = el("table", "sheet-table autopsy-table");
+      var head = el("tr");
+      head.appendChild(el("th", null, "headroom, mV"));
+      found.device_order.forEach(function (name) {
+        head.appendChild(el("th", null, name));
+      });
+      table.appendChild(head);
+
+      found.rows.forEach(function (row) {
+        var tr = el("tr");
+        tr.appendChild(el("td", "sheet-at", row.label));
+        if (!row.devices) {
+          var cell = el("td", "field-error", row.error || "did not bias");
+          cell.colSpan = found.device_order.length;
+          tr.appendChild(cell);
+          table.appendChild(tr);
+          return;
+        }
+        found.device_order.forEach(function (name) {
+          var slot = row.devices[name] || {};
+          var value = slot.headroom;
+          var td;
+          if (typeof value === "number") {
+            td = el("td", "num" + (value < 0 ? " is-negative" : ""),
+                    (value * 1000).toFixed(0));
+          } else {
+            td = el("td", "sheet-at", "not exposed");
+          }
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+      wrap.appendChild(table);
+      out.appendChild(wrap);
+
+      out.appendChild(el("p", "sheet-note",
+        "vds and vdsat read from the model card through ngspice at each " +
+        "corner's own operating point; headroom is their sign-aware " +
+        "difference. " + found.sims + " simulations."));
+      show(out, true);
+    }
+
+    id("autopsy-run").addEventListener("click", function () {
+      show(robustError, false);
+      id("autopsy-run").disabled = true;
+      robustState.textContent = "Autopsy: starting";
+      show(robustProgress, true);
+      fetch("/api/workbench", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ circuit: current.id, params: values(),
+                               kind: "autopsy" })
+      })
+        .then(function (response) {
+          return response.json().then(function (payload) {
+            if (!response.ok) {
+              throw new Error(payload.error || "Refused.");
+            }
+            autopsyJob = payload.job;
+            pollAutopsy();
+          });
+        })
+        .catch(function (error) {
+          robustState.textContent = "Finished";
+          id("autopsy-run").disabled = false;
+          robustError.textContent = String(error.message || error);
+          show(robustError, true);
+        });
+    });
+
     return {
       key: "'robust'".replace(/'/g, ""),
       render: function (circuit) {
         current = circuit;
+        show(id("autopsy-run"), false);
+        show(id("autopsy-out"), false);
         renderRobustPanel();
       }
     };
