@@ -115,7 +115,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.12.2";
+  --app-version: "v1.12.3";
 }
 
 *,

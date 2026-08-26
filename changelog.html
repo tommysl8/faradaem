@@ -57,6 +57,19 @@
 
                 <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.12.3</span>
+            <span class="entry-date">2026-08-26</span>
+          </header>
+          <ul>
+            <li>The folded cascode is redrawn on a planned grid. The first drawing failed a stricter audit in ways a label check could never see: every bottom-row source stopped eighteen pixels short of the ground rail, the M12 and M5 gate wires ran straight through the bodies of M11 and M14, the diode tie clipped the edge of the bias source's circle, and three parallel runs tangled around the fold nodes. Now every wire ends exactly on a device terminal, the gate buses ride clear channels and drop onto each gate from outside its symbol, and the few unavoidable crossings sit alone, well away from every junction dot.</li>
+            <li>The same disease was latent in the OTA and the two-stage op-amp: their bias buses ran along the gate row, which is through every transistor body between the gates they tie. Both now route at the diode-tie level, in the clear, with one honest crossing where the op-amp's bus passes the tail.</li>
+            <li>The geometry audit grew from checking labels to checking the circuit drawing itself. Every symbol primitive now tags its group with what it is and where its terminals sit, so the browser-side scanner can prove mechanically, for all ten schematics with measured values rendered: no wire ends in space, no wire transits a symbol body, no terminal is left unconnected, no crossing sits close enough to a dot to read as a junction, no two symbols overlap, and nothing leaves the frame. It caught a wire through the input pair in the first version of this very fix, which is the point of having it.</li>
+            <li>The three amplifiers draw their bias current source with a shared primitive instead of three hand-inlined circles, because a symbol the audit cannot see is a symbol it cannot defend.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">1.12.2</span>
             <span class="entry-date">2026-08-26</span>
           </header>

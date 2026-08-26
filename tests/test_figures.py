@@ -117,6 +117,44 @@ def test_wires_end_where_they_are_drawn():
     assert '"stroke-linecap": "round"' not in schematic
 
 
+def test_every_symbol_declares_what_and_where_it_is():
+    """The browser-side geometry audit can only prove a wire misses every
+    transistor body if the symbols say where their bodies and terminals
+    are. Each primitive tags its group; the audit reads the tags."""
+    schematic = read("static/schematic.js")
+    assert "function tagSymbol(" in schematic
+    for kind in ('"nmos"', '"pmos"', '"isource"', '"dcsource"', '"ground"',
+                 '"capacitor"', '"resistor"', '"inductor"', '"opamp"'):
+        assert "tagSymbol(group, " + kind in schematic, kind
+    # The three amplifiers draw their bias source with the primitive, not
+    # an untagged inline circle the audit cannot see.
+    assert schematic.count("isource(svg, {") == 3
+
+
+def test_gate_buses_stay_out_of_transistor_bodies():
+    """A bias bus drawn along the gate row runs straight through the body
+    of every device between the gates it ties, because a gate lead ends at
+    the symbol's edge and the body extends from there. All three MOS
+    amplifiers route their buses in a clear channel and drop onto each
+    gate from outside its symbol."""
+    schematic = read("static/schematic.js")
+    assert "wire(svg, 60, bY, 188, bY)" not in schematic
+    assert "wire(svg, 60, bY, 524, bY)" not in schematic
+    assert "wire(svg, 234, 464, 74, 464)" not in schematic
+
+
+def test_the_folded_cascode_bottom_row_reaches_ground():
+    """The first drawing left every bottom-row source dangling eighteen
+    pixels above the ground rail: five wires to nowhere."""
+    schematic = read("static/schematic.js")
+    for tap in ("wire(svg, 74, 534, 74, yGnd)",
+                "wire(svg, 166, 534, 166, yGnd)",
+                "wire(svg, 312, 534, 312, yGnd)",
+                "wire(svg, 470, 534, 470, yGnd)",
+                "wire(svg, 590, 534, 590, yGnd)"):
+        assert tap in schematic, tap
+
+
 def test_plot_titles_live_outside_the_frames():
     """Inside the frame they sat where the trace runs."""
     bode = read("static/bodeplot.js")

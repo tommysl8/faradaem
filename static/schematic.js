@@ -97,6 +97,18 @@
     return polyline(parent, [[x1, y1], [x2, y2]]);
   }
 
+  /* Every symbol group declares what it is and where its terminals are, so
+   * a checker can verify mechanically that no wire transits a symbol body
+   * and that every terminal is actually connected. The attributes are in
+   * the group's own coordinates; a reader maps them through the CTM. */
+  function tagSymbol(group, kind, terminals) {
+    group.setAttribute("data-sym", kind);
+    group.setAttribute("data-terminals", terminals.map(function (point) {
+      return point[0] + "," + point[1];
+    }).join(" "));
+    return group;
+  }
+
   /* IEEE zigzag resistor, six peaks by default.
    * Vertical (x, y1, y2) by default; pass orientation "horizontal" with
    * (y, x1, x2) to lay it along a rail instead. */
@@ -109,6 +121,7 @@
     var end = horizontal ? options.x2 : options.y2;
     var axis = horizontal ? options.y : options.x;
     var step = (end - start) / peaks;
+    var group = add(parent, "g", {});
 
     // "along" runs down the body, "across" is the zigzag excursion.
     function at(along, across) {
@@ -124,7 +137,8 @@
     }
     points.push(at(end, axis));
 
-    return polyline(parent, points);
+    polyline(group, points);
+    return tagSymbol(group, "resistor", [at(start, axis), at(end, axis)]);
   }
 
   function path(parent, d) {
@@ -159,7 +173,7 @@
     ]);
     polyline(group, [at(centre + gap / 2, axis), at(end, axis)]);
 
-    return group;
+    return tagSymbol(group, "capacitor", [at(start, axis), at(end, axis)]);
   }
 
   /* Inductor: four semicircular humps along the run. */
@@ -182,7 +196,11 @@
       d += step;
     }
 
-    return path(parent, d);
+    var group = add(parent, "g", {});
+    path(group, d);
+    return tagSymbol(group, "inductor", horizontal
+      ? [[start, axis], [end, axis]]
+      : [[axis, start], [axis, end]]);
   }
 
   /* Op-amp: triangle pointing at its output, with the input marks inside.
@@ -211,7 +229,9 @@
       [x + 9 + mark, nonInvertingY + mark]
     ]);
 
-    return group;
+    return tagSymbol(group, "opamp", [
+      [x, invertingY], [x, nonInvertingY], [x + width, y]
+    ]);
   }
 
   /* DC voltage source: circle with + above and - below the centre. */
@@ -226,7 +246,24 @@
     polyline(group, [[cx, cy - 15], [cx, cy - 5]]);
     polyline(group, [[cx - 5, cy + 11], [cx + 5, cy + 11]]);
 
-    return group;
+    return tagSymbol(group, "dcsource",
+      [[cx, cy - radius], [cx, cy + radius]]);
+  }
+
+  /* DC current source: circle with the arrow pointing the way the current
+   * flows. Drawn inline three times before it became a primitive. */
+  function isource(parent, options) {
+    var cx = options.cx;
+    var cy = options.cy;
+    var radius = options.radius || 22;
+    var group = add(parent, "g", {});
+
+    add(group, "circle", { "class": "sch-stroke", cx: cx, cy: cy, r: radius });
+    polyline(group, [[cx, cy - 12], [cx, cy + 12]]);
+    polyline(group, [[cx - 5, cy + 5], [cx, cy + 12], [cx + 5, cy + 5]]);
+
+    return tagSymbol(group, "isource",
+      [[cx, cy - radius], [cx, cy + radius]]);
   }
 
   /* Ground: a short stem into three shrinking horizontal bars. */
@@ -241,7 +278,7 @@
       polyline(group, [[x - bar[0], y + 11 + bar[1]], [x + bar[0], y + 11 + bar[1]]]);
     });
 
-    return group;
+    return tagSymbol(group, "ground", [[x, y]]);
   }
 
   /* Enhancement-mode NMOS, gate on the left, drain up and source down.
@@ -286,7 +323,11 @@
     polyline(group, [[x, y], [railX, y], [railX, sourceY]]);
     polyline(group, [[x + 9, y - 5], [x, y], [x + 9, y + 5]]);
 
-    return group;
+    return tagSymbol(group, "nmos", [
+      [gateX - lead, y],                // gate
+      [railX, y - half - 14],           // drain
+      [railX, y + half + 14]            // source
+    ]);
   }
 
   /* Enhancement-mode PMOS: the nmos mirrored top for bottom. Source and bulk
@@ -325,7 +366,11 @@
     polyline(group, [[x, y], [railX, y], [railX, sourceY]]);
     polyline(group, [[railX - 9, y - 5], [railX, y], [railX - 9, y + 5]]);
 
-    return group;
+    return tagSymbol(group, "pmos", [
+      [gateX - lead, y],                // gate
+      [railX, y - half - 14],           // source
+      [railX, y + half + 14]            // drain
+    ]);
   }
 
   function nodeDot(parent, options) {
@@ -379,6 +424,7 @@
     nmos: nmos,
     pmos: pmos,
     dcSource: dcSource,
+    isource: isource,
     ground: ground,
     nodeDot: nodeDot,
     label: label,
@@ -1064,9 +1110,7 @@
 
     // Bias branch: Ib into diode-connected M8, tied left of the source.
     wire(svg, 122, yVdd, 122, 158);
-    add(svg, "circle", { "class": "sch-stroke", cx: 122, cy: 180, r: 22 });
-    polyline(svg, [[122, 168], [122, 192]]);
-    polyline(svg, [[117, 185], [122, 192], [127, 185]]);
+    isource(svg, { cx: 122, cy: 180 });
     wire(svg, 122, 202, 122, 306);
     wire(svg, 122, 306, 122, 314);
     nmos(svg, { x: 96, y: bY });
@@ -1079,8 +1123,11 @@
                  text: formatEngineering(values.ibias, "A"), size: 11 });
     label(svg, { x: 134, y: 340, text: "M8", size: 11 });
 
-    // The bias bus, straight along the bottom row's gates.
-    wire(svg, 60, bY, 188, bY);
+    // The bias bus rides the diode-tie level, one clear channel above the
+    // bottom row, then drops onto M5's gate from outside its symbol. Along
+    // the gate row it would run straight through M8's body.
+    wire(svg, 122, 306, 188, 306);
+    wire(svg, 188, 306, 188, bY);
     label(svg, { x: 262, y: 340, text: "M5", size: 11 });
 
     // PMOS mirror.
@@ -1192,9 +1239,7 @@
 
     // ---- bias branch: Ib into diode-connected M8 ----
     wire(svg, 122, yVdd, 122, 158);
-    add(svg, "circle", { "class": "sch-stroke", cx: 122, cy: 180, r: 22 });
-    polyline(svg, [[122, 168], [122, 192]]);
-    polyline(svg, [[117, 185], [122, 192], [127, 185]]);
+    isource(svg, { cx: 122, cy: 180 });
     wire(svg, 122, 202, 122, 306);
     wire(svg, 122, 306, 122, 314);
     nmos(svg, { x: 96, y: bY });
@@ -1208,9 +1253,14 @@
                  text: formatEngineering(values.ibias, "A"), size: 11 });
     label(svg, { x: 134, y: 340, text: "M8", size: 11 });
 
-    // The bias bus: one straight run along the bottom row's gates. It ends at
-    // M7's gate and crosses nothing on the way.
-    wire(svg, 60, bY, 524, bY);
+    // The bias bus rides the diode-tie level, one clear channel above the
+    // bottom row, and drops onto each gate from outside its symbol. Along
+    // the gate row it would run straight through M8's and M5's bodies. Its
+    // one crossing is the tail wire on the way past.
+    wire(svg, 122, 306, 524, 306);
+    wire(svg, 188, 306, 188, bY);
+    nodeDot(svg, { x: 188, y: 306 });
+    wire(svg, 524, 306, 524, bY);
     label(svg, { x: 262, y: 340, text: "M5", size: 11 });
     label(svg, { x: 518, y: 344, text: "M7", anchor: "end", size: 11 });
 
@@ -1250,7 +1300,7 @@
     wire(svg, 226, 292, 274, 292);
     wire(svg, 250, 292, 250, 314);
     nmos(svg, { x: 224, y: bY });
-    label(svg, { value: true, x: 258, y: 308, size: 11,
+    label(svg, { value: true, x: 258, y: 320, size: 11,
                  text: "W " + formatEngineering(values.wpair, "m") });
 
     // Inputs, pulled clear of the devices.
@@ -1335,11 +1385,17 @@
 
   /* ---- SKY130 folded cascode ---------------------------------------- */
 
+  /* Redrawn on a planned grid after the first version failed a mechanical
+   * audit: gate buses ran through transistor bodies, and the bottom row's
+   * sources stopped short of the ground rail. Discipline now: every wire
+   * ends exactly on a symbol terminal or another wire, gate buses ride
+   * clear channels and drop onto gates from outside the symbols, and each
+   * unavoidable crossing sits well away from every junction dot. */
   function drawFoldedCascode(svg, values) {
-    var yVdd = 40, yGnd = 520;
+    var yVdd = 40, yGnd = 540;
     var pm = values.phase_margin === undefined ? null : values.phase_margin;
 
-    begin(svg, 700, 560,
+    begin(svg, 740, 580,
       "SKY130 folded cascode: an NMOS input pair of width " +
       formatEngineering(values.wpair, "m") + " folding into PMOS sources of width " +
       formatEngineering(values.wfold, "m") + ", cascodes of width " +
@@ -1350,163 +1406,175 @@
       (pm === null ? "." : ", measured phase margin " + pm.toFixed(1) + " degrees."));
 
     // Rails.
-    wire(svg, 60, yVdd, 480, yVdd);
-    wire(svg, 60, yGnd, 560, yGnd);
-    ground(svg, { x: 300, y: yGnd });
-    label(svg, { x: 488, y: yVdd + 4, text: "VDD 1.8 V", size: 11, node: true });
+    wire(svg, 60, yVdd, 600, yVdd);
+    wire(svg, 60, yGnd, 660, yGnd);
+    ground(svg, { x: 230, y: yGnd });
+    label(svg, { x: 608, y: yVdd + 4, text: "VDD 1.8 V", size: 11, node: true });
 
-    // Bias column: Ib into diode M8, and the nbias bus it makes.
+    // Bias column: Ib into diode M8. The gate bus runs in the clear channel
+    // above the bottom row and ties into the drain feed at the nbias dot.
     wire(svg, 74, yVdd, 74, 96);
-    add(svg, "circle", { "class": "sch-stroke", cx: 74, cy: 118, r: 22 });
-    polyline(svg, [[74, 106], [74, 130]]);
-    polyline(svg, [[69, 123], [74, 130], [79, 123]]);
-    wire(svg, 74, 140, 74, 190);
-    nodeDot(svg, { x: 74, y: 190 });
-    label(svg, { x: 82, y: 184, text: "nbias", size: 11, node: true });
-    label(svg, { x: 44, y: 114, text: "Ib", anchor: "end", strong: true });
-    label(svg, { value: true, x: 44, y: 130, anchor: "end",
+    isource(svg, { cx: 74, cy: 118 });
+    label(svg, { x: 66, y: 60, text: "Ib", anchor: "end", strong: true });
+    label(svg, { value: true, x: 66, y: 76, anchor: "end",
                  text: formatEngineering(values.ibias, "A"), size: 11 });
-    wire(svg, 74, 190, 74, 426);
-    nmos(svg, { x: 48, y: 464 });
-    wire(svg, 12, 464, 12, 190);
-    wire(svg, 12, 190, 74, 190);
-    wire(svg, 12, 464, 12, 464);
-    label(svg, { x: 86, y: 452, text: "M8", size: 11 });
+    wire(svg, 74, 140, 74, 458);
+    nmos(svg, { x: 48, y: 496 });
+    label(svg, { x: 40, y: 460, text: "M8", anchor: "end", size: 11 });
+
+    // nbias: one bus above the row, dropping onto each gate from outside
+    // its symbol. Its one crossing is the pbias feed on the way past.
+    wire(svg, 12, 446, 250, 446);
+    wire(svg, 12, 446, 12, 496);
+    wire(svg, 104, 446, 104, 496);
+    wire(svg, 250, 446, 250, 496);
+    nodeDot(svg, { x: 74, y: 446 });
+    nodeDot(svg, { x: 104, y: 446 });
+    label(svg, { x: 66, y: 440, text: "nbias", anchor: "end",
+                 size: 11, node: true });
 
     // The second bias branch: M14 mirrors nbias, M13 turns it into pbias.
-    pmos(svg, { x: 130, y: 96 });
-    wire(svg, 156, yVdd, 156, 68);
-    label(svg, { x: 166, y: 92, text: "M13", size: 11 });
-    // Diode tie: gate to drain.
-    wire(svg, 94, 96, 94, 152);
-    wire(svg, 94, 152, 156, 152);
-    wire(svg, 156, 124, 156, 152);
-    nodeDot(svg, { x: 156, y: 152 });
-    label(svg, { x: 164, y: 148, text: "pbias", size: 11, node: true });
-    wire(svg, 156, 152, 156, 426);
-    nmos(svg, { x: 130, y: 464 });
-    label(svg, { x: 168, y: 452, text: "M14", size: 11 });
-    // M14's gate rides the nbias bus.
-    wire(svg, 94, 464, 74, 464);
+    pmos(svg, { x: 140, y: 96 });
+    wire(svg, 166, yVdd, 166, 58);
+    label(svg, { x: 176, y: 92, text: "M13", size: 11 });
+    // Diode tie, routed left of the body; the riser clears the Ib circle.
+    wire(svg, 104, 96, 104, 152);
+    wire(svg, 104, 152, 166, 152);
+    wire(svg, 166, 134, 166, 152);
+    nodeDot(svg, { x: 166, y: 152 });
+    label(svg, { x: 174, y: 146, text: "pbias", size: 11, node: true });
+    wire(svg, 166, 152, 166, 458);
+    nmos(svg, { x: 140, y: 496 });
+    label(svg, { x: 174, y: 484, text: "M14", size: 11 });
 
     // The input pair, folding left and right.
-    nmos(svg, { x: 230, y: 300 });
-    nmos(svg, { x: 310, y: 300 });
-    label(svg, { x: 216, y: 268, text: "M1", anchor: "end", size: 11 });
-    label(svg, { x: 344, y: 268, text: "M2", size: 11 });
-    label(svg, { value: true, x: 344, y: 284,
-                 text: "W " + formatEngineering(values.wpair, "m"), size: 11 });
-    label(svg, { x: 186, y: 304, text: "inp", anchor: "end", size: 11, node: true });
-    label(svg, { x: 296, y: 294, text: "inn", anchor: "end", size: 11, node: true });
+    nmos(svg, { x: 236, y: 310 });
+    nmos(svg, { x: 336, y: 310 });
+    label(svg, { x: 254, y: 258, text: "M1", anchor: "end", size: 11 });
+    label(svg, { value: true, x: 254, y: 272, anchor: "end", size: 11,
+                 text: "W " + formatEngineering(values.wpair, "m") });
+    label(svg, { x: 354, y: 268, text: "M2", anchor: "end", size: 11 });
+    label(svg, { x: 192, y: 314, text: "inp", anchor: "end", size: 11, node: true });
+    label(svg, { x: 296, y: 304, text: "inn", anchor: "end", size: 11, node: true });
 
-    // Tail: both sources into M5, whose gate rides the nbias bus.
-    wire(svg, 256, 338, 256, 380);
-    wire(svg, 336, 338, 336, 380);
-    wire(svg, 256, 380, 336, 380);
-    nodeDot(svg, { x: 296, y: 380 });
-    wire(svg, 296, 380, 296, 426);
-    nmos(svg, { x: 270, y: 464 });
-    wire(svg, 234, 464, 74, 464);
-    label(svg, { x: 308, y: 452, text: "M5", size: 11 });
-    label(svg, { x: 304, y: 376, text: "tail", size: 11, node: true });
-
-    // The two branches. Left carries the mirror side, right the output.
-    // Top: the folding sources M3, M4 off pbias.
-    pmos(svg, { x: 424, y: 96 });
-    pmos(svg, { x: 534, y: 96 });
-    wire(svg, 450, yVdd, 450, 68);
-    wire(svg, 560, yVdd, 560, 68);
-    label(svg, { x: 386, y: 84, text: "M3", anchor: "end", size: 11 });
-    label(svg, { x: 572, y: 84, text: "M4", size: 11 });
-    label(svg, { value: true, x: 572, y: 104, size: 11,
-                 text: "W " + formatEngineering(values.wfold, "m") });
-    // pbias bus to both gates, one run below the gate row.
-    wire(svg, 156, 152, 370, 152);
-    wire(svg, 370, 152, 370, 96);
-    wire(svg, 370, 96, 388, 96);
-    wire(svg, 480, 96, 498, 96);
-    wire(svg, 480, 96, 480, 152);
-    wire(svg, 370, 152, 480, 152);
-
-    // The fold nodes, where the pair's drains meet the sources.
-    wire(svg, 450, 124, 450, 200);
-    wire(svg, 560, 124, 560, 200);
-    nodeDot(svg, { x: 450, y: 164 });
-    nodeDot(svg, { x: 560, y: 176 });
-    label(svg, { x: 444, y: 147, text: "fold1", anchor: "end", size: 11, node: true });
-    label(svg, { x: 568, y: 180, text: "fold2", size: 11, node: true });
-    wire(svg, 256, 262, 256, 164);
-    wire(svg, 256, 164, 450, 164);
-    wire(svg, 336, 262, 336, 176);
-    wire(svg, 336, 176, 560, 176);
-
-    // The PMOS cascodes M6, M7, gates on the external pcasc reference.
-    pmos(svg, { x: 424, y: 228 });
-    pmos(svg, { x: 534, y: 228 });
-    label(svg, { x: 386, y: 216, text: "M6", anchor: "end", size: 11 });
-    label(svg, { x: 572, y: 216, text: "M7", size: 11 });
-    label(svg, { value: true, x: 572, y: 236, size: 11,
-                 text: "W " + formatEngineering(values.wcasc, "m") });
-    wire(svg, 388, 228, 370, 228);
-    wire(svg, 498, 228, 480, 228);
-    wire(svg, 480, 228, 480, 268);
-    wire(svg, 370, 228, 370, 268);
-    wire(svg, 370, 268, 480, 268);
-    label(svg, { x: 507, y: 250, text: "pcasc", anchor: "middle",
+    // Tail: both sources into M5, whose gate drops off the nbias bus.
+    wire(svg, 262, 348, 262, 412);
+    wire(svg, 362, 348, 362, 412);
+    wire(svg, 262, 412, 362, 412);
+    nodeDot(svg, { x: 312, y: 412 });
+    label(svg, { x: 304, y: 406, text: "tail", anchor: "end",
                  size: 11, node: true });
-    label(svg, { value: true, x: 507, y: 264, anchor: "middle",
+    wire(svg, 312, 412, 312, 458);
+    nmos(svg, { x: 286, y: 496 });
+    label(svg, { x: 320, y: 484, text: "M5", size: 11 });
+
+    // Top of the branches: the folding sources M3, M4 off pbias. The gate
+    // tie hangs below the row and crosses the left drain column once.
+    pmos(svg, { x: 444, y: 96 });
+    pmos(svg, { x: 564, y: 96 });
+    wire(svg, 470, yVdd, 470, 58);
+    wire(svg, 590, yVdd, 590, 58);
+    label(svg, { x: 400, y: 84, text: "M3", anchor: "end", size: 11 });
+    label(svg, { x: 602, y: 84, text: "M4", size: 11 });
+    label(svg, { value: true, x: 602, y: 104, size: 11,
+                 text: "W " + formatEngineering(values.wfold, "m") });
+    wire(svg, 166, 152, 390, 152);
+    nodeDot(svg, { x: 390, y: 152 });
+    wire(svg, 390, 152, 390, 96);
+    wire(svg, 390, 96, 408, 96);
+    wire(svg, 390, 152, 510, 152);
+    wire(svg, 510, 152, 510, 96);
+    wire(svg, 510, 96, 528, 96);
+
+    // The fold nodes, where the pair's drains meet the cascode sources.
+    wire(svg, 470, 134, 470, 214);
+    wire(svg, 590, 134, 590, 214);
+    nodeDot(svg, { x: 470, y: 172 });
+    nodeDot(svg, { x: 590, y: 196 });
+    label(svg, { x: 478, y: 168, text: "fold1", size: 11, node: true });
+    label(svg, { x: 598, y: 200, text: "fold2", size: 11, node: true });
+    wire(svg, 262, 172, 262, 272);
+    wire(svg, 262, 172, 470, 172);
+    wire(svg, 362, 196, 362, 272);
+    wire(svg, 362, 196, 590, 196);
+
+    // The PMOS cascodes M6, M7, gates tied below the row on the external
+    // pcasc reference.
+    pmos(svg, { x: 444, y: 252 });
+    pmos(svg, { x: 564, y: 252 });
+    label(svg, { x: 400, y: 240, text: "M6", anchor: "end", size: 11 });
+    label(svg, { x: 602, y: 240, text: "M7", size: 11 });
+    label(svg, { value: true, x: 602, y: 260, size: 11,
+                 text: "W " + formatEngineering(values.wcasc, "m") });
+    wire(svg, 408, 252, 390, 252);
+    wire(svg, 390, 252, 390, 306);
+    wire(svg, 390, 306, 510, 306);
+    wire(svg, 510, 306, 510, 252);
+    wire(svg, 510, 252, 528, 252);
+    label(svg, { x: 532, y: 270, text: "pcasc", anchor: "middle",
+                 size: 11, node: true });
+    label(svg, { value: true, x: 532, y: 284, anchor: "middle",
                  text: "Vpc ext", size: 11 });
 
-    // casc1: the mirror's programming node, on the left branch.
-    wire(svg, 450, 256, 450, 330);
-    nodeDot(svg, { x: 450, y: 296 });
-    label(svg, { x: 458, y: 292, text: "casc1", size: 11, node: true });
-
-    // out, on the right branch, with the load.
-    wire(svg, 560, 256, 560, 330);
-    nodeDot(svg, { x: 560, y: 296 });
-    label(svg, { x: 568, y: 292, text: "out", size: 11, node: true });
-    wire(svg, 560, 296, 632, 296);
-    capacitor(svg, { x: 632, y1: 296, y2: yGnd, plate: 26 });
-    wire(svg, 632, yGnd, 560, yGnd);
-    label(svg, { x: 652, y: 400, text: "CL", strong: true });
-    label(svg, { value: true, x: 652, y: 416,
+    // casc1 programs the mirror; out carries the load.
+    wire(svg, 470, 290, 470, 344);
+    nodeDot(svg, { x: 470, y: 322 });
+    label(svg, { x: 478, y: 318, text: "casc1", size: 11, node: true });
+    wire(svg, 590, 290, 590, 344);
+    nodeDot(svg, { x: 590, y: 322 });
+    label(svg, { x: 598, y: 316, text: "out", size: 11, node: true });
+    wire(svg, 590, 322, 660, 322);
+    capacitor(svg, { x: 660, y1: 322, y2: yGnd, plate: 26 });
+    label(svg, { x: 678, y: 420, text: "CL", strong: true });
+    label(svg, { value: true, x: 678, y: 436,
                  text: formatEngineering(values.cl, "F"), size: 11 });
 
-    // The NMOS cascodes M9, M10 on the external ncasc reference.
-    nmos(svg, { x: 424, y: 358 });
-    nmos(svg, { x: 534, y: 358 });
-    label(svg, { x: 386, y: 346, text: "M9", anchor: "end", size: 11 });
-    label(svg, { x: 572, y: 346, text: "M10", size: 11 });
-    wire(svg, 388, 358, 370, 358);
-    wire(svg, 498, 358, 480, 358);
-    wire(svg, 370, 358, 370, 398);
-    wire(svg, 480, 358, 480, 398);
-    wire(svg, 370, 398, 480, 398);
-    label(svg, { x: 505, y: 412, text: "ncasc", anchor: "middle",
+    // The NMOS cascodes M9, M10, gates tied below the row on the external
+    // ncasc reference.
+    nmos(svg, { x: 444, y: 382 });
+    nmos(svg, { x: 564, y: 382 });
+    label(svg, { x: 400, y: 366, text: "M9", anchor: "end", size: 11 });
+    label(svg, { x: 602, y: 370, text: "M10", size: 11 });
+    wire(svg, 408, 382, 390, 382);
+    wire(svg, 390, 382, 390, 432);
+    wire(svg, 390, 432, 510, 432);
+    wire(svg, 510, 432, 510, 382);
+    wire(svg, 510, 382, 528, 382);
+    label(svg, { x: 532, y: 400, text: "ncasc", anchor: "middle",
                  size: 11, node: true });
-    label(svg, { value: true, x: 505, y: 426, anchor: "middle",
+    label(svg, { value: true, x: 532, y: 414, anchor: "middle",
                  text: "Vnc ext", size: 11 });
+    wire(svg, 470, 420, 470, 458);
+    wire(svg, 590, 420, 590, 458);
 
-    // And the mirror M11, M12 under them, programmed from casc1.
-    wire(svg, 450, 386, 450, 426);
-    wire(svg, 560, 386, 560, 426);
-    nmos(svg, { x: 424, y: 464 });
-    nmos(svg, { x: 534, y: 464 });
-    label(svg, { x: 386, y: 452, text: "M11", anchor: "end", size: 11 });
-    label(svg, { x: 572, y: 452, text: "M12", size: 11 });
-    wire(svg, 388, 464, 350, 464);
-    wire(svg, 498, 464, 350, 464);
-    wire(svg, 350, 464, 350, 296);
-    wire(svg, 350, 296, 450, 296);
+    // The mirror M11, M12 under them, programmed from casc1. The gate net
+    // comes down between the pair and the branch, feeds M11 at gate level,
+    // and tees across to M12 through the channel above the row.
+    nmos(svg, { x: 444, y: 496 });
+    nmos(svg, { x: 564, y: 496 });
+    label(svg, { x: 400, y: 484, text: "M11", anchor: "end", size: 11 });
+    label(svg, { x: 598, y: 484, text: "M12", size: 11 });
+    wire(svg, 372, 322, 470, 322);
+    wire(svg, 372, 322, 372, 496);
+    wire(svg, 372, 496, 408, 496);
+    nodeDot(svg, { x: 372, y: 446 });
+    wire(svg, 372, 446, 528, 446);
+    wire(svg, 528, 446, 528, 496);
 
-    if (values.phase_margin !== undefined && values.phase_margin !== null) {
+    // Every bottom-row source lands on the ground rail.
+    wire(svg, 74, 534, 74, yGnd);
+    wire(svg, 166, 534, 166, yGnd);
+    wire(svg, 312, 534, 312, yGnd);
+    wire(svg, 470, 534, 470, yGnd);
+    wire(svg, 590, 534, 590, yGnd);
+
+    if (pm !== null && isFinite(pm)) {
       // The branch continues above the out node, so the tag hangs on a
       // stub below the out run, the way the OTA and the op-amp do it.
-      wire(svg, 596, 296, 596, 318);
+      wire(svg, 626, 322, 626, 336);
       valueTag(svg, {
-        x: 596, y: 318, anchor: "middle",
-        text: "PM " + values.phase_margin.toFixed(1) + "\u00b0"
+        x: 626, y: 336, anchor: "middle",
+        text: "PM " + pm.toFixed(1) + "\u00b0"
       });
     }
   }
