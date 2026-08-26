@@ -34,6 +34,7 @@
     </a>
     <nav aria-label="Primary">
       <ul class="nav-links">
+        <li><a href="/notebook">Notebook</a></li>
         <li><a href="/manual" aria-current="page">Manual</a></li>
         <li><a href="/about">About</a></li>
         <li><a href="/changelog">Changelog</a></li>
@@ -63,10 +64,6 @@
                 <li><a href="#running-a-simulation">Running a simulation</a></li>
                 <li><a href="#keyboard">Keyboard</a></li>
                 <li><a href="#reading-the-result">Reading the result</a></li>
-                <li><a href="#the-circuits">The circuits</a></li>
-                <li><a href="#from-a-sentence-to-geometry">From a sentence to geometry</a></li>
-                <li><a href="#the-folded-cascode">The folded cascode, and why a third topology</a></li>
-                <li><a href="#where-the-analyses-live">Where the analyses live</a></li>
               </ol>
             </div>
             <div class="toc-group">
@@ -76,9 +73,15 @@
                 <li><a href="#when-a-badge-says-off-by-some-percent">When a badge says off by some percent</a></li>
                 <li><a href="#phase-margin-and-why-it-needs-the-loop-opened">Phase margin, and why it needs the loop opened</a></li>
                 <li><a href="#bias-warnings-on-the-sky130-amplifier">Bias warnings on the SKY130 amplifier</a></li>
-                <li><a href="#step-response-how-fast-it-can-actually-move">Step response: how fast it can actually move</a></li>
-                <li><a href="#rejection-and-range-the-rest-of-the-datasheet">Rejection and range: the rest of the datasheet</a></li>
-                <li><a href="#robustness-corners-and-monte-carlo">Robustness: corners and Monte Carlo</a></li>
+              </ol>
+            </div>
+            <div class="toc-group">
+              <p class="toc-group-name">The circuits</p>
+              <ol class="toc-list">
+                <li><a href="#the-folded-cascode">The folded cascode, and why a third topology</a></li>
+                <li><a href="#from-a-sentence-to-geometry">From a sentence to geometry</a></li>
+                <li><a href="#the-circuits">The circuits</a></li>
+                <li><a href="#where-the-analyses-live">Where the analyses live</a></li>
               </ol>
             </div>
             <div class="toc-group">
@@ -86,8 +89,10 @@
               <ol class="toc-list">
                 <li><a href="#asking-for-a-design-in-plain-language">Asking for a design in plain language</a></li>
                 <li><a href="#designing-to-a-spec">Designing to a spec</a></li>
-                <li><a href="#floorplan-what-the-sizing-costs-in-silicon">Floorplan: what the sizing costs in silicon</a></li>
-                <li><a href="#if-something-goes-wrong">If something goes wrong</a></li>
+                <li><a href="#step-response-how-fast-it-can-actually-move">Step response: how fast it can actually move</a></li>
+                <li><a href="#rejection-and-range-the-rest-of-the-datasheet">Rejection and range: the rest of the datasheet</a></li>
+                <li><a href="#floorplan-what-the-sizing-costs-in-silicon">Layout: what the sizing costs, and whether it is right</a></li>
+                <li><a href="#robustness-corners-and-monte-carlo">Robustness: corners and Monte Carlo</a></li>
               </ol>
             </div>
             <div class="toc-group">
@@ -96,11 +101,12 @@
                 <li><a href="#the-datasheet-that-writes-itself">The datasheet that writes itself</a></li>
                 <li><a href="#pinned-numbers">Pinned numbers</a></li>
                 <li><a href="#comparing-two-runs">Comparing two runs</a></li>
-                <li><a href="#asking-the-numbers">Asking the numbers: triage, blame, the sweep</a></li>
+                <li><a href="#asking-the-numbers">Diagnosing a sizing: triage, blame, the sweep</a></li>
                 <li><a href="#the-corner-autopsy">The corner autopsy</a></li>
                 <li><a href="#the-tapeout-packet">The tapeout packet</a></li>
                 <li><a href="#the-notebook">The notebook</a></li>
                 <li><a href="#the-doctor">The doctor</a></li>
+                <li><a href="#if-something-goes-wrong">If something goes wrong</a></li>
               </ol>
             </div>
           </div>
@@ -131,10 +137,11 @@
             <code>ngspice.exe</code>, because that build opens a window and never returns.
           </p>
           <p>
-            The three SKY130 circuits, the NFET amplifier, the op-amp and the OTA, also
-            need the SKY130 process design kit. Set <code>PDK_ROOT</code> to the folder
-            you installed it in. Every other circuit runs without it. If the kit is
-            missing, only those circuits stop working, and they tell you what to install.
+            The four SKY130 circuits, the NFET amplifier, the op-amp, the OTA
+            and the folded cascode, also need the SKY130 process design kit.
+            Set <code>PDK_ROOT</code> to the folder you installed it in. Every
+            other circuit runs without it. If the kit is missing, only those
+            circuits stop working, and they tell you what to install.
           </p>
         </section>
 
@@ -174,6 +181,10 @@
             <dd>Move between circuit tabs when a tab has focus.</dd>
             <dt>Home, End</dt>
             <dd>Jump to the first or last circuit.</dd>
+            <dt>Ctrl + Enter</dt>
+            <dd>Run from anywhere on the page. In the strategist box it
+            sends the message instead, because that is what it means
+            there.</dd>
             <dt>Esc</dt>
             <dd>Dismiss an error message.</dd>
           </dl>
@@ -305,11 +316,13 @@
             need two and the compensation two stages drag along.
           </p>
           <p>
-            Two things it is not. The cascode gate references are ideal
+            One thing it is not. The cascode gate references are ideal
             voltage sources here, where a finished design would generate
-            them on chip from the same reference current. And it has no
-            spec-driven design block, so <strong>Design to spec</strong>
-            cannot size it to a goal the way it can the other two.
+            them on chip from the same reference current; the page marks
+            them external for exactly that reason. Everything else the
+            other amplifiers get, it gets: <strong>Design to spec</strong>
+            sizes it, the corner suite runs it, and the layout draws it
+            with its five matched pairs around shared centroids.
           </p>
         </section>
 
@@ -373,11 +386,12 @@
             are, and what one run of it measures. Everything that asks a harder
             question sits below that, in the <strong>Analysis</strong> section,
             as a row of tabs: designing to a spec, the step response, rejection
-            and range, and robustness across corners.
+            and range, the layout, robustness across corners, and the
+            datasheet that collects all of it.
           </p>
           <p>
             Only the tabs a circuit can answer appear. A resistor divider has
-            none of them. The two SKY130 amplifiers have all four. One tab is
+            none of them; the SKY130 amplifiers have all six. One tab is
             open at a time, and each one that draws something keeps its plot
             beside its own numbers rather than a column away from them.
           </p>
@@ -674,13 +688,15 @@
             Grouped, they share one well.
           </p>
           <p>
-            <strong>It is a floorplan, not a layout.</strong> Nothing in it has
-            been routed or extracted. Those need Magic and
-            Netgen, which do not run on this machine, and until they do the area
-            is the area of this placement rather than of a layout anyone has
-            drawn. Devices are also drawn as single fingers, so a wide transistor
-            is drawn wide; a real layout would fold it, and would be shorter and
-            fatter than the picture here.
+            <strong>It is a real layout.</strong> The wires are routed on
+            two metal layers and their resistance and capacitance are
+            extracted and priced in margin. Matched pairs are folded into
+            fingers around a shared centroid with dummies at the ends, each
+            group wears a tied guard ring, and every net is a named port in
+            the exported GDS. Layout versus schematic runs through KLayout's
+            own engine, and the foundry's sign-off deck is one button away.
+            What is still simplified is the router itself: one track per
+            net, which is legal and checked, not what a person would draw.
           </p>
         </section>
 
@@ -783,7 +799,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="asking-the-numbers">Asking the numbers: triage, blame, the sweep</h2>
+          <h2 id="asking-the-numbers">Diagnosing a sizing: triage, blame, the sweep</h2>
           <p>Under the design goals live three questions, each answered by
           measurement and nothing else.</p>
           <p><strong>Check feasibility</strong> is one simulation: every
@@ -887,7 +903,7 @@
             <dt>Could not locate ngspice</dt>
             <dd>The message lists every place it looked. Install ngspice, put <code>ngspice_con.exe</code> on your PATH, or set <code>FARADAEM_NGSPICE</code> to its full path.</dd>
             <dt>Could not find the SKY130 model library</dt>
-            <dd>Only the SKY130 circuit needs this. Set <code>PDK_ROOT</code> to the folder holding the kit, then restart the server so it picks up the new value.</dd>
+            <dd>Only the SKY130 circuits need this. Set <code>PDK_ROOT</code> to the folder holding the kit, then restart the server so it picks up the new value.</dd>
             <dt>A value is refused before the run</dt>
             <dd>Every parameter has a declared range, and the message names the limit it crossed. The form marks the field and says what to do.</dd>
             <dt>The first SKY130 run is slow</dt>

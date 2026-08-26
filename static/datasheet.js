@@ -53,7 +53,7 @@
     if (/^f_|freq|crossover|bw|gbw/.test(key)) { return fmtEng(value, "Hz"); }
     if (/time|delay/.test(key)) { return fmtEng(value, "s"); }
     if (/slew/.test(key)) { return fmtEng(value, "V/s"); }
-    if (/v|range|swing|offset/.test(key)) { return fmtEng(value, "V"); }
+    if (/^v|_v$|range|swing|offset/.test(key)) { return fmtEng(value, "V"); }
     return fmtEng(value, "");
   }
 

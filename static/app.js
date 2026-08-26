@@ -613,6 +613,7 @@
   /* ---- the netlist viewer ------------------------------------------------- */
 
   var netlistToggle = id("netlist-toggle");
+  var netlistCopy = id("netlist-copy");
   var netlistView = id("netlist-view");
   var netlistShown = false;
 
@@ -639,6 +640,7 @@
           }
           netlistView.textContent = payload.netlist;
           show(netlistView, true);
+          show(netlistCopy, true);
           netlistShown = true;
           netlistToggle.textContent = "Hide netlist";
         });
@@ -702,6 +704,9 @@
   }
 
   async function run(event) {
+    if (isStatic) {
+      return;
+    }
     if (event) {
       event.preventDefault();
     }
@@ -711,6 +716,7 @@
     }
 
     setPending(true);
+    captionState.textContent = 'Measuring';
     tickStart(captionState);
     benchSet("sim", "run");
     try {
@@ -788,9 +794,10 @@
     designGenerate.disabled = false;
     designGenerateLabel.textContent = "Generate design from specs";
     designStart.disabled = false;
-    designStartLabel.textContent = "Start optimization";
+    designStartLabel.textContent = "Optimize from the values on the page";
     show(designProgress, false);
     show(designApply, false);
+    show(id("design-changed"), false);
     show(designReason, false);
     show(designError, false);
     clear(designBest);
@@ -902,19 +909,21 @@
             "The search failed. Check the console running server.py.");
           return;
         }
+        id("design-state").textContent = snapshot.feasible
+          ? "Finished: every target holds"
+          : "Finished: the spec was not met";
         if (snapshot.reason) {
           designReason.textContent = snapshot.reason;
           show(designReason, true);
         }
         if (snapshot.best && snapshot.best.params) {
           designResult = snapshot.best.params;
-          if (designMode === "generate" && snapshot.feasible) {
-            // The generate flow finishes its own story: load the winning
-            // values and run the confirming simulation.
-            applyDesign();
-          } else {
-            show(designApply, true);
-          }
+          // The search finishes its own story: report exactly what it
+          // changed against the values that were on the page, load the
+          // winning sizing, and run the confirming simulation so the
+          // schematic and the numbers show the generated circuit.
+          renderDesignChanges(values(), designResult);
+          applyDesign();
         }
       })
       .catch(function () {
@@ -927,10 +936,14 @@
   function collectTargets() {
     var targets = {};
     var bad = null;
+    var labels = {};
+    (current.design.goals || []).forEach(function (goal) {
+      labels[goal.key] = goal.label;
+    });
     Object.keys(designInputs).forEach(function (key) {
       var value = Number(designInputs[key].value);
       if (!isFinite(value) || value <= 0) {
-        bad = key;
+        bad = labels[key] || key;
       }
       targets[key] = value;
     });
@@ -1017,6 +1030,68 @@
     }).catch(function () {});
   }
 
+  /* What the search changed, knob by knob, before the new values land.
+     A search that reports only "done" teaches nothing; one that says
+     "ibias 20 uA \u2192 46 uA" teaches the move. */
+  function renderDesignChanges(before, after) {
+    var host = id("design-changed");
+    clear(host);
+    var specs = {};
+    current.params.forEach(function (spec) { specs[spec.key] = spec; });
+
+    var moved = [];
+    var held = [];
+    Object.keys(after).forEach(function (key) {
+      var spec = specs[key] || { key: key, label: key };
+      var was = before[key];
+      var now = after[key];
+      if (typeof was === "number" && typeof now === "number" &&
+          Math.abs(now - was) > Math.abs(was) * 1e-9) {
+        moved.push({ spec: spec, was: was, now: now });
+      } else {
+        held.push(spec.label || key);
+      }
+    });
+
+    if (!moved.length) {
+      host.appendChild(el("p", "sheet-note",
+        "The search kept every value where it already was."));
+      show(host, true);
+      return;
+    }
+
+    host.appendChild(el("p", "mentor-head", "What the search changed"));
+    var wrap = el("div", "sheet-table-wrap");
+    var table = el("table", "sheet-table");
+    var head = el("tr");
+    ["knob", "was", "now", "change"].forEach(function (text) {
+      head.appendChild(el("th", null, text));
+    });
+    table.appendChild(head);
+    moved.forEach(function (item) {
+      var row = el("tr");
+      var unit = item.spec.unit || "";
+      row.appendChild(el("td", null, item.spec.label || item.spec.key));
+      row.appendChild(el("td", "num",
+        window.formatEngineering(item.was, unit)));
+      row.appendChild(el("td", "num",
+        window.formatEngineering(item.now, unit)));
+      var percent = item.was === 0 ? null
+        : ((item.now - item.was) / Math.abs(item.was)) * 100;
+      row.appendChild(el("td", "num delta",
+        percent === null ? "\u2014"
+          : (percent >= 0 ? "+" : "") + percent.toFixed(0) + "%"));
+      table.appendChild(row);
+    });
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+    if (held.length) {
+      host.appendChild(el("p", "sheet-note",
+        "Unchanged: " + held.join(", ") + "."));
+    }
+    show(host, true);
+  }
+
   function applyDesign() {
     if (!designResult) {
       return;
@@ -1042,6 +1117,7 @@
     show(designError, false);
     show(designReason, false);
     show(designApply, false);
+    show(id("design-changed"), false);
 
     var targets = collectTargets();
     if (targets === null) {
@@ -1457,8 +1533,10 @@
   }
 
   function benchReset() {
-    ["sim", "drc", "signoff", "lvs"].forEach(function (slot) {
-      benchSet(slot, "idle");
+    benchSet("sim", "idle", "not run");
+    var laid = Boolean(current && current.floorplan);
+    ["drc", "signoff", "lvs"].forEach(function (slot) {
+      benchSet(slot, "idle", laid ? "not run" : "no layout");
     });
   }
 
@@ -1650,6 +1728,10 @@
     show(id("mentor-error"), false);
     show(id("mentor-state"), false);
     show(id("mentor"), Boolean(current.design));
+    if (current.design && current.design.tunable) {
+      id("blame-label").textContent = "Explain the margins (" +
+        (1 + 2 * current.design.tunable.length) + " simulations)";
+    }
     show(id("sweep-run"),
          Boolean(current.design && current.design.sweep));
 
@@ -2030,6 +2112,23 @@
     id("sweep-caption").textContent = caption;
     show(id("sweep-panel"), true);
   }
+
+  /* The netlist is exactly what a user pastes into their own ngspice or
+     a bug report, so it copies in one click. */
+  netlistCopy.addEventListener("click", function () {
+    var text = id("netlist-view").textContent;
+    if (!text) {
+      return;
+    }
+    navigator.clipboard.writeText(text).then(function () {
+      netlistCopy.textContent = "Copied";
+      setTimeout(function () {
+        netlistCopy.textContent = "Copy netlist";
+      }, 1500);
+    }, function () {
+      netlistCopy.textContent = "Select and copy by hand";
+    });
+  });
 
   /* Ctrl+Enter runs from anywhere on the page -- except the advise box,
      where it sends the message, because that is what Ctrl+Enter means in

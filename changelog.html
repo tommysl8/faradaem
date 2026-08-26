@@ -34,6 +34,7 @@
     </a>
     <nav aria-label="Primary">
       <ul class="nav-links">
+        <li><a href="/notebook">Notebook</a></li>
         <li><a href="/manual">Manual</a></li>
         <li><a href="/about">About</a></li>
         <li><a href="/changelog" aria-current="page">Changelog</a></li>
@@ -55,6 +56,22 @@
       <div class="panel-body">
 
                 <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">1.12.2</span>
+            <span class="entry-date">2026-08-26</span>
+          </header>
+          <ul>
+            <li>Every schematic label was checked by machine, not by eye: a scanner in the browser intersects every label's box against every wire, symbol stroke and other label, on all ten circuits, with the measured values rendered. The folded cascode had eight labels sitting on wires -- both cascode references, both marked nodes, an input, a width and two device names -- and every one was moved against the drawer's own coordinates until the scan reads zero. Its phase margin tag now hangs below the output run instead of drawing its leader over the drain wire, and the load value no longer clips at the frame's edge.</li>
+            <li>Marker labels on the frequency plots track collisions per row across three rows, because two alternating rows printed the first and third of three close markers on top of each other -- exactly what the RLC band-pass did with its centre and both -3 dB marks.</li>
+            <li>A four-way audit of every page fixed what it found. The layout pane no longer claims the tool cannot do what its own buttons then do. The manual stopped contradicting the product: four SKY130 circuits, six analysis tabs, a layout that is routed, extracted and signed off, a contents that follows the document, and Ctrl+Enter where the keyboard is documented. The datasheet tab refreshes its store and pins when it opens, not only when the window resizes.</li>
+            <li>The search finishes its own story. Generate or optimize, feasible or not, the winning sizing lands on the page, the schematic redraws as the generated circuit, the confirming run measures it, and a table says exactly what moved: each knob, was, now, percent, with the unchanged ones named. The status line says whether the spec held instead of just "Finished".</li>
+            <li>Light mode holds up under a contrast meter: the light accent darkened to read on white, control borders firmed, and the layout plot's seven fills became theme tokens with light values instead of dark-palette constants that ignored the toggle.</li>
+            <li>Phones get one column again: the pane widths introduced at 1.12.1 were set on ids, which silently outranked the mobile reset. The reset now speaks at the same strength.</li>
+            <li>Around the edges: the shell settled at 1400 pixels; the notebook link is in every page's navigation rather than two; the netlist gained a copy button; corner and Monte Carlo tables speak the readout's language with units instead of raw keys; every simulator-spending button prices itself, in one unit; target complaints use the goal's own name; the tables' scrollbars quieted; and the mentor's heading says what it does.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
           <header class="entry-head">
             <span class="entry-version">1.12.1</span>
             <span class="entry-date">2026-08-26</span>

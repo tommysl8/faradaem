@@ -66,10 +66,33 @@
       show(robustError, false);
     }
 
-    function robustValue(value) {
-      return typeof value === "number" && isFinite(value)
-        ? window.formatEngineering(value, "")
-        : "\u2014";
+    /* Headers and cells speak the circuit's own readout language:
+       "phase margin" with degrees, never phase_margin with a bare
+       number. */
+    function specFor(key) {
+      var readout = current && current.readout;
+      if (!readout) { return null; }
+      var all = [readout.headline].concat(readout.stats || []);
+      for (var i = 0; i < all.length; i++) {
+        if (all[i] && all[i].key === key) { return all[i]; }
+      }
+      return null;
+    }
+
+    function keyLabel(key) {
+      var spec = specFor(key);
+      return (spec && spec.label) || key.replace(/_/g, " ");
+    }
+
+    function robustValue(value, key) {
+      if (typeof value !== "number" || !isFinite(value)) {
+        return "\u2014";
+      }
+      var spec = specFor(key) || {};
+      if (spec.format === "db") { return value.toFixed(2) + " dB"; }
+      if (spec.format === "deg") { return value.toFixed(1) + "\u00b0"; }
+      if (spec.format === "plain") { return value.toPrecision(4); }
+      return window.formatEngineering(value, spec.unit || "");
     }
 
     function renderRobustTable(snapshot, host) {
@@ -85,7 +108,9 @@
       var table = document.createElement("table");
       var head = el("tr");
       head.appendChild(el("th", null, snapshot.mode === "pvt" ? "condition" : "seed"));
-      keys.forEach(function (key) { head.appendChild(el("th", null, key)); });
+      keys.forEach(function (key) {
+        head.appendChild(el("th", null, keyLabel(key)));
+      });
       table.appendChild(head);
 
       snapshot.rows.forEach(function (row) {
@@ -98,7 +123,7 @@
           tr.appendChild(cell);
         } else {
           keys.forEach(function (key) {
-            tr.appendChild(el("td", null, robustValue(row.measured[key])));
+            tr.appendChild(el("td", null, robustValue(row.measured[key], key)));
           });
         }
         table.appendChild(tr);
@@ -111,7 +136,8 @@
           keys.forEach(function (key) {
             var item = snapshot.summary[key];
             tr.appendChild(el("td", null,
-              item ? robustValue(item.value) + " @ " + item.at : "\u2014"));
+              item ? robustValue(item.value, key) + " @ " + item.at
+                   : "\u2014"));
           });
           table.appendChild(tr);
         } else {
@@ -121,7 +147,7 @@
             keys.forEach(function (key) {
               var item = snapshot.summary[key];
               line.appendChild(el("td", null,
-                item ? robustValue(item[pair[0]]) : "\u2014"));
+                item ? robustValue(item[pair[0]], key) : "\u2014"));
             });
             table.appendChild(line);
           });

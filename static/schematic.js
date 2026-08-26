@@ -897,7 +897,7 @@
 
     // The model is a component, so it carries its three live values.
     label(svg, { value: true,
-      x: g.ampX + 15, y: g.yRail - 31,
+      x: g.ampX + 24, y: g.yRail - 31,
       text: "A0 " + formatEngineering(values.a0, ""), size: 11
     });
     label(svg, { value: true,
@@ -1339,7 +1339,7 @@
     var yVdd = 40, yGnd = 520;
     var pm = values.phase_margin === undefined ? null : values.phase_margin;
 
-    begin(svg, 660, 560,
+    begin(svg, 700, 560,
       "SKY130 folded cascode: an NMOS input pair of width " +
       formatEngineering(values.wpair, "m") + " folding into PMOS sources of width " +
       formatEngineering(values.wfold, "m") + ", cascodes of width " +
@@ -1376,7 +1376,7 @@
     // The second bias branch: M14 mirrors nbias, M13 turns it into pbias.
     pmos(svg, { x: 130, y: 96 });
     wire(svg, 156, yVdd, 156, 68);
-    label(svg, { x: 92, y: 84, text: "M13", anchor: "end", size: 11 });
+    label(svg, { x: 166, y: 92, text: "M13", size: 11 });
     // Diode tie: gate to drain.
     wire(svg, 94, 96, 94, 152);
     wire(svg, 94, 152, 156, 152);
@@ -1393,11 +1393,11 @@
     nmos(svg, { x: 230, y: 300 });
     nmos(svg, { x: 310, y: 300 });
     label(svg, { x: 216, y: 268, text: "M1", anchor: "end", size: 11 });
-    label(svg, { x: 402, y: 268, text: "M2", size: 11 });
-    label(svg, { value: true, x: 216, y: 350, anchor: "end",
+    label(svg, { x: 344, y: 268, text: "M2", size: 11 });
+    label(svg, { value: true, x: 344, y: 284,
                  text: "W " + formatEngineering(values.wpair, "m"), size: 11 });
     label(svg, { x: 186, y: 304, text: "inp", anchor: "end", size: 11, node: true });
-    label(svg, { x: 268, y: 304, text: "inn", anchor: "end", size: 11, node: true });
+    label(svg, { x: 296, y: 294, text: "inn", anchor: "end", size: 11, node: true });
 
     // Tail: both sources into M5, whose gate rides the nbias bus.
     wire(svg, 256, 338, 256, 380);
@@ -1433,7 +1433,7 @@
     wire(svg, 560, 124, 560, 200);
     nodeDot(svg, { x: 450, y: 164 });
     nodeDot(svg, { x: 560, y: 176 });
-    label(svg, { x: 410, y: 168, text: "fold1", anchor: "end", size: 11, node: true });
+    label(svg, { x: 444, y: 147, text: "fold1", anchor: "end", size: 11, node: true });
     label(svg, { x: 568, y: 180, text: "fold2", size: 11, node: true });
     wire(svg, 256, 262, 256, 164);
     wire(svg, 256, 164, 450, 164);
@@ -1452,23 +1452,25 @@
     wire(svg, 480, 228, 480, 268);
     wire(svg, 370, 228, 370, 268);
     wire(svg, 370, 268, 480, 268);
-    label(svg, { x: 360, y: 272, text: "pcasc, Vpc external", anchor: "end",
+    label(svg, { x: 507, y: 250, text: "pcasc", anchor: "middle",
                  size: 11, node: true });
+    label(svg, { value: true, x: 507, y: 264, anchor: "middle",
+                 text: "Vpc ext", size: 11 });
 
     // casc1: the mirror's programming node, on the left branch.
     wire(svg, 450, 256, 450, 330);
     nodeDot(svg, { x: 450, y: 296 });
-    label(svg, { x: 410, y: 300, text: "casc1", anchor: "end", size: 11, node: true });
+    label(svg, { x: 458, y: 292, text: "casc1", size: 11, node: true });
 
     // out, on the right branch, with the load.
     wire(svg, 560, 256, 560, 330);
     nodeDot(svg, { x: 560, y: 296 });
     label(svg, { x: 568, y: 292, text: "out", size: 11, node: true });
-    wire(svg, 560, 296, 616, 296);
-    capacitor(svg, { x: 616, y1: 296, y2: yGnd, plate: 26 });
-    wire(svg, 616, yGnd, 560, yGnd);
-    label(svg, { x: 628, y: 400, text: "CL", strong: true });
-    label(svg, { value: true, x: 628, y: 416,
+    wire(svg, 560, 296, 632, 296);
+    capacitor(svg, { x: 632, y1: 296, y2: yGnd, plate: 26 });
+    wire(svg, 632, yGnd, 560, yGnd);
+    label(svg, { x: 652, y: 400, text: "CL", strong: true });
+    label(svg, { value: true, x: 652, y: 416,
                  text: formatEngineering(values.cl, "F"), size: 11 });
 
     // The NMOS cascodes M9, M10 on the external ncasc reference.
@@ -1481,8 +1483,10 @@
     wire(svg, 370, 358, 370, 398);
     wire(svg, 480, 358, 480, 398);
     wire(svg, 370, 398, 480, 398);
-    label(svg, { x: 360, y: 402, text: "ncasc, Vnc external", anchor: "end",
+    label(svg, { x: 505, y: 412, text: "ncasc", anchor: "middle",
                  size: 11, node: true });
+    label(svg, { value: true, x: 505, y: 426, anchor: "middle",
+                 text: "Vnc ext", size: 11 });
 
     // And the mirror M11, M12 under them, programmed from casc1.
     wire(svg, 450, 386, 450, 426);
@@ -1497,8 +1501,13 @@
     wire(svg, 350, 296, 450, 296);
 
     if (values.phase_margin !== undefined && values.phase_margin !== null) {
-      annotate(svg, 560, 296,
-        "PM " + values.phase_margin.toFixed(1) + "\u00b0");
+      // The branch continues above the out node, so the tag hangs on a
+      // stub below the out run, the way the OTA and the op-amp do it.
+      wire(svg, 596, 296, 596, 318);
+      valueTag(svg, {
+        x: 596, y: 318, anchor: "middle",
+        text: "PM " + values.phase_margin.toFixed(1) + "\u00b0"
+      });
     }
   }
 

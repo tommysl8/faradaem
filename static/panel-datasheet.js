@@ -418,6 +418,7 @@
             line.appendChild(print);
             storedEl.appendChild(line);
           });
+          show(id("charact-compare-wrap"), storedRows.length > 0);
           if (storedRows.length > 5) {
             var more = el("a", "stored-print",
               "All " + storedRows.length + " in the notebook");
@@ -749,6 +750,14 @@
         refreshPins();
       },
       onValuesEdited: checkStale,
+      // The tab strip calls reveal() when the pane opens; resize calls
+      // refit(). The store and the pins may both have moved while another
+      // tab had the page.
+      reveal: function () {
+        refreshStored();
+        refreshPins();
+        checkStale();
+      },
       refit: function () {
         // Called when the pane is shown (and on resize): the pins and
         // the store may have moved while another tab had the page.

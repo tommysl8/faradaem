@@ -99,6 +99,7 @@
           <form id="advise-form">
             <textarea id="advise-input" rows="3" class="advise-input"
               placeholder="An op-amp driving 5 pF: at least 60 dB and 60 degrees of margin, under 150 microwatts."></textarea>
+            <p class="hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends.</p>
             <div class="advise-actions">
               <select id="advise-provider" class="advise-provider hidden" aria-label="Model provider"></select>
               <button class="chip hidden" id="advise-reset" type="button">Start over</button>
@@ -125,6 +126,7 @@
           <kbd>Shift</kbd> steps a decade &middot;
           <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs from anywhere</p>
           <button class="chip netlist-toggle" id="netlist-toggle" type="button">View netlist</button>
+          <button class="chip netlist-toggle hidden" id="netlist-copy" type="button">Copy netlist</button>
           <pre class="netlist-pre hidden" id="netlist-view"></pre>
         </div>
       </form>
@@ -224,7 +226,7 @@
               <div id="design-goals"></div>
               <div class="design-actions">
                 <button class="run hidden" id="design-generate" type="button"><span id="design-generate-label">Generate design from specs</span></button>
-                <button class="chip design-secondary" id="design-start" type="button"><span id="design-start-label">Optimize from current values</span></button>
+                <button class="chip design-secondary" id="design-start" type="button"><span id="design-start-label">Optimize from the values on the page</span></button>
               </div>
               <div class="design-progress hidden" id="design-progress">
                 <div class="design-statusline">
@@ -234,12 +236,13 @@
                 </div>
                 <div class="design-best" id="design-best"></div>
                 <p class="design-reason hidden" id="design-reason"></p>
+                <div class="design-changed hidden" id="design-changed"></div>
                 <button class="chip design-apply hidden" id="design-apply" type="button">Apply result and run</button>
               </div>
               <p class="field-error hidden" id="design-error"></p>
 
               <div class="mentor" id="mentor">
-                <h3 class="mentor-head">Ask the numbers</h3>
+                <h3 class="mentor-head">Diagnose this sizing</h3>
                 <p class="triage-line hidden" id="triage-line"></p>
                 <div class="design-actions">
                   <button class="chip" id="triage-run" type="button">Check
@@ -321,12 +324,15 @@
           <section class="panel design-panel" id="layout" aria-label="Layout">
             <h2 class="panel-head">Layout</h2>
             <div class="panel-body">
-              <p class="design-intro">A schematic pretends a wire is free and a
-              transistor takes no room. This places the devices in a row at the
-              foundry's own minimum spacing, reports what that costs in silicon,
-              and hangs the interconnect it implies back on the circuit to
-              measure what it costs in margin. Two simulations, about half a
-              minute.</p>
+              <p class="design-intro">A schematic pretends a wire is free
+              and a transistor takes no room. This draws the real cell:
+              matched pairs split into fingers around a shared centroid,
+              dummies at the ends, a guard ring around each group, and two
+              metal layers of routing. It reports what that costs in
+              silicon, then hangs the drawn interconnect back on the
+              circuit to measure what it costs in margin. Two simulations,
+              about half a minute; the foundry's own deck is one more
+              button below.</p>
               <p class="static-note">Two questions get answered. The geometry
               is checked against thirty-two rules read from the PDK, and the
               drawing is compared against the netlist that was simulated, so a
@@ -440,7 +446,7 @@
               across mismatch samples. Every row is a full simulation; expect minutes.</p>
               <div class="design-actions">
                 <button class="chip" id="robust-pvt" type="button">Run PVT corners (11 simulations)</button>
-                <button class="chip" id="robust-mc" type="button">Run Monte Carlo (20 samples)</button>
+                <button class="chip" id="robust-mc" type="button">Run Monte Carlo (20 simulations)</button>
               </div>
               <p class="hint">The two suites are independent and can run
               at the same time.</p>

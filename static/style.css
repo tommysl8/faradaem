@@ -1,4 +1,4 @@
-/* Faradaem 1.12.1 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.12.2 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -35,6 +35,12 @@
   --fig-axis: rgba(230, 234, 242, 0.35);
 
   --ok: #34D399;
+  --fp-well: rgba(138, 148, 166, 0.14);
+  --fp-device: rgba(34, 211, 238, 0.16);
+  --fp-device-p: rgba(103, 232, 249, 0.28);
+  --fp-tap: rgba(198, 205, 218, 0.35);
+  --fp-track: rgba(34, 211, 238, 0.55);
+  --fp-stub: rgba(34, 211, 238, 0.28);
   --err: #F87171;
   --err-wash: rgba(248, 113, 113, 0.07);
 
@@ -102,14 +108,14 @@
   --stroke: 2px;
   --dot: 3px;
 
-  --shell: 1520px;
+  --shell: 1400px;
   --col-min: 300px;
   --col-max: 348px;
   --control-height: 36px;
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.12.1";
+  --app-version: "v1.12.2";
 }
 
 *,
@@ -1119,10 +1125,16 @@ input {
 
 /* A pane whose whole content is the panel gets the whole width: a
    datasheet, a design search and their tables have no figure column to
-   share with, and squeezing them into a form's width wasted the page. */
+   share with, and squeezing them into a form's width wasted the page.
+   The tables want the room; the prose inside stays on its own measure. */
 #pane-datasheet,
 #pane-design {
   grid-template-columns: minmax(0, 1fr);
+}
+
+#pane-datasheet .panel,
+#pane-design .panel {
+  max-width: 74rem;
 }
 
 #pane-datasheet .design-intro,
@@ -1155,10 +1167,6 @@ input {
   grid-template-columns: 1fr;
 }
 
-#pane-design .panel {
-  max-width: 46rem;
-}
-
 /* ---- the floorplan ---------------------------------------------------- */
 
 /* Devices to scale on silicon. The bounding box is the one whose area was
@@ -1172,17 +1180,17 @@ input {
 
 /* The n-well the p-channel devices sit in, behind them. */
 .figure svg .fp-well {
-  fill: rgba(138, 148, 166, 0.14);
+  fill: var(--fp-well);
   stroke: var(--line-strong);
   stroke-width: 1;
 }
 
 .figure svg .fp-device.is-pfet {
-  fill: rgba(103, 232, 249, 0.28);
+  fill: var(--fp-device-p);
 }
 
 .figure svg .fp-device {
-  fill: rgba(34, 211, 238, 0.16);
+  fill: var(--fp-device);
   stroke: var(--accent);
   stroke-width: 1;
 }
@@ -1575,7 +1583,7 @@ input {
   font-family: var(--sans);
   font-size: var(--t-body);
   line-height: var(--lh-body);
-  max-width: 68ch;
+  max-width: 84ch;
 }
 
 .prose h2 {
@@ -1780,6 +1788,17 @@ input {
     grid-template-columns: 1fr;
   }
 
+  /* The pane grids are set on ids above, which outrank the class reset
+     here; a phone gets one column, stated at the same strength. */
+  #pane-step,
+  #pane-sheet,
+  #pane-layout,
+  #pane-robust,
+  #pane-datasheet,
+  #pane-design {
+    grid-template-columns: 1fr;
+  }
+
   .sim-figure {
     position: static;
   }
@@ -1791,6 +1810,11 @@ input {
 }
 
 @media (max-width: 560px) {
+  .nav-inner nav {
+    flex-wrap: wrap;
+    gap: var(--s3);
+  }
+
   .wrap {
     padding: 0 var(--s4);
   }
@@ -1991,18 +2015,18 @@ input {
    in the picture: a drawing that leaves out what the file holds is not a
    drawing of that file. */
 .figure svg .fp-tap {
-  fill: rgba(198, 205, 218, 0.35);
+  fill: var(--fp-tap);
   stroke: var(--line-strong);
   stroke-width: 0.8;
 }
 
 .figure svg .fp-track {
-  fill: rgba(34, 211, 238, 0.55);
+  fill: var(--fp-track);
   stroke: none;
 }
 
 .figure svg .fp-stub {
-  fill: rgba(34, 211, 238, 0.28);
+  fill: var(--fp-stub);
   stroke: none;
 }
 
@@ -2103,6 +2127,11 @@ input {
 .bench-slot.is-pass .bench-state { color: var(--ok); }
 .bench-slot.is-fail .bench-state { color: var(--err); }
 .bench-slot.is-run .bench-state { color: var(--accent); }
+
+.advise-card .chip:hover {
+  color: var(--accent-hover);
+  border-color: var(--line-hover);
+}
 
 /* ---- keys, named as keys ------------------------------------------------ */
 kbd {
@@ -2208,6 +2237,10 @@ kbd {
 }
 
 
+.design-actions .run {
+  margin-top: 0;
+}
+
 /* ---- the mentor: triage, blame, the sweep -------------------------------
    Three questions under the design goals, answered by measurement. The
    verdict line is a sentence, not a widget, because that is how a senior
@@ -2242,6 +2275,8 @@ kbd {
 .sheet-table-wrap {
   overflow-x: auto;
   margin: var(--s3) 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 .sheet-table {
@@ -2376,7 +2411,7 @@ kbd {
 }
 
 .compare-pick select {
-  background: var(--panel);
+  background: var(--ink);
   color: var(--text);
   border: var(--hairline-strong);
   font: inherit;
@@ -2474,8 +2509,8 @@ kbd {
 }
 
 .printsheet h1 {
-  font-size: var(--t-title);
-  line-height: var(--lh-title);
+  font-size: var(--t-brand);
+  line-height: var(--lh-body);
   margin: 0 0 var(--s1);
 }
 
@@ -2558,19 +2593,25 @@ kbd {
   --ink: #F2F4F8;
   --panel: #FFFFFF;
   --line: #D9DFE8;
-  --line-strong: #8A94A6;
-  --line-hover: #55677F;
+  --line-strong: #74809A;
+  --line-hover: #45526B;
   --text: #14181F;
   --muted: #55677F;
-  --accent: #0891B2;
-  --accent-hover: #0E7490;
-  --accent-underline: rgba(8, 145, 178, 0.4);
+  --accent: #0E7490;
+  --accent-hover: #155E75;
+  --accent-underline: rgba(14, 116, 144, 0.4);
   --wire: #45526B;
   --fig-grid: rgba(20, 24, 31, 0.07);
   --fig-axis: rgba(20, 24, 31, 0.4);
   --ok: #047857;
   --err: #B91C1C;
   --err-wash: rgba(185, 28, 28, 0.06);
+  --fp-well: rgba(69, 82, 107, 0.12);
+  --fp-device: rgba(14, 116, 144, 0.18);
+  --fp-device-p: rgba(14, 116, 144, 0.32);
+  --fp-tap: rgba(69, 82, 107, 0.3);
+  --fp-track: rgba(14, 116, 144, 0.6);
+  --fp-stub: rgba(14, 116, 144, 0.3);
 }
 
 /* Every schematic and plot draws with the tokens, so they follow the

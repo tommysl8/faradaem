@@ -365,7 +365,7 @@ def test_the_datasheet_columns_are_honest():
 
 def test_the_page_uses_its_width():
     css = read("static/style.css")
-    assert "--shell: 1520px;" in css
+    assert "--shell: 1400px;" in css
     # Panes that are all panel take the whole row; the datasheet's tables
     # were unreadable in a form's width.
     assert "#pane-datasheet,\n#pane-design {" in css
