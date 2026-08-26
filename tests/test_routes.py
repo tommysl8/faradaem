@@ -113,6 +113,7 @@ def test_the_pages_and_their_assets_are_served():
         "/static/panel-datasheet.js",
         "/notebook",
         "/static/notebook.js",
+        "/static/theme.js",
         "/datasheet",
         "/static/datasheet.js",
         "/static/icon-32.png",

@@ -20,9 +20,9 @@
   //: The height of the box before there is anything to draw in it.
   var EMPTY_HEIGHT = 96;
   var MAX_WIDTH = 1000;
-  //: Top margin holds two staggered rows of marker labels. The left margin
+  //: Top margin holds three staggered rows of marker labels. The left margin
   //: holds the tick values and, outside them, the rotated axis title.
-  var MARGIN = { left: 58, right: 30, top: 40, bottom: 38 };
+  var MARGIN = { left: 58, right: 30, top: 56, bottom: 38 };
   //: Marker labels closer than this on screen get bumped to the second row.
   var LABEL_CLEARANCE = 78;
   var GAP = 18;
@@ -325,8 +325,11 @@
       return a.freq - b.freq;
     });
 
-    var lastLabelX = -Infinity;
-    var row = 0;
+    // Each label takes the lowest row whose previous label is far enough
+    // left. Alternating two rows was not enough: three markers inside one
+    // clearance put the first and third on the same row, printed on top
+    // of each other, which is exactly what happened on the RLC band-pass.
+    var rowLastX = [-Infinity, -Infinity, -Infinity];
     markers.forEach(function (marker) {
       var markerX = xFreq(marker.freq);
       if (markerX < left || markerX > right) {
@@ -336,13 +339,17 @@
       line(svg, markerX, magTop, markerX, magBottom, "bode-marker");
       line(svg, markerX, phaseTop, markerX, phaseBottom, "bode-marker");
 
-      // Crowded markers alternate rows rather than overprinting each other.
-      row = markerX - lastLabelX < LABEL_CLEARANCE ? 1 - row : 0;
-      lastLabelX = markerX;
+      var labelX = clamp(markerX, left + 34, right - 34);
+      var row = 0;
+      while (row < rowLastX.length - 1 &&
+             labelX - rowLastX[row] < LABEL_CLEARANCE) {
+        row += 1;
+      }
+      rowLastX[row] = labelX;
 
       text(svg, {
-        x: clamp(markerX, left + 34, right - 34),
-        y: magTop - (row === 0 ? 10 : 24),
+        x: labelX,
+        y: magTop - (10 + row * 14),
         text: marker.label + " " + window.formatEngineering(marker.freq, "Hz"),
         anchor: "middle",
         className: "bode-marker-text"

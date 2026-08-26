@@ -1,4 +1,4 @@
-/* Faradaem 1.12.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.12.1 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -102,14 +102,14 @@
   --stroke: 2px;
   --dot: 3px;
 
-  --shell: 1240px;
+  --shell: 1520px;
   --col-min: 300px;
   --col-max: 348px;
   --control-height: 36px;
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.12.0";
+  --app-version: "v1.12.1";
 }
 
 *,
@@ -237,6 +237,12 @@ input {
 
 .wordmark-version::after {
   content: var(--app-version);
+}
+
+.nav-inner nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
 }
 
 .nav-links {
@@ -688,9 +694,11 @@ input {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: var(--control-height);
+  min-height: var(--control-height);
+  height: auto;
   margin-top: var(--s5);
-  padding: 0 var(--s4);
+  padding: var(--s2) var(--s4);
+  text-align: center;
   background: var(--accent);
   color: var(--ink);
   border: var(--hairline-w) solid var(--accent);
@@ -1107,6 +1115,28 @@ input {
   grid-template-columns: minmax(var(--col-min), var(--col-max)) 1fr;
   gap: var(--s5);
   align-items: start;
+}
+
+/* A pane whose whole content is the panel gets the whole width: a
+   datasheet, a design search and their tables have no figure column to
+   share with, and squeezing them into a form's width wasted the page. */
+#pane-datasheet,
+#pane-design {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#pane-datasheet .design-intro,
+#pane-design .design-intro {
+  max-width: 78ch;
+}
+
+/* The panes that do carry a figure keep two columns, but the panel side
+   breathes instead of being pinched to the form's width. */
+#pane-step,
+#pane-sheet,
+#pane-layout,
+#pane-robust {
+  grid-template-columns: minmax(var(--col-min), 460px) 1fr;
 }
 
 .analysis-pane > * {
@@ -2516,4 +2546,50 @@ kbd {
   margin-top: var(--s5);
   border-top: var(--hairline);
   padding-top: var(--s3);
+}
+
+
+/* ---- light mode ----------------------------------------------------------
+   The dark bench is the default and the identity; light mode is the same
+   instrument in a bright lab. Every colour on the site comes off these
+   tokens, so the whole page follows. The printable datasheet is already
+   paper and ignores the toggle on purpose. */
+:root[data-theme="light"] {
+  --ink: #F2F4F8;
+  --panel: #FFFFFF;
+  --line: #D9DFE8;
+  --line-strong: #8A94A6;
+  --line-hover: #55677F;
+  --text: #14181F;
+  --muted: #55677F;
+  --accent: #0891B2;
+  --accent-hover: #0E7490;
+  --accent-underline: rgba(8, 145, 178, 0.4);
+  --wire: #45526B;
+  --fig-grid: rgba(20, 24, 31, 0.07);
+  --fig-axis: rgba(20, 24, 31, 0.4);
+  --ok: #047857;
+  --err: #B91C1C;
+  --err-wash: rgba(185, 28, 28, 0.06);
+}
+
+/* Every schematic and plot draws with the tokens, so they follow the
+   theme on their own. The hero art has its dark ground baked into the
+   file; it stays a framed picture of silicon in either mode. */
+.theme-toggle {
+  background: none;
+  border: var(--hairline-strong);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  padding: var(--s1) var(--s2);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  color: var(--text);
+  border-color: var(--line-hover);
 }

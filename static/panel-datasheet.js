@@ -737,9 +737,12 @@
         if (circuit.floorplan) { sections.push("the layout and its verdicts"); }
         var cost = 1 + (circuit.step ? 1 : 0) + (circuit.datasheet ? 1 : 0) +
           (circuit.pdk ? 11 : 0) + (circuit.floorplan ? 2 : 0);
-        runLabel.textContent = "Characterize and write the datasheet (" +
-          sections.join(", ") + "; about " + cost + " simulation" +
-          (cost === 1 ? "" : "s") + ")";
+        // The button stays short enough to read as a button; what the run
+        // covers is a sentence, and sentences live in prose.
+        runLabel.textContent = "Write the datasheet (about " + cost +
+          " simulation" + (cost === 1 ? "" : "s") + ")";
+        id("charact-covers").textContent = "This run measures " +
+          sections.join(", ") + ".";
 
         show(packetButton, Boolean(circuit.floorplan));
         refreshStored();

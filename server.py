@@ -119,6 +119,7 @@ ROUTES = {
     "/static/panel-datasheet.js": ("static/panel-datasheet.js", JS),
     "/notebook": ("notebook.html", HTML),
     "/static/notebook.js": ("static/notebook.js", JS),
+    "/static/theme.js": ("static/theme.js", JS),
     "/datasheet": ("datasheet.html", HTML),
     "/static/datasheet.js": ("static/datasheet.js", JS),
     "/static/panel-layout.js": ("static/panel-layout.js", JS),

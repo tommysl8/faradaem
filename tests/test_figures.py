@@ -356,3 +356,61 @@ def test_the_datasheet_columns_are_honest():
     assert "no guardband" in panel
     printable = read("static/datasheet.js")
     assert "worst observed" in printable
+
+
+# ---------------------------------------------------------------------------
+# the second polish pass: width, light mode, side-by-side suites
+# ---------------------------------------------------------------------------
+
+
+def test_the_page_uses_its_width():
+    css = read("static/style.css")
+    assert "--shell: 1520px;" in css
+    # Panes that are all panel take the whole row; the datasheet's tables
+    # were unreadable in a form's width.
+    assert "#pane-datasheet,\n#pane-design {" in css
+
+
+def test_light_mode_exists_and_dark_is_the_default():
+    css = read("static/style.css")
+    assert ':root[data-theme="light"]' in css
+    # The default needs no attribute: the dark tokens live on :root bare.
+    for page in ("index.html", "manual.html", "about.html",
+                 "changelog.html", "notebook.html", "datasheet.html"):
+        text = read(page)
+        assert 'id="theme-toggle"' in text, page
+        assert "/static/theme.js" in text, page
+        assert 'data-theme' not in text.split("<html")[1][:120], page
+    theme = read("static/theme.js")
+    assert "localStorage" in theme
+    assert '"light"' in theme
+
+
+def test_the_two_robust_suites_run_side_by_side():
+    """PVT and Monte Carlo answer different questions and share nothing
+    but the circuit; one waiting for the other wasted real minutes."""
+    page = read("index.html")
+    for anchor in ("robust-progress-pvt", "robust-progress-mc",
+                   "robust-table-pvt", "robust-table-mc",
+                   "robust-stop-pvt", "robust-stop-mc"):
+        assert 'id="%s"' % anchor in page, anchor
+    panel = read("static/panel-robust.js")
+    assert "slots = {" in panel
+    # Starting one suite never disables the other's button.
+    assert "robustPvt.disabled = true" not in panel.replace(
+        "slot.button.disabled = true", "")
+
+
+def test_the_charact_button_stays_a_button():
+    """The label is short; what the run covers is a sentence in prose."""
+    panel = read("static/panel-datasheet.js")
+    assert '"Write the datasheet (about "' in panel
+    assert "charact-covers" in panel
+    page = read("index.html")
+    assert 'id="charact-covers"' in page
+
+
+def test_the_marker_labels_get_three_rows():
+    plot = read("static/bodeplot.js")
+    assert "rowLastX = [-Infinity, -Infinity, -Infinity]" in plot
+    assert "top: 56" in plot

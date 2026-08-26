@@ -21,6 +21,7 @@
 <meta name="twitter:title" content="Changelog - Faradaem">
 <meta name="twitter:description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
 <meta name="twitter:image" content="/static/og.png">
+<script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -37,6 +38,7 @@
         <li><a href="/about">About</a></li>
         <li><a href="/changelog" aria-current="page">Changelog</a></li>
       </ul>
+      <button class="theme-toggle" id="theme-toggle" type="button">Light mode</button>
     </nav>
   </div>
 </header>
@@ -53,6 +55,21 @@
       <div class="panel-body">
 
                 <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">1.12.1</span>
+            <span class="entry-date">2026-08-26</span>
+          </header>
+          <ul>
+            <li>The page uses its width. The shell grew from 1240 to 1520 pixels, and the panes that are all tables -- the datasheet, the design search -- take the whole row instead of being pinched into a form's column. The panes that carry a figure keep two columns, wider on the panel side.</li>
+            <li>Light mode. The toggle sits in the navigation on every page, the choice is remembered by the browser, and dark remains the default and the identity. Every colour on the site comes off the token scales, so the schematics, the plots and the verdict tables follow the theme on their own; the printable datasheet was already paper and ignores the toggle on purpose.</li>
+            <li>PVT corners and Monte Carlo run at the same time. The two suites answer different questions and share nothing but the circuit, so each now has its own progress, its own table and its own stop, and starting one no longer locks the other.</li>
+            <li>Buttons hold their labels. The characterize button said a paragraph and wore it badly; it now says "Write the datasheet (about 16 simulations)" and the paragraph lives in prose above it. Buttons that receive long text wrap instead of striking through their own borders.</li>
+            <li>Marker labels on the frequency plots get three rows with per-row collision tracking. Two alternating rows printed the first and third of three close markers on top of each other, which is exactly what the RLC band-pass did with its centre and two -3 dB marks.</li>
+            <li>The design panel says what it is for: it sizes the circuit for you, from a physics seed or from the values on the page, one real simulation per step, apply with one click.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
           <header class="entry-head">
             <span class="entry-version">1.12.0</span>
             <span class="entry-date">2026-08-26</span>
