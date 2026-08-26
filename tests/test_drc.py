@@ -285,7 +285,7 @@ def test_overlapping_shapes_are_not_a_spacing_violation():
 
 def test_the_result_states_its_own_coverage():
     result = drc.check(device(), LAYERS, TECH)
-    assert len(result["rules_checked"]) == 35
+    assert len(result["rules_checked"]) == 36
     assert {item["tag"] for item in result["rules_checked"]} == {
         "poly.1a", "diff/tap.1", "diff/tap.3", "poly.7", "poly.8",
         "nwell.1", "nwell.2a", "nwell.5", "met1.1", "met1.2",
@@ -296,6 +296,8 @@ def test_the_result_states_its_own_coverage():
         "diff/tap.9", "diff/tap.10", "diff/tap.11", "nwell.4", "licon.16",
         # The three the foundry's own deck caught and this had not.
         "met1.5", "via.5a", "met2.5",
+        # Poly spacing, which began to matter when a resistor was drawn.
+        "poly.2",
     }
     coverage = result["coverage"].lower()
     # It is the fast loop and has to say so: the answer is the runset.

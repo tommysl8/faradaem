@@ -1332,8 +1332,179 @@
   window.drawInvertingAmp = drawInvertingAmp;
   window.drawTwopoleAmp = drawTwopoleAmp;
   window.drawNfetCsAmp = drawNfetCsAmp;
+
+  /* ---- SKY130 folded cascode ---------------------------------------- */
+
+  function drawFoldedCascode(svg, values) {
+    var yVdd = 40, yGnd = 520;
+    var pm = values.phase_margin === undefined ? null : values.phase_margin;
+
+    begin(svg, 660, 560,
+      "SKY130 folded cascode: an NMOS input pair of width " +
+      formatEngineering(values.wpair, "m") + " folding into PMOS sources of width " +
+      formatEngineering(values.wfold, "m") + ", cascodes of width " +
+      formatEngineering(values.wcasc, "m") + " building the output resistance, " +
+      "bias " + formatEngineering(values.ibias, "A") + ", loaded by " +
+      formatEngineering(values.cl, "F") +
+      ". The cascode gate references are external; the DC servo is not drawn" +
+      (pm === null ? "." : ", measured phase margin " + pm.toFixed(1) + " degrees."));
+
+    // Rails.
+    wire(svg, 60, yVdd, 480, yVdd);
+    wire(svg, 60, yGnd, 560, yGnd);
+    ground(svg, { x: 300, y: yGnd });
+    label(svg, { x: 488, y: yVdd + 4, text: "VDD 1.8 V", size: 11, node: true });
+
+    // Bias column: Ib into diode M8, and the nbias bus it makes.
+    wire(svg, 74, yVdd, 74, 96);
+    add(svg, "circle", { "class": "sch-stroke", cx: 74, cy: 118, r: 22 });
+    polyline(svg, [[74, 106], [74, 130]]);
+    polyline(svg, [[69, 123], [74, 130], [79, 123]]);
+    wire(svg, 74, 140, 74, 190);
+    nodeDot(svg, { x: 74, y: 190 });
+    label(svg, { x: 82, y: 184, text: "nbias", size: 11, node: true });
+    label(svg, { x: 44, y: 114, text: "Ib", anchor: "end", strong: true });
+    label(svg, { value: true, x: 44, y: 130, anchor: "end",
+                 text: formatEngineering(values.ibias, "A"), size: 11 });
+    wire(svg, 74, 190, 74, 426);
+    nmos(svg, { x: 48, y: 464 });
+    wire(svg, 12, 464, 12, 190);
+    wire(svg, 12, 190, 74, 190);
+    wire(svg, 12, 464, 12, 464);
+    label(svg, { x: 86, y: 452, text: "M8", size: 11 });
+
+    // The second bias branch: M14 mirrors nbias, M13 turns it into pbias.
+    pmos(svg, { x: 130, y: 96 });
+    wire(svg, 156, yVdd, 156, 68);
+    label(svg, { x: 92, y: 84, text: "M13", anchor: "end", size: 11 });
+    // Diode tie: gate to drain.
+    wire(svg, 94, 96, 94, 152);
+    wire(svg, 94, 152, 156, 152);
+    wire(svg, 156, 124, 156, 152);
+    nodeDot(svg, { x: 156, y: 152 });
+    label(svg, { x: 164, y: 148, text: "pbias", size: 11, node: true });
+    wire(svg, 156, 152, 156, 426);
+    nmos(svg, { x: 130, y: 464 });
+    label(svg, { x: 168, y: 452, text: "M14", size: 11 });
+    // M14's gate rides the nbias bus.
+    wire(svg, 94, 464, 74, 464);
+
+    // The input pair, folding left and right.
+    nmos(svg, { x: 230, y: 300 });
+    nmos(svg, { x: 310, y: 300 });
+    label(svg, { x: 216, y: 268, text: "M1", anchor: "end", size: 11 });
+    label(svg, { x: 402, y: 268, text: "M2", size: 11 });
+    label(svg, { value: true, x: 216, y: 350, anchor: "end",
+                 text: "W " + formatEngineering(values.wpair, "m"), size: 11 });
+    label(svg, { x: 186, y: 304, text: "inp", anchor: "end", size: 11, node: true });
+    label(svg, { x: 268, y: 304, text: "inn", anchor: "end", size: 11, node: true });
+
+    // Tail: both sources into M5, whose gate rides the nbias bus.
+    wire(svg, 256, 338, 256, 380);
+    wire(svg, 336, 338, 336, 380);
+    wire(svg, 256, 380, 336, 380);
+    nodeDot(svg, { x: 296, y: 380 });
+    wire(svg, 296, 380, 296, 426);
+    nmos(svg, { x: 270, y: 464 });
+    wire(svg, 234, 464, 74, 464);
+    label(svg, { x: 308, y: 452, text: "M5", size: 11 });
+    label(svg, { x: 304, y: 376, text: "tail", size: 11, node: true });
+
+    // The two branches. Left carries the mirror side, right the output.
+    // Top: the folding sources M3, M4 off pbias.
+    pmos(svg, { x: 424, y: 96 });
+    pmos(svg, { x: 534, y: 96 });
+    wire(svg, 450, yVdd, 450, 68);
+    wire(svg, 560, yVdd, 560, 68);
+    label(svg, { x: 386, y: 84, text: "M3", anchor: "end", size: 11 });
+    label(svg, { x: 572, y: 84, text: "M4", size: 11 });
+    label(svg, { value: true, x: 572, y: 104, size: 11,
+                 text: "W " + formatEngineering(values.wfold, "m") });
+    // pbias bus to both gates, one run below the gate row.
+    wire(svg, 156, 152, 370, 152);
+    wire(svg, 370, 152, 370, 96);
+    wire(svg, 370, 96, 388, 96);
+    wire(svg, 480, 96, 498, 96);
+    wire(svg, 480, 96, 480, 152);
+    wire(svg, 370, 152, 480, 152);
+
+    // The fold nodes, where the pair's drains meet the sources.
+    wire(svg, 450, 124, 450, 200);
+    wire(svg, 560, 124, 560, 200);
+    nodeDot(svg, { x: 450, y: 164 });
+    nodeDot(svg, { x: 560, y: 176 });
+    label(svg, { x: 410, y: 168, text: "fold1", anchor: "end", size: 11, node: true });
+    label(svg, { x: 568, y: 180, text: "fold2", size: 11, node: true });
+    wire(svg, 256, 262, 256, 164);
+    wire(svg, 256, 164, 450, 164);
+    wire(svg, 336, 262, 336, 176);
+    wire(svg, 336, 176, 560, 176);
+
+    // The PMOS cascodes M6, M7, gates on the external pcasc reference.
+    pmos(svg, { x: 424, y: 228 });
+    pmos(svg, { x: 534, y: 228 });
+    label(svg, { x: 386, y: 216, text: "M6", anchor: "end", size: 11 });
+    label(svg, { x: 572, y: 216, text: "M7", size: 11 });
+    label(svg, { value: true, x: 572, y: 236, size: 11,
+                 text: "W " + formatEngineering(values.wcasc, "m") });
+    wire(svg, 388, 228, 370, 228);
+    wire(svg, 498, 228, 480, 228);
+    wire(svg, 480, 228, 480, 268);
+    wire(svg, 370, 228, 370, 268);
+    wire(svg, 370, 268, 480, 268);
+    label(svg, { x: 360, y: 272, text: "pcasc, Vpc external", anchor: "end",
+                 size: 11, node: true });
+
+    // casc1: the mirror's programming node, on the left branch.
+    wire(svg, 450, 256, 450, 330);
+    nodeDot(svg, { x: 450, y: 296 });
+    label(svg, { x: 410, y: 300, text: "casc1", anchor: "end", size: 11, node: true });
+
+    // out, on the right branch, with the load.
+    wire(svg, 560, 256, 560, 330);
+    nodeDot(svg, { x: 560, y: 296 });
+    label(svg, { x: 568, y: 292, text: "out", size: 11, node: true });
+    wire(svg, 560, 296, 616, 296);
+    capacitor(svg, { x: 616, y1: 296, y2: yGnd, plate: 26 });
+    wire(svg, 616, yGnd, 560, yGnd);
+    label(svg, { x: 628, y: 400, text: "CL", strong: true });
+    label(svg, { value: true, x: 628, y: 416,
+                 text: formatEngineering(values.cl, "F"), size: 11 });
+
+    // The NMOS cascodes M9, M10 on the external ncasc reference.
+    nmos(svg, { x: 424, y: 358 });
+    nmos(svg, { x: 534, y: 358 });
+    label(svg, { x: 386, y: 346, text: "M9", anchor: "end", size: 11 });
+    label(svg, { x: 572, y: 346, text: "M10", size: 11 });
+    wire(svg, 388, 358, 370, 358);
+    wire(svg, 498, 358, 480, 358);
+    wire(svg, 370, 358, 370, 398);
+    wire(svg, 480, 358, 480, 398);
+    wire(svg, 370, 398, 480, 398);
+    label(svg, { x: 360, y: 402, text: "ncasc, Vnc external", anchor: "end",
+                 size: 11, node: true });
+
+    // And the mirror M11, M12 under them, programmed from casc1.
+    wire(svg, 450, 386, 450, 426);
+    wire(svg, 560, 386, 560, 426);
+    nmos(svg, { x: 424, y: 464 });
+    nmos(svg, { x: 534, y: 464 });
+    label(svg, { x: 386, y: 452, text: "M11", anchor: "end", size: 11 });
+    label(svg, { x: 572, y: 452, text: "M12", size: 11 });
+    wire(svg, 388, 464, 350, 464);
+    wire(svg, 498, 464, 350, 464);
+    wire(svg, 350, 464, 350, 296);
+    wire(svg, 350, 296, 450, 296);
+
+    if (values.phase_margin !== undefined && values.phase_margin !== null) {
+      annotate(svg, 560, 296,
+        "PM " + values.phase_margin.toFixed(1) + "\u00b0");
+    }
+  }
+
   window.drawOpampTwoStage = drawOpampTwoStage;
   window.drawOta5t = drawOta5t;
+  window.drawFoldedCascode = drawFoldedCascode;
   window.formatEngineering = formatEngineering;
   window.FaradaemSymbols = symbols;
 })(window, document);

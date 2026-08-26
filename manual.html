@@ -600,7 +600,7 @@
             looked at.
           </p>
           <p>
-            <strong>Those thirty-five rules are the fast loop, not the
+            <strong>Those thirty-six rules are the fast loop, not the
             answer.</strong> The answer is the SKY130 runset, sixteen hundred
             lines of it, which ships inside the PDK and which KLayout runs
             over the same GDS. Faradaem hands the file over and reads back
@@ -617,18 +617,38 @@
             trust. But the reason anyone knows is that something else looked.
           </p>
           <p>
-            The comparison against the netlist is still not a full layout
-            versus schematic: a real one matches the two circuits by graph
-            isomorphism and checks every device size, where this one pairs
-            devices by their position in the row and compares connectivity.
-            And it compares transistors, because transistors are what the
-            layout draws. Everything else the circuit holds is listed in the
-            panel under <strong>not in the drawing</strong>, which for the
-            two-stage op-amp is the bias current, the load, and the nulling
-            resistor and compensation capacitor that make it stable. A layout
-            without those is not the whole amplifier, and the panel says so
-            rather than letting a match across the transistors stand in for
-            one.
+            Layout versus schematic runs twice, and the second run is the
+            real one. Faradaem's own comparison pairs devices by their
+            position in the row and checks connectivity; it is fast and it
+            is honest about being no more than that. KLayout's engine is
+            then told what the layers mean and nothing else: it recognises
+            the devices from the geometry, measures widths, lengths,
+            resistances and capacitances off the drawn shapes, and matches
+            the result against the circuit by topology, the way sign-off
+            LVS matches. The drawn resistor comes back at 2000.3 ohms and
+            the capacitor at two picofarads with nothing telling the engine
+            what to expect.
+          </p>
+          <p>
+            The compensation network is drawn, not idealised: the nulling
+            resistor as poly sized off the PDK's sheet resistance, the
+            Miller capacitor as a metal2 over metal1 plate sized off the
+            PDK's overlap constant. Two picofarads of plate is fifteen
+            thousand square microns, larger than every transistor put
+            together, which is the honest cost of a capacitor on the two
+            metals this stack has. Drawing it cost 3.4 degrees of phase
+            margin, measured. What stays outside the cell is the bias, the
+            load, and for the folded cascode the two ideal gate references,
+            and the panel names them and says which of those is a port and
+            which is a cheat.
+          </p>
+          <p>
+            The wires are priced in ohms as well as farads: KLayout's
+            square-counting extractor measures each net's worst pin-to-pin
+            path over the drawn rectangles, and the sheet and via values
+            come out of the PDK. On the op-amp the longest wire is the
+            compensation node at 250 ohms, because its track runs 373
+            microns to reach the far tab of the capacitor.
           </p>
           <p>
             The devices are also grouped by type, NMOS then PMOS, which is not

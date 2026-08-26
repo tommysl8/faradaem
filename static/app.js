@@ -25,7 +25,8 @@
     twopole_amp: "drawTwopoleAmp",
     nfet_cs_amp: "drawNfetCsAmp",
     opamp_two_stage: "drawOpampTwoStage",
-    ota_5t: "drawOta5t"
+    ota_5t: "drawOta5t",
+    folded_cascode: "drawFoldedCascode"
   };
 
   /* Which measured value the schematic tags its output node with, and the
@@ -39,7 +40,8 @@
     twopole_amp: "phase_margin",
     nfet_cs_amp: "midband_db",
     opamp_two_stage: "phase_margin",
-    ota_5t: "phase_margin"
+    ota_5t: "phase_margin",
+    folded_cascode: "phase_margin"
   };
 
   var TAG_ARG = {
@@ -51,7 +53,8 @@
     twopole_amp: "phase_margin",
     nfet_cs_amp: "gain_db",
     opamp_two_stage: "phase_margin",
-    ota_5t: "phase_margin"
+    ota_5t: "phase_margin",
+    folded_cascode: "phase_margin"
   };
 
   /* Arrow keys step the leading digit: 1000 -> 2000, 1.5e-7 -> 2.5e-7.

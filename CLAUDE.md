@@ -20,7 +20,10 @@
 - spice/drc.py is the fast loop and must say so. spice/signoff.py is the answer. If they ever disagree, the deck is right and the fast loop has a rule missing.
 - Never reimplement a check that a real tool performs. The point of installing them is to delete code, not to add a second opinion.
 - Resolve the KLayout binary from the KLAYOUT_EXE env var first, then the known install paths. Tests that need it skip cleanly when it is absent, same pattern as ngspice and the PDK.
-- Netgen has no Windows build and WSL is not installed. KLayout's LVS deck is the route to a real layout-versus-schematic here, not Netgen.
+- Netgen has no Windows build and WSL is not installed. Real layout-versus-schematic runs through KLayout's in-process engine (spice/klvs.py): LayoutToNetlist + NetlistComparer, with Faradaem declaring only what the layers mean. The declaration is the trust boundary and the module says so.
+- The generic poly resistor marker is 66/13 (POLYRES), read from the tech file like every other layer. The marker region is what LVS measures L/W over, so size the marker, not the strip.
+- Drawn geometry must land on the manufacturing grid (gridlimit, 5 nm). Any dimension computed from ohms or farads gets snapped, and the drawn value is recomputed from the snapped geometry and reported.
+- Wide metal (>3 um) is owed 0.28 um of spacing (met1.3b/met2.3b). A drawn plate capacitor is wide metal.
 
 ## SKY130 PDK (installed for 0.2.0)
 - PDK installed at C:\pdk via ciel, pinned version 7b70722e33c03fcb5dabcf4d479fb0822d9251c9

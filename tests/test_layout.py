@@ -312,15 +312,18 @@ def test_the_device_list_matches_the_schematic():
 
 def test_every_net_names_devices_and_pins_that_exist():
     """The connectivity is read off the netlist now, so this checks the
-    reading rather than a list someone kept in step by hand."""
+    reading rather than a list someone kept in step by hand. A pin is a
+    transistor terminal or one end of a drawn passive, and nothing else."""
     for circuit_id, lister in (("opamp_two_stage", circuits.opamp_devices),
                                ("ota_5t", circuits.ota_devices)):
         params = circuits.defaults(circuit_id)
         placed = {entry[0] for entry in lister(params)}
+        placed |= {item["name"]
+                   for item in circuits.drawable_passives(circuit_id, params)}
         for net, pins in circuits.circuit_nets(circuit_id, params).items():
             for name, terminal in pins:
                 assert name in placed, (circuit_id, net, name)
-                assert terminal in circuits.TERMINAL_ORDER
+                assert terminal in circuits.TERMINAL_ORDER + ("p1", "p2")
 
 
 def test_the_netlist_is_the_only_statement_of_the_connectivity():
@@ -590,3 +593,82 @@ def test_the_track_clears_everything_already_drawn():
     plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
     floor = layout.routing_floor(plan, tech)
     assert floor > plan["height_um"] + layout.gate_stack_height(tech)
+
+
+# ---------------------------------------------------------------------------
+# the passives: the compensation network, drawn
+# ---------------------------------------------------------------------------
+
+
+requires_tech_for_passives = pytest.mark.skipif(
+    not layout.tech_available(),
+    reason="the SKY130 technology file is needed for the sheet and plate "
+           "constants",
+)
+
+
+@requires_tech_for_passives
+def test_the_resistor_is_sized_off_the_sheet_the_pdk_states():
+    """Ohms in, microns out, and the value recomputed from the drawn
+    marker so nothing is taken on trust."""
+    tech = layout.tech_constants()
+    cell = layout.resistor_footprint(2000.0, tech)
+    assert cell["drawn_ohms"] == pytest.approx(2000.0, rel=0.005)
+    # The marker length is the squares, and it sits on the grid.
+    grid = tech["grid"]
+    assert cell["marker"] == pytest.approx(
+        round(cell["marker"] / grid) * grid)
+
+
+@requires_tech_for_passives
+def test_the_capacitor_is_sized_off_the_plate_the_pdk_states():
+    tech = layout.tech_constants()
+    cell = layout.capacitor_footprint(2e-12, tech, 40.0)
+    assert cell["drawn_farads"] == pytest.approx(2e-12, rel=0.005)
+    # Two picofarads of parallel plate is thousands of square microns.
+    # That is why real processes put MiM capacitors on upper metals, and
+    # the honest cost of building one from the two layers this stack has.
+    assert cell["area_um2"] > 10000.0
+
+
+@requires_tech_for_passives
+def test_the_passives_are_placed_past_the_tap_and_the_well():
+    """The first draft placed them off the device span alone, and the
+    layout-versus-schematic caught the resistor's wire parked on top of
+    the tap's wire as a supply short. The clearance is the regression."""
+    tech = layout.tech_constants()
+    params = circuits.defaults("opamp_two_stage")
+    plan = layout.floorplan(
+        circuits.opamp_devices(params), tech,
+        passives=circuits.drawable_passives("opamp_two_stage", params))
+
+    edge = 0.0
+    for tap in plan["taps"]:
+        edge = max(edge, tap["x2"])
+    for well in plan["wells"]:
+        edge = max(edge, well["x2"])
+    for item in plan["passives"]:
+        assert item["x"] > edge
+
+
+@requires_tech_for_passives
+def test_a_circuit_without_internal_passives_draws_none():
+    params = circuits.defaults("ota_5t")
+    plan = layout.floorplan(
+        circuits.ota_devices(params), tech=layout.tech_constants(),
+        passives=circuits.drawable_passives("ota_5t", params))
+    assert plan["passives"] == []
+
+
+def test_the_boundary_rule_separates_cell_from_bench():
+    """A passive across two internal nets is the circuit; one touching a
+    rail or ground is a bias or a load. The op-amp's compensation network
+    is exactly the former, and the loads are exactly the latter."""
+    params = circuits.defaults("opamp_two_stage")
+    drawn = {item["name"]
+             for item in circuits.drawable_passives("opamp_two_stage", params)}
+    outside = {item["name"]
+               for item in circuits.external_elements("opamp_two_stage",
+                                                      params)}
+    assert drawn == {"Rz", "Cc"}
+    assert outside == {"Ib", "CL"}

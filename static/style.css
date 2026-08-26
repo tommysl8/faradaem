@@ -1,4 +1,4 @@
-/* Faradaem 1.9.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.10.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -109,7 +109,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.9.0";
+  --app-version: "v1.10.0";
 }
 
 *,
@@ -1980,4 +1980,11 @@ input {
   fill: var(--accent);
   font-family: var(--mono);
   font-size: 9px;
+}
+
+/* The passives, drawn beside the devices they stabilise. */
+.figure svg .fp-passive {
+  fill: rgba(52, 211, 153, 0.14);
+  stroke: var(--ok);
+  stroke-width: 0.8;
 }

@@ -147,6 +147,7 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `spice/gds.py` | A GDSII writer in the standard library, so the geometry can be opened in a layout tool. |
 | `spice/drc.py` | Thirty-five design rules read from the PDK, checked while the geometry is drawn. The fast loop, not the answer. |
 | `spice/signoff.py` | The answer: the SKY130 runset the PDK ships, run by KLayout over the same GDS. Reimplements nothing. |
+| `spice/klvs.py` | Layout versus schematic by KLayout's engine: devices recognised from geometry, values measured from it, matched by topology. Plus the wires priced in ohms. |
 | `spice/lvs.py` | Layout versus schematic: what the drawing connects, worked out from the geometry, compared against the netlist that was simulated. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `tools/make_brand.py` | The mark: the AE ligature lifted out of a font file and baked into the favicon, the touch icon and the Open Graph card, all from one geometry. |

@@ -22,7 +22,7 @@ import math
 import os
 import tempfile
 
-from . import drc, gds, layout, lvs, runner
+from . import drc, gds, klvs, layout, lvs, runner
 from .runner import _fmt  # the shared netlist number formatter
 
 from .errors import (
@@ -261,7 +261,8 @@ def layout_shapes(circuit_id, params):
         raise NoFloorplanError(str(exc)) from None
 
     layers = layout.gds_layers()
-    plan = layout.floorplan(block["devices"](values), tech)
+    plan = layout.floorplan(block["devices"](values), tech,
+                            passives=drawable_passives(circuit_id, values))
     routed = layout.route(plan, circuit_nets(circuit_id, values), tech)
     return (layout.floorplan_shapes(plan, layers, tech)
             + layout.routing_shapes(routed, layers))
@@ -288,7 +289,8 @@ def run_layout(circuit_id, params):
     except layout.LayoutDataError as exc:
         raise NoFloorplanError(str(exc)) from None
 
-    plan = layout.floorplan(block["devices"](values), tech)
+    plan = layout.floorplan(block["devices"](values), tech,
+                            passives=drawable_passives(circuit_id, values))
 
     # Route the nets, then take the capacitance off the metal that was
     # actually drawn. The bounding-box estimate this replaces was
@@ -296,6 +298,14 @@ def run_layout(circuit_id, params):
     # and not the stubs down onto devices tens of microns tall.
     routed = layout.route(plan, circuit_nets(circuit_id, values), tech)
     parasitics = layout.routed_parasitics(routed, tech)
+
+    # And what the drawn passives add that the ideal elements did not
+    # have: the capacitor's bottom plate over the substrate, mostly.
+    for net, extra in layout.passive_parasitics(plan, tech).items():
+        entry = parasitics.setdefault(
+            net, {"length_um": 0.0, "capacitance_f": 0.0,
+                  "devices": [], "segments": 0})
+        entry["capacitance_f"] += extra
 
     clean = simulate(circuit_id, values)
     loaded = simulate(circuit_id, values,
@@ -334,13 +344,25 @@ def run_layout(circuit_id, params):
         compared = lvs.compare(
             shapes, layers, circuit_devices(circuit_id, values),
             [item["name"] for item in plan["devices"]],
-            undrawn=circuit_elements(circuit_id, values)
+            undrawn=external_elements(circuit_id, values)
         )
         stream = gds.library(circuit_id.upper(), circuit_id.upper(),
                              shapes)
         encoded = base64.b64encode(stream).decode("ascii")
     except layout.LayoutDataError:
         encoded = None
+
+    # KLayout's own extraction and comparison, when the engine is there.
+    # A missing engine is reported as not run, never as a pass.
+    engine = None
+    resistance = None
+    if klvs.available() and encoded is not None:
+        try:
+            engine = klvs.compare(circuit_id, values, shapes=shapes,
+                                  layers=layers, tech=tech)
+            resistance = klvs.routing_resistance(routed, tech)
+        except klvs.KlvsError as caught:
+            engine = {"match": None, "ran": False, "why": str(caught)}
 
     return {
         "floorplan": plan,
@@ -349,6 +371,8 @@ def run_layout(circuit_id, params):
         "gds_bytes": len(stream) if encoded else 0,
         "drc": checked,
         "lvs": compared,
+        "klvs": engine,
+        "resistance": resistance,
         "parasitics": parasitics,
         "total_parasitic_f": sum(item["capacitance_f"]
                                  for item in parasitics.values()),

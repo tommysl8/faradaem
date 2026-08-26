@@ -156,7 +156,14 @@ def test_the_manual_explains_both_verifications_as_different_questions():
     reader who thinks they are the same will over-trust a clean result."""
     assert "layout versus schematic" in MANUAL_LOWER
     assert "design rules" in MANUAL_LOWER
-    for said in ("thirty-two rules", "netgen", "graph isomorphism"):
+    # The claims have to track the code: the fast checker's rule count,
+    # and how the real comparison matches. Never assert a stale number.
+    from spice import drc
+    counts = {35: "thirty-five", 36: "thirty-six",
+              37: "thirty-seven", 38: "thirty-eight", 39: "thirty-nine"}
+    checked = len(drc.CHECKED_RULES)
+    assert counts.get(checked, str(checked)) + " rules" in MANUAL_LOWER, checked
+    for said in ("by topology", "the fast loop"):
         assert said in MANUAL_LOWER, said
 
 
@@ -180,6 +187,8 @@ def test_the_panel_reports_the_layout_comparison_and_not_only_the_rules():
     assert "Layout versus schematic" in app
     # And it says what it did not check, in the panel itself.
     assert "Still not checked" in app
-    # And the parts of the circuit that are not in the drawing at all.
-    assert "Not in the drawing" in app
+    # And what stays outside the cell: ports are fine, ideal sources
+    # standing in for on-chip references are named as the cheat they are.
+    assert "External to this cell" in app
     assert "result.lvs.undrawn" in app
+    assert "voltage source" in app

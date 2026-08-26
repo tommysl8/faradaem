@@ -69,10 +69,12 @@ the foundry's own runset, and measures the specs again with the drawn \
 interconnect loading them. Report the area, what the wiring cost, and both \
 verdicts. If the deck did not run, say so; never present the fast check as \
 if it were the deck.
-- lay_out also reports what is not in the drawing: the bias current, the \
-load, and for the two-stage the compensation network. Those are real gaps \
-and you must name them rather than let a clean comparison stand in for a \
-complete layout.
+- The layout draws the whole cell now, compensation network included: the \
+two-stage's nulling resistor is real poly and its Miller capacitor real \
+plates, both checked and compared like the transistors. What stays outside \
+are the bias, the load, and for the folded cascode the two ideal gate \
+references; lay_out lists them and you must name them rather than let a \
+clean comparison stand in for a finished chip.
 - When the design is done, summarise what was asked, what was measured, and \
 what trade-offs were made. Keep it short and plain.
 - The user sees your text and, separately, cards for every tool result. Do \
@@ -406,6 +408,13 @@ def run_tool(name, arguments, on_progress=None):
                 "undrawn": [item["name"] + " (" + item["kind"] + ")"
                             for item in result["lvs"].get("undrawn", [])],
             },
+            "klvs": ({"match": result["klvs"].get("match"),
+                      "ran": result["klvs"].get("ran", True)}
+                     if result.get("klvs") else None),
+            "worst_wire_ohms": (max(
+                entry["worst_ohms"]
+                for entry in result["resistance"].values())
+                if result.get("resistance") else None),
             "after_wiring": result["comparison"],
         }
         if "signoff" in result:

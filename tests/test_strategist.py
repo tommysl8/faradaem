@@ -409,8 +409,9 @@ def test_the_prompt_tells_it_to_lay_the_design_out():
     assert "half an answer" in prompt
     # And never to pass the fast check off as the deck.
     assert "never present the fast check as" in prompt
-    # And to name what is not in the drawing.
-    assert "not in the drawing" in prompt
+    # And to name what stays outside the cell.
+    assert "What stays outside" in prompt
+    assert "compensation network included" in prompt
 
 
 def test_laying_out_a_circuit_that_has_no_layout_is_refused():

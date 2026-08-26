@@ -54,6 +54,22 @@
 
                 <article class="entry">
           <header class="entry-head">
+            <span class="entry-version">1.10.0</span>
+            <span class="entry-date">2026-08-26</span>
+          </header>
+          <ul>
+            <li>The amplifier is laid out, not just its transistors. The two-stage's nulling resistor is drawn as a strip of poly sized off the sheet resistance the PDK states, marked with the same 66/13 layer the foundry's own LVS deck measures a generic poly resistor over, so the drawn value is the extracted value by construction: 2000.3 ohms after snapping to the manufacturing grid. The Miller capacitor is drawn as a metal2 over metal1 parallel plate sized off the overlap constant the PDK states: two picofarads is 14,941 square microns, far larger than every transistor together, which is not a mistake but the honest cost of building a capacitor from the two metals this stack has, and the reason real processes put MiM capacitors higher up.</li>
+            <li>Drawing them was paid for in measurements. The capacitor's bottom plate hangs 385 femtofarads on the output net, the parasitics went from 82 to 519 femtofarads, and the phase margin gave up 3.4 degrees, all measured by ngspice with the drawn geometry loading the nets rather than asserted.</li>
+            <li>The first placement parked the resistor's wire on top of the tap's supply wire, and the layout-versus-schematic caught it as a short between d2 and vdd before any person did: overlapping metal of one width looks like one wire to every spacing rule, which is exactly the class of error only a comparison against the netlist can see. The foundry's deck then caught the passives off the manufacturing grid, 81 violations, and a via pad five nanometres closer to the huge plate than wide metal allows. All fixed by reading three more facts from the PDK: the grid, and the wide-metal spacings.</li>
+            <li>Layout versus schematic is now also run by KLayout's own engine, in process. LayoutToNetlist is told what the layers mean and nothing else: it recognises the devices from the geometry, measures widths, lengths, resistances and capacitances off the drawn shapes, and NetlistComparer matches the result against the circuit by topology, the way sign-off LVS matches, not by the order devices were placed. All three amplifiers pass, the drawn resistor coming back at 2000.3 ohms and the capacitor at two picofarads with nothing telling the engine what to expect. Fed the wrong netlist, a missing via, or a lied-about width, it refuses, and there are tests that make it prove that.</li>
+            <li>The wires are priced in ohms. KLayout's square-counting extractor measures the squares of each net's worst pin-to-pin path over the drawn rectangles, the sheet values and the per-cut via resistances come out of the PDK, and the panel reports the longest wire. On the op-amp that is the compensation node at 250 ohms, because its track runs 373 microns to reach the far tab of the capacitor: a design insight that fell out of a measurement.</li>
+            <li>The folded cascode has a schematic at last: fourteen transistors in the house style, two cascoded branches, the pair folding into them, the bias column, and the two external gate references labelled as exactly that.</li>
+            <li>What is external is now called external and judged. A bias current and a load connect from outside as they would on a real chip, and the panel says so in green; the folded cascode's two ideal gate references are a stand-in for references a finished design would generate on chip, and the panel says that in red.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
             <span class="entry-version">1.9.0</span>
             <span class="entry-date">2026-08-25</span>
           </header>

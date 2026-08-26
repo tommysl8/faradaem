@@ -9,7 +9,7 @@ checked so the coverage is never mistaken for the whole.
 The point is the difference between geometry nobody has looked at and
 geometry checked against the numbers it was supposed to satisfy. A drawing
 that has not been checked is a drawing; one that has been checked against
-thirty-five rules is a drawing that satisfies thirty-five rules, and
+thirty-six rules is a drawing that satisfies thirty-six rules, and
 says so.
 
 Each rule carries the tag the foundry writes in its own error message
@@ -69,6 +69,7 @@ CHECKED_RULES = (
      "metal1 overlap of the via between the metals, along one axis"),
     ("via1_directional", "met2.5",
      "metal2 overlap of the via between the metals, along one axis"),
+    ("poly_spacing", "poly.2", "minimum poly spacing"),
 )
 
 #: A dimension is allowed to be this far under a rule before it counts as a
@@ -450,6 +451,21 @@ def check_vias(shapes, layers, tech):
     return found
 
 
+def check_poly_spacing(shapes, layers, tech):
+    """Poly beside poly, which begins to matter once a resistor is drawn.
+
+    A gate and its own landing pad touch, and touching poly is one piece
+    of poly; a resistor parked too close to a gate is not.
+    """
+    if "poly_spacing" not in tech:
+        return []
+    return _layer_spacing(
+        shapes, layers, "POLY", tech["poly_spacing"],
+        "poly_spacing", "poly.2",
+        "two pieces of poly are closer than the rule allows"
+    )
+
+
 def check_metal2_spacing(shapes, layers, tech):
     """Two tracks that are not the same track have to stay apart."""
     if "MET2" not in layers or "metal2_spacing" not in tech:
@@ -668,6 +684,7 @@ def check(shapes, layers=None, tech=None, pmos=None):
     violations += check_local_interconnect(shapes, layers, tech)
     violations += check_vias(shapes, layers, tech)
     violations += check_metal2_spacing(shapes, layers, tech)
+    violations += check_poly_spacing(shapes, layers, tech)
     violations += check_taps(shapes, layers, tech)
     violations += check_diffusion_to_well(shapes, layers, tech)
 
@@ -683,10 +700,10 @@ def check(shapes, layers=None, tech=None, pmos=None):
         # Said in the result itself, so no caller can present this as more
         # than it is.
         "coverage": (
-            "Thirty-five rules, checked against the values in the PDK's "
+            "Thirty-six rules, checked against the values in the PDK's "
             "technology file. This is the fast loop, not the answer: the "
             "sign-off deck is the SKY130 runset KLayout runs, and geometry "
-            "that passes here has passed these thirty-five and nothing "
+            "that passes here has passed these thirty-six and nothing "
             "else. Run the real deck before believing it."
         ),
     }

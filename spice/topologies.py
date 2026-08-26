@@ -412,16 +412,25 @@ def parse_elements(lines):
         letter = parts[0][0].upper()
         if letter not in ELEMENT_KINDS:
             continue
-        found.append({
+        entry = {
             "name": parts[0],
             "kind": ELEMENT_KINDS[letter],
             "nodes": parts[1:3],
-        })
+        }
+        # A resistor or capacitor line carries its value where a source
+        # carries DC and a figure; the value is what a drawn passive is
+        # sized from, so it comes along.
+        if letter in ("R", "C") and len(parts) > 3:
+            try:
+                entry["value"] = float(parts[3])
+            except ValueError:
+                pass
+        found.append(entry)
     return found
 
 
 def circuit_elements(circuit_id, params):
-    """The parts of a circuit that no layout here draws."""
+    """Everything in a circuit that is not a transistor."""
     core = CORES.get(circuit_id)
     if core is None:
         raise NoFloorplanError(
@@ -431,6 +440,44 @@ def circuit_elements(circuit_id, params):
     return parse_elements(core(dict(params)))
 
 
+#: The nets a passive can touch and still be internal to the cell. An
+#: element with a terminal on a rail or on ground is a bias or a load,
+#: which belongs to the bench or the system around the cell, not inside it.
+_CELL_BOUNDARY = ("0", "vdd")
+
+
+def drawable_passives(circuit_id, params):
+    """The passives that belong inside the cell, with their values.
+
+    A resistor or capacitor strung between two internal nets is part of
+    the circuit -- the two-stage op-amp's compensation network is exactly
+    this -- and the layout draws it. Anything touching a rail or ground is
+    a bias or a load and stays outside, listed rather than drawn.
+    """
+    return [
+        item for item in circuit_elements(circuit_id, params)
+        if item["kind"] in ("resistor", "capacitor")
+        and "value" in item
+        and not any(node in _CELL_BOUNDARY for node in item["nodes"])
+    ]
+
+
+def external_elements(circuit_id, params):
+    """What the cell leaves outside: sources, biases, and loads."""
+    drawn = {item["name"] for item in drawable_passives(circuit_id, params)}
+    return [item for item in circuit_elements(circuit_id, params)
+            if item["name"] not in drawn]
+
+
 def circuit_nets(circuit_id, params):
-    """Which terminals each net of a circuit reaches."""
-    return nets_from_devices(circuit_devices(circuit_id, params))
+    """Which terminals each net of a circuit reaches.
+
+    Transistor pins come from the device lines; the drawable passives add
+    theirs, p1 for the first netlist node and p2 for the second, so a
+    router connects what the netlist says rather than a convention.
+    """
+    nets = nets_from_devices(circuit_devices(circuit_id, params))
+    for item in drawable_passives(circuit_id, params):
+        for terminal, node in zip(("p1", "p2"), item["nodes"]):
+            nets.setdefault(node, []).append((item["name"], terminal))
+    return {net: sorted(pins) for net, pins in nets.items()}

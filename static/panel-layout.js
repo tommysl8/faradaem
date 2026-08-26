@@ -59,6 +59,19 @@
         + plan.height_um.toFixed(2) + " \u00b5m");
       pair("device active area", plan.active_area_um2.toFixed(1) + " \u00b5m\u00b2");
       pair("interconnect", window.formatEngineering(result.total_parasitic_f, "F"));
+      if (result.resistance) {
+        var worst = null;
+        Object.keys(result.resistance).forEach(function (net) {
+          var entry = result.resistance[net];
+          if (!worst || entry.worst_ohms > worst.ohms) {
+            worst = { net: net, ohms: entry.worst_ohms };
+          }
+        });
+        if (worst) {
+          pair("longest wire", worst.ohms.toFixed(0) + " Ω on "
+            + worst.net + ", measured by KLayout");
+        }
+      }
       if (result.gds_bytes) {
         pair("geometry", result.gds_bytes + " bytes of GDS");
       }
@@ -121,6 +134,25 @@
         return;
       }
 
+      if (result.klvs) {
+        if (result.klvs.ran === false) {
+          verdict(list, false,
+            "Layout versus schematic, KLayout's engine",
+            "The engine is not installed, so this did not run. The check "
+            + "below is Faradaem's own and is not a substitute.",
+            [result.klvs.why || ""]);
+        } else {
+          verdict(list, result.klvs.match,
+            "Layout versus schematic, KLayout's engine",
+            result.klvs.match
+              ? "Devices recognised from the geometry, sizes and values "
+                + "measured from it, matched against the circuit by "
+                + "topology."
+              : "The extracted netlist does not match the circuit.",
+            result.klvs.log || []);
+        }
+      }
+
       if (result.drc) {
         verdict(list, result.drc.clean,
           "Design rules, fast check",
@@ -149,18 +181,25 @@
             return item.what;
           }));
 
-        // A match across the transistors is a narrower claim than it
-        // sounds when the compensation network is not in the drawing.
+        // What stays outside the cell. A bias current and a load are
+        // ports; an ideal voltage source standing in for an on-chip
+        // reference is a cheat, and the verdict colours on which it is.
         var missing = result.lvs.undrawn || [];
         if (missing.length) {
           var names = missing.map(function (item) {
             return item.name + " (" + item.kind + ")";
           });
-          verdict(list, false,
-            "Not in the drawing",
-            missing.length + " parts of this circuit are in the netlist and "
-            + "not in the layout, so the comparison above is across the "
-            + "transistors only.",
+          var honest = missing.every(function (item) {
+            return item.kind !== "voltage source"
+              && item.kind !== "controlled source";
+          });
+          verdict(list, honest,
+            "External to this cell",
+            honest
+              ? "The bias and the load connect from outside, as they would "
+                + "on a real chip."
+              : "Ideal sources stand in for references a finished design "
+                + "would generate on chip.",
             names);
         }
       }

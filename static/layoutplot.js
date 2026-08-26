@@ -119,6 +119,10 @@
     }
     (plan.wells || []).forEach(cover);
     (plan.taps || []).forEach(cover);
+    (plan.passives || []).forEach(function (item) {
+      cover({ x1: item.x, y1: item.y,
+              x2: item.x + item.width, y2: item.y + item.height });
+    });
     Object.keys(routing).forEach(function (net) {
       cover(routing[net].span);
       (routing[net].stubs || []).forEach(cover);
@@ -205,6 +209,22 @@
       box("fp-tap", tap,
         (tap.kind === "ntap" ? "n-well tap" : "substrate tap")
         + " for " + (tap.serves || []).join(", "));
+    });
+
+    // The passives: the compensation network, drawn to the same scale
+    // as the devices it stabilises. The capacitor dwarfs them, which is
+    // the honest picture: that is what two picofarads of parallel plate
+    // costs on the two metals this stack has.
+    (plan.passives || []).forEach(function (item) {
+      box("fp-passive", { x1: item.x, y1: item.y,
+                          x2: item.x + item.width,
+                          y2: item.y + item.height },
+        item.name + " (" + item.kind + ")");
+      text(svg, {
+        x: pageX(item.y + item.height / 2),
+        y: pageY(item.x + item.width / 2) + 3.5,
+        text: item.name, anchor: "middle", className: "fp-label"
+      });
     });
 
     // The routing, on the two metal layers it is actually drawn on.

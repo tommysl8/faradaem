@@ -36,6 +36,7 @@ the circuit, which is the first honest answer to "does this still meet
 spec once it is built".
 """
 
+import math
 import os
 import re
 
@@ -99,6 +100,15 @@ RULE_TAGS = {
     "via1_spacing": r"layer\s+VIA1\s+via1\s*\n\s*squares-grid\s+\d+\s+\d+\s+(\d+)",
     # Taps, and the room a well needs around everything near it.
     "ndiff_to_nwell": r"spacing\s+\*ndiff,\*ndiode,nfet\s+allnwell\s+(\d+)\s+touching_illegal",
+    # Poly beside poly, which starts to matter once a resistor is drawn.
+    "poly_spacing": r"spacing\s+allpoly,polyfill\s+allpoly,polyfill\s+(\d+)\s+touching_ok",
+    # Metal wider than three microns owes its neighbours more room, and a
+    # drawn plate capacitor is nothing but metal wider than three microns.
+    "metal1_wide_spacing": r"widespacing\s+allm1\s+\d+\s+allm1\S*\s+(\d+)\s+touching_ok",
+    "metal2_wide_spacing": r"widespacing\s+allm2\s+\d+\s+allm2\S*\s+(\d+)\s+touching_ok",
+    # Every drawn edge has to land on the manufacturing grid. A resistor
+    # sized purely from ohms does not, so its length is snapped to this.
+    "grid": r"gridlimit\s+(\d+)",
     "ptap_to_nwell": r"spacing\s+\*psd\s+allnwell\s+(\d+)\s+touching_illegal",
     "nwell_tap_surround": r"surround\s+\*nsd\s+allnwell\s+(\d+)\s+absence_illegal",
     # A via needs more metal over it along one axis than it needs all
@@ -116,6 +126,23 @@ CAP_PATTERNS = {
     "li_area": r"defaultareacap\s+allli\s+locali\s+([\d.]+)",
     "li_edge": r"defaultsidewall\s+allli\s+locali\s+([\d.]+)",
     "poly_area": r"defaultareacap\s+\*poly\s+active\s+([\d.]+)",
+    # A metal2 plate over a metal1 plate, which is what the drawn Miller
+    # capacitor is made of.
+    "plate_cap": r"defaultoverlap\s+allm2\s+metal2\s+allm1\s+metal1\s+([\d.]+)",
+}
+
+#: Sheet resistances, in milliohms per square in the technology file.
+#: Poly sizes the drawn resistor; the metals and the local interconnect
+#: are what the resistance extractor prices the routing in.
+SHEET_RES_PATTERNS = {
+    "poly_sheet_res": r"resist\s+\(allpolynonres\)/active\s+(\d+)",
+    "li_sheet_res": r"resist\s+\(allli\)/locali\s+(\d+)",
+    "metal1_sheet_res": r"resist\s+\(allm1\)/metal1\s+(\d+)",
+    "metal2_sheet_res": r"resist\s+\(allm2\)/metal2\s+(\d+)",
+    # And what one cut costs: the via from li to metal1, and the one
+    # between the metals. Milliohms in the file, ohms per cut out.
+    "mcon_res": r"contact\s+mcon\s+(\d+)",
+    "via1_res": r"contact\s+m2c\s+(\d+)",
 }
 
 _ATTO = 1e-18
@@ -125,7 +152,7 @@ _ATTO = 1e-18
 #: a wrong number here produces a file that looks right and means nothing.
 GDS_LAYER_NAMES = ("DIFF", "POLY", "NWELL", "LI", "MET1",
                    "CONT", "MCON", "NSDM", "PSDM", "TAP", "NPC",
-                   "MET2", "VIA1")
+                   "MET2", "VIA1", "POLYRES")
 
 
 class LayoutDataError(RuntimeError):
@@ -180,6 +207,9 @@ def tech_constants():
     caps = {}
     for name, pattern in CAP_PATTERNS.items():
         caps[name] = float(_first(text, pattern, name)) * _ATTO
+
+    for name, pattern in SHEET_RES_PATTERNS.items():
+        caps[name] = float(_first(text, pattern, name)) * 1e-3
 
     rules.update(caps)
 
@@ -443,6 +473,12 @@ def floorplan_shapes(plan, layers, tech):
         shapes.extend(tap_shapes(tap, layers, tech))
         tap["terminal"] = tap_terminal(tap, tech)
 
+    for item in plan.get("passives", []):
+        if item["kind"] == "resistor":
+            shapes.extend(resistor_shapes(item, layers, tech))
+        elif item["kind"] == "capacitor":
+            shapes.extend(capacitor_shapes(item, layers, tech))
+
     return shapes
 
 
@@ -559,7 +595,7 @@ def device_footprint(width_m, length_m, tech):
     }
 
 
-def floorplan(devices, tech):
+def floorplan(devices, tech, passives=None):
     """Place devices in one row at the minimum diffusion spacing.
 
     devices is a list of (name, width_m, length_m). The result carries every
@@ -602,6 +638,7 @@ def floorplan(devices, tech):
 
     span = cursor - tech["diff_spacing"]
     tallest = max(item["height"] for item in placed)
+
 
     # Every well needs a tap, or it floats, and a floating well is how a
     # CMOS circuit latches up. The substrate needs one for the same reason.
@@ -666,6 +703,29 @@ def floorplan(devices, tech):
         wells.append({"x1": left, "y1": bottom, "x2": right, "y2": top,
                       "holds": [item["name"] for item in pmos]})
 
+    # The passives sit after everything the row owns -- and the row owns
+    # more than its devices: the n-tap reaches past the last transistor
+    # and the well past the tap. A passive placed off the device span
+    # alone parks its wire on top of the tap's wire, which the comparison
+    # against the netlist reported as a supply short the first time this
+    # was drawn.
+    drawn_passives = []
+    if passives:
+        edge = span
+        for tap in taps:
+            edge = max(edge, tap["x2"])
+        for well in wells:
+            edge = max(edge, well["x2"])
+        grid = tech.get("grid", 0.005)
+        start = edge + max(tech["poly_spacing"], tech["diff_spacing"])
+        start = math.ceil(start / grid) * grid
+        drawn_passives = passive_footprints(passives, tech, tallest)
+        for item in drawn_passives:
+            item["x"] += start
+            item["terminals"] = passive_terminals(item, tech)
+        span = max(span, max(item["x"] + item["width"]
+                             for item in drawn_passives))
+
     # The implant that says what type each diffusion is. Without it the
     # drawing does not distinguish an n-channel device from a p-channel one,
     # and the two are not the same device. Magic derives the implant by
@@ -711,6 +771,7 @@ def floorplan(devices, tech):
 
     return {
         "devices": placed,
+        "passives": drawn_passives,
         "wells": wells,
         "taps": taps,
         "implants": implants,
@@ -720,6 +781,241 @@ def floorplan(devices, tech):
         "active_area_um2": sum(item["width"] * item["height"] for item in placed),
         "spacing_um": tech["diff_spacing"],
     }
+
+
+# ---------------------------------------------------------------------------
+# the passives: the parts of the amplifier that are not transistors
+# ---------------------------------------------------------------------------
+
+
+def resistor_footprint(r_ohms, tech):
+    """A poly resistor: a strip of the sheet the PDK prices, marked as one.
+
+    The width is the narrowest strip that can carry its own contact with
+    the licon.8 surround, so every dimension traces to a rule. The length
+    is squares times width, where a square is what the sheet resistance is
+    quoted per. The 66/13 marker covers exactly the squares, because that
+    marker region is what the foundry's own LVS deck measures L/W over --
+    so the drawn value below is the extracted value, by construction.
+    """
+    width = tech["contact_width"] + 2.0 * tech["poly_contact_surround"]
+    grid = tech.get("grid", 0.005)
+    marker = round(r_ohms / tech["poly_sheet_res"] * width / grid) * grid
+    squares = marker / width
+    # Past the marker on each side: the licon.8 clearance, the contact,
+    # and the licon.8 surround at the outer end.
+    end = tech["contact_width"] + 2.0 * tech["poly_contact_surround"]
+    return {
+        "along": marker + 2.0 * end,
+        "across": width,
+        "marker": marker,
+        "end": end,
+        "squares": squares,
+        "drawn_ohms": squares * tech["poly_sheet_res"],
+    }
+
+
+def capacitor_footprint(c_farads, tech, height_um):
+    """A parallel-plate capacitor: metal2 over metal1, priced by the PDK.
+
+    The overlap area is the capacitance over the plate constant, drawn at
+    the height of the row so the floorplan stays a row. The tab past the
+    right edge is where the top plate comes down to a wire: a via pad, its
+    clearance from the bottom plate, and the metal2 reach the via is owed.
+
+    At 133.86 aF per square micron a Miller capacitor of picofarads is
+    thousands of square microns -- far larger than every transistor
+    together. That is not a mistake; it is why real processes put MiM
+    capacitors on the upper metals, and the honest cost of building one
+    from the two layers this stack has.
+    """
+    grid = tech.get("grid", 0.005)
+    length = round(c_farads / tech["plate_cap"] / height_um / grid) * grid
+    area = length * height_um
+    gap = max(tech["metal1_spacing"], tech.get("metal1_wide_spacing", 0.0))
+    tab = (gap + via_pad(tech)
+           + tech["via1_surround"] + tech["via1_directional_extra"])
+    return {
+        "along": length + tab,
+        "across": height_um,
+        "length": length,
+        "tab": tab,
+        "area_um2": area,
+        "drawn_farads": area * tech["plate_cap"],
+    }
+
+
+def passive_footprints(passives, tech, height_um):
+    """Place the passives in a row after the devices.
+
+    passives is a list of {name, kind, value, nodes}. Each placed item
+    carries its terminals -- li boxes, the same thing a device pin is --
+    so the router treats a resistor end or a capacitor plate exactly like
+    a source or a gate.
+    """
+    placed = []
+    cursor = 0.0
+    # The gap between passives answers the widest rule any of them can
+    # trigger: a drawn plate capacitor is metal wider than three microns,
+    # and wide metal is owed more room than the ordinary spacing. The
+    # foundry's deck caught the difference at exactly one grid step.
+    gap = max(tech["poly_spacing"], tech["diff_spacing"],
+              tech.get("metal1_wide_spacing", 0.0))
+
+    for item in passives:
+        if item["kind"] == "resistor":
+            cell = resistor_footprint(item["value"], tech)
+        elif item["kind"] == "capacitor":
+            cell = capacitor_footprint(item["value"], tech, height_um)
+        else:
+            continue
+
+        placed.append(dict(item, x=cursor, y=0.0,
+                           width=cell["along"], height=cell["across"],
+                           cell=cell))
+        placed[-1]["terminals"] = passive_terminals(placed[-1], tech)
+        cursor += cell["along"] + gap
+
+    return placed
+
+
+def passive_terminals(item, tech):
+    """Where a wire lands on a passive, as li boxes like every other pin.
+
+    p1 is the element's first netlist node and p2 its second, so the
+    router connects what the netlist says and not a mirror image of it.
+    For the capacitor, p1 is the top plate and p2 the bottom: the bottom
+    plate carries the parasitic to the substrate, and the netlist is
+    written with the quieter node second.
+    """
+    x0, y0 = item["x"], item["y"]
+    cut = tech["contact_width"]
+    reach = tech["li_surround"]
+
+    if item["kind"] == "resistor":
+        cell = item["cell"]
+        # Contact centres, one in each end pad.
+        left = x0 + cell["end"] / 2.0
+        right = x0 + cell["along"] - cell["end"] / 2.0
+        middle = y0 + cell["across"] / 2.0
+        return {
+            "p1": (left - cut / 2.0, middle - cut / 2.0 - reach,
+                   left + cut / 2.0, middle + cut / 2.0 + reach),
+            "p2": (right - cut / 2.0, middle - cut / 2.0 - reach,
+                   right + cut / 2.0, middle + cut / 2.0 + reach),
+        }
+
+    # The capacitor. The bottom plate is landed on directly: an li pad
+    # under the plate, and the router's own contact and stub join it, the
+    # stub merging into the plate metal it crosses. The top plate cannot
+    # be -- a wire down to it would short through the bottom plate -- so
+    # it reaches past the bottom plate's edge with a finger, and comes
+    # down to a metal1 island out there, clear of the plate.
+    cell = item["cell"]
+    pad = via_pad(tech)
+    gap = max(tech["metal1_spacing"], tech.get("metal1_wide_spacing", 0.0))
+    island_x = x0 + cell["length"] + gap + pad / 2.0
+    bottom_x = x0 + 2.0 * pad
+    return {
+        "p1": (island_x - cut / 2.0, y0 + 0.25,
+               island_x + cut / 2.0, y0 + 0.75),
+        "p2": (bottom_x - cut / 2.0, y0 + 0.25,
+               bottom_x + cut / 2.0, y0 + 0.75),
+    }
+
+
+def resistor_shapes(item, layers, tech):
+    """The resistor as drawn: poly, the marker, and a contacted end each.
+
+    The end pads are built exactly like a gate's landing pad -- contact,
+    licon.8 surround, NPC cut, li over -- because they are the same thing.
+    """
+    x0, y0 = item["x"], item["y"]
+    cell = item["cell"]
+    cut = tech["contact_width"]
+    surround = tech["poly_contact_surround"]
+    middle = y0 + cell["across"] / 2.0
+
+    shapes = [
+        (layers["POLY"][0], layers["POLY"][1],
+         x0, y0, x0 + cell["along"], y0 + cell["across"]),
+        (layers["POLYRES"][0], layers["POLYRES"][1],
+         x0 + cell["end"], y0, x0 + cell["end"] + cell["marker"],
+         y0 + cell["across"]),
+    ]
+
+    for centre in (x0 + cell["end"] / 2.0,
+                   x0 + cell["along"] - cell["end"] / 2.0):
+        contact = (centre - cut / 2.0, middle - cut / 2.0,
+                   centre + cut / 2.0, middle + cut / 2.0)
+        shapes.append((layers["CONT"][0], layers["CONT"][1]) + contact)
+        if "NPC" in layers:
+            grow = tech["npc_surround"]
+            shapes.append((layers["NPC"][0], layers["NPC"][1],
+                           contact[0] - grow, contact[1] - grow,
+                           contact[2] + grow, contact[3] + grow))
+
+    for box in item["terminals"].values():
+        shapes.append((layers["LI"][0], layers["LI"][1]) + box)
+    del surround
+    return shapes
+
+
+def capacitor_shapes(item, layers, tech):
+    """The capacitor as drawn: two plates, a finger, an island, a via.
+
+    The li pads under the tabs are the terminals; the router's own contact
+    and stub complete each connection, the same stack it builds on every
+    device pin, which is what lets a plate be wired like a source.
+    """
+    x0, y0 = item["x"], item["y"]
+    cell = item["cell"]
+    pad = via_pad(tech)
+    cut1 = tech["via1_width"]
+    reach = tech["via1_surround"] + tech["via1_directional_extra"]
+
+    plate = (x0, y0, x0 + cell["length"], y0 + cell["across"])
+    shapes = [
+        (layers["MET1"][0], layers["MET1"][1]) + plate,
+        (layers["MET2"][0], layers["MET2"][1]) + plate,
+    ]
+
+    # The top plate's way out: a finger past the bottom plate's edge, a
+    # via, and a metal1 island the router can climb from.
+    gap = max(tech["metal1_spacing"], tech.get("metal1_wide_spacing", 0.0))
+    island_x = x0 + cell["length"] + gap + pad / 2.0
+    via_y = y0 + 1.0
+    shapes.append((layers["MET1"][0], layers["MET1"][1],
+                   island_x - pad / 2.0, y0 + 0.2,
+                   island_x + pad / 2.0, via_y + cut1 / 2.0 + reach))
+    shapes.append((layers["VIA1"][0], layers["VIA1"][1],
+                   island_x - cut1 / 2.0, via_y - cut1 / 2.0,
+                   island_x + cut1 / 2.0, via_y + cut1 / 2.0))
+    shapes.append((layers["MET2"][0], layers["MET2"][1],
+                   x0 + cell["length"], via_y - pad / 2.0,
+                   island_x + cut1 / 2.0 + reach, via_y + pad / 2.0))
+
+    for box in item["terminals"].values():
+        shapes.append((layers["LI"][0], layers["LI"][1]) + box)
+    return shapes
+
+
+def passive_parasitics(plan, tech):
+    """What the drawn passives add that the ideal elements did not have.
+
+    One term matters: the capacitor's bottom plate over the substrate,
+    thousands of square microns of metal1 at the metal1 area constant,
+    hung on whatever net that plate serves. The resistor's body
+    capacitance is a fraction of a femtofarad and is noted, not modelled.
+    """
+    found = {}
+    for item in plan.get("passives", []):
+        if item["kind"] != "capacitor":
+            continue
+        plate = item["cell"]["area_um2"] * tech["metal1_area"]
+        net = item["nodes"][1]                # p2 is the bottom plate
+        found[net] = found.get(net, 0.0) + plate
+    return found
 
 
 def clear_landing(strip, occupied, pad, tech):
@@ -783,6 +1079,7 @@ def route(plan, nets, tech):
     every track beneath it.
     """
     index = {item["name"]: item for item in plan["devices"]}
+    index.update({item["name"]: item for item in plan.get("passives", [])})
     pad = via_pad(tech)
     # A track thinner than a via pad cannot enclose the via that joins it
     # to metal1, so the track takes the pad as its floor.
@@ -796,7 +1093,7 @@ def route(plan, nets, tech):
     # group, so left to itself it would land on top of one of them.
     occupied = sorted({
         (box[0] + box[2]) / 2.0
-        for item in plan["devices"]
+        for item in plan["devices"] + plan.get("passives", [])
         for box in item.get("terminals", {}).values()
     })
 
