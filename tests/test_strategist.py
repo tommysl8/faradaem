@@ -374,3 +374,120 @@ def test_run_design_card_params_reproduce_the_measurement():
     assert replay["phase_margin"] == pytest.approx(
         best["measured"]["phase_margin"], abs=1e-9
     )
+
+
+# ---------------------------------------------------------------------------
+# the loop closes: the strategist can lay a design out and have it checked
+# ---------------------------------------------------------------------------
+
+
+def test_the_strategist_can_lay_a_design_out():
+    """A tool that turns a sentence into a sized schematic is a sizing
+    tool. Laying it out and having a foundry's runset pass it is the other
+    half of the claim, and it has to be reachable by the model."""
+    names = [item["name"] for item in strategist.TOOLS]
+    assert "lay_out" in names
+
+    tool = [item for item in strategist.TOOLS if item["name"] == "lay_out"][0]
+    properties = tool["schema"]["properties"]
+    assert set(properties) == {"circuit", "params", "signoff"}
+    assert properties["signoff"]["type"] == "boolean"
+
+
+def test_the_prompt_describes_all_three_topologies():
+    """It described two for as long as there were two. A model cannot
+    choose a topology nobody told it about."""
+    prompt = strategist.SYSTEM_PROMPT
+    for name in ("opamp_two_stage", "ota_5t", "folded_cascode"):
+        assert name in prompt, name
+    assert "three SKY130 amplifiers" in prompt
+
+
+def test_the_prompt_tells_it_to_lay_the_design_out():
+    prompt = strategist.SYSTEM_PROMPT
+    assert "lay_out" in prompt
+    assert "half an answer" in prompt
+    # And never to pass the fast check off as the deck.
+    assert "never present the fast check as" in prompt
+    # And to name what is not in the drawing.
+    assert "not in the drawing" in prompt
+
+
+def test_laying_out_a_circuit_that_has_no_layout_is_refused():
+    with pytest.raises(circuits.NoFloorplanError):
+        strategist.run_tool("lay_out", {
+            "circuit": "divider",
+            "params": circuits.defaults("divider"),
+        })
+
+
+def test_a_missing_signoff_tool_is_reported_and_never_passed():
+    """The one result that would matter if it were wrong: a check that did
+    not run must never come back looking like one that passed."""
+    source = open(strategist.__file__, encoding="utf-8").read()
+    assert '"ran": False' in source
+    assert "was not run" in source
+    # There is no branch that sets a clean signoff without running it.
+    assert source.count('result["signoff"] = signoff.run_drc') == 1
+
+
+@requires_ngspice
+def test_lay_out_reports_geometry_checks_and_what_is_not_drawn():
+    slim, card = strategist.run_tool("lay_out", {
+        "circuit": "ota_5t",
+        "params": circuits.defaults("ota_5t"),
+    })
+    assert slim["area_um2"] > 0
+    assert slim["interconnect_f"] > 0
+    assert slim["drc"]["clean"] is True
+    assert slim["drc"]["rules_checked"] >= 35
+    assert slim["lvs"]["match"] is True
+    # The parts of the circuit no layout here draws, by name.
+    assert slim["lvs"]["undrawn"]
+    assert any("current source" in item for item in slim["lvs"]["undrawn"])
+    # And the specs measured again with the drawn wiring loading them.
+    assert slim["after_wiring"]
+    assert card["circuit"] == "ota_5t"
+
+
+# ---------------------------------------------------------------------------
+# the third topology can be designed to a spec, like the other two
+# ---------------------------------------------------------------------------
+
+
+def test_all_three_amplifiers_are_designable():
+    """The strategist can only choose among topologies it can size."""
+    designable = {item["id"] for item in circuits.catalog()
+                  if item.get("design")}
+    assert {"opamp_two_stage", "ota_5t", "folded_cascode"} <= designable
+
+
+def test_the_folded_cascode_seed_moves_with_the_targets():
+    """Bias is what trades gain against speed in this topology, measured
+    across a decade. A seed that ignored the targets would be a constant."""
+    block = circuits.get_circuit("folded_cascode")["design"]
+    base = circuits.defaults("folded_cascode")
+
+    high_gain = block["seed"](
+        {"loop_gain_db": 60.0, "f_crossover": 5e6, "phase_margin": 60.0,
+         "power": 3e-4}, base)
+    fast = block["seed"](
+        {"loop_gain_db": 45.0, "f_crossover": 4e7, "phase_margin": 60.0,
+         "power": 6e-4}, base)
+
+    # More gain wants less current; more bandwidth wants more.
+    assert high_gain["ibias"] < fast["ibias"]
+
+
+def test_the_folded_cascode_seed_stays_inside_the_declared_range():
+    spec = {item["key"]: item
+            for item in circuits.get_circuit("folded_cascode")["params"]}
+    block = circuits.get_circuit("folded_cascode")["design"]
+    base = circuits.defaults("folded_cascode")
+
+    for gain, speed, power in ((80.0, 1e5, 1e-6), (20.0, 1e9, 1.0)):
+        seeded = block["seed"](
+            {"loop_gain_db": gain, "f_crossover": speed,
+             "phase_margin": 60.0, "power": power}, base)
+        for key, value in seeded.items():
+            assert spec[key]["min"] <= value <= spec[key]["max"], (key, value)

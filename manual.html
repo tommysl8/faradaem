@@ -52,8 +52,48 @@
     <div class="panel">
       <div class="panel-body">
 
+        <nav class="toc" aria-label="Contents">
+          <h2 class="toc-title">Contents</h2>
+          <div class="toc-groups">
+            <div class="toc-group">
+              <p class="toc-group-name">Getting a number</p>
+              <ol class="toc-list">
+                <li><a href="#before-you-start">Before you start</a></li>
+                <li><a href="#running-a-simulation">Running a simulation</a></li>
+                <li><a href="#keyboard">Keyboard</a></li>
+                <li><a href="#reading-the-result">Reading the result</a></li>
+                <li><a href="#the-circuits">The circuits</a></li>
+                <li><a href="#from-a-sentence-to-geometry">From a sentence to geometry</a></li>
+                <li><a href="#the-folded-cascode">The folded cascode, and why a third topology</a></li>
+                <li><a href="#where-the-analyses-live">Where the analyses live</a></li>
+              </ol>
+            </div>
+            <div class="toc-group">
+              <p class="toc-group-name">Trusting it</p>
+              <ol class="toc-list">
+                <li><a href="#what-the-analytic-check-is-and-what-it-is-not">What the analytic check is, and what it is not</a></li>
+                <li><a href="#when-a-badge-says-off-by-some-percent">When a badge says off by some percent</a></li>
+                <li><a href="#phase-margin-and-why-it-needs-the-loop-opened">Phase margin, and why it needs the loop opened</a></li>
+                <li><a href="#bias-warnings-on-the-sky130-amplifier">Bias warnings on the SKY130 amplifier</a></li>
+                <li><a href="#step-response-how-fast-it-can-actually-move">Step response: how fast it can actually move</a></li>
+                <li><a href="#rejection-and-range-the-rest-of-the-datasheet">Rejection and range: the rest of the datasheet</a></li>
+                <li><a href="#robustness-corners-and-monte-carlo">Robustness: corners and Monte Carlo</a></li>
+              </ol>
+            </div>
+            <div class="toc-group">
+              <p class="toc-group-name">Building it</p>
+              <ol class="toc-list">
+                <li><a href="#asking-for-a-design-in-plain-language">Asking for a design in plain language</a></li>
+                <li><a href="#designing-to-a-spec">Designing to a spec</a></li>
+                <li><a href="#floorplan-what-the-sizing-costs-in-silicon">Floorplan: what the sizing costs in silicon</a></li>
+                <li><a href="#if-something-goes-wrong">If something goes wrong</a></li>
+              </ol>
+            </div>
+          </div>
+        </nav>
+
         <section class="section prose">
-          <h2>Before you start</h2>
+          <h2 id="before-you-start">Before you start</h2>
           <p>
             Faradaem runs a real simulator on your machine. It does not estimate, and it
             does not ask a model for a number. Every value it reports came out of an
@@ -82,7 +122,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Running a simulation</h2>
+          <h2 id="running-a-simulation">Running a simulation</h2>
           <p>
             Pick a circuit from the tabs at the top of the form. Set the component values,
             or click one of the examples to load a worked set. Then press
@@ -102,7 +142,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Keyboard</h2>
+          <h2 id="keyboard">Keyboard</h2>
           <p>
             The whole simulator works without a mouse.
           </p>
@@ -123,7 +163,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Reading the result</h2>
+          <h2 id="reading-the-result">Reading the result</h2>
           <dl class="manual-list">
             <dt>Headline</dt>
             <dd>The main measured value for this circuit, in large type. This is a simulator output.</dd>
@@ -141,7 +181,7 @@
         </section>
 
         <section class="section prose">
-          <h2>What the analytic check is, and what it is not</h2>
+          <h2 id="what-the-analytic-check-is-and-what-it-is-not">What the analytic check is, and what it is not</h2>
           <p>
             The simulator produces the result. The closed form is only a check on it. When
             the two disagree, Faradaem shows both and never quietly splits the difference
@@ -159,7 +199,7 @@
         </section>
 
         <section class="section prose">
-          <h2>When a badge says off by some percent</h2>
+          <h2 id="when-a-badge-says-off-by-some-percent">When a badge says off by some percent</h2>
           <p>
             That is not automatically a bug. There are three honest reasons a measurement
             and a closed form can disagree, and it is worth knowing which one you are
@@ -176,7 +216,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Phase margin, and why it needs the loop opened</h2>
+          <h2 id="phase-margin-and-why-it-needs-the-loop-opened">Phase margin, and why it needs the loop opened</h2>
           <p>
             Every other measurement here comes from a closed loop response: drive the
             input, read the output. Phase margin does not live there. It is a property
@@ -207,7 +247,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Bias warnings on the SKY130 amplifier</h2>
+          <h2 id="bias-warnings-on-the-sky130-amplifier">Bias warnings on the SKY130 amplifier</h2>
           <p>
             A transistor amplifier only works over a range of gate bias. Outside it the
             numbers stop meaning what you expect, so Faradaem says so rather than printing
@@ -224,7 +264,67 @@
         </section>
 
         <section class="section prose">
-          <h2>The circuits</h2>
+          <h2 id="the-folded-cascode">The folded cascode, and why a third topology</h2>
+          <p>
+            The <strong>Folded cascode</strong> is the third SKY130
+            amplifier, and the reason it is here is not really the circuit.
+            It is the question a third topology answers: whether the
+            machinery built for the first two generalises, or whether every
+            new circuit costs another round of special cases.
+          </p>
+          <p>
+            It generalised. Fourteen devices went through the placer, the
+            router, the rule check and the comparison against the netlist
+            without a line of any of them changing, and came out clean on
+            the first attempt.
+          </p>
+          <p>
+            It also earns its place, which a topology has to. Against the
+            five-transistor OTA it carries about fourteen decibels more
+            gain and better than twice the bandwidth, and it costs about
+            three times the power to do it. That is the trade a folded
+            cascode exists to make: the cascodes build the output
+            resistance, so one stage reaches a gain that would otherwise
+            need two and the compensation two stages drag along.
+          </p>
+          <p>
+            Two things it is not. The cascode gate references are ideal
+            voltage sources here, where a finished design would generate
+            them on chip from the same reference current. And it has no
+            spec-driven design block, so <strong>Design to spec</strong>
+            cannot size it to a goal the way it can the other two.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="from-a-sentence-to-geometry">From a sentence to geometry</h2>
+          <p>
+            <strong>Ask for a design</strong> takes a plain sentence and
+            drives the tools itself. It picks a topology from the three
+            SKY130 amplifiers and says why, resolves your targets, seeds a
+            starting point, measures it, and iterates against ngspice if
+            anything is missed.
+          </p>
+          <p>
+            It does not stop there any more. Once a design meets its
+            targets it lays it out: the geometry is drawn, checked against
+            the PDK, compared against the netlist that was simulated, put
+            through the foundry's own runset, and then the specs are
+            measured a second time with the drawn interconnect loading the
+            nets. What comes back is the area, what the wiring cost, and
+            both verdicts.
+          </p>
+          <p>
+            Every number in that chain came from ngspice or from KLayout.
+            The model chooses, orders and explains; it never supplies a
+            measurement. If the runset did not run, it is told to say so
+            rather than let the fast check stand in for it, and it is told
+            to name the parts of the circuit that are not in the drawing.
+          </p>
+        </section>
+
+        <section class="section prose">
+          <h2 id="the-circuits">The circuits</h2>
           <dl class="manual-list">
             <dt>DC divider</dt>
             <dd>Two resistors, one operating point. Measures the output voltage. The simplest possible check that the simulator path works end to end.</dd>
@@ -244,11 +344,13 @@
             <dd>The five-transistor operational transconductance amplifier: an input pair under a mirror load, output taken at the second drain. One stage, so no compensation is needed and the phase margin sits near 90 degrees. It trades gain (around 37 to 43 dB) for simplicity, bandwidth and power. This is the second topology the strategist can choose.</dd>
             <dt>Op-amp (SKY130)</dt>
             <dd>A two-stage Miller op-amp built from eight SKY130 transistors: an input pair under a mirror load, then a common-source second stage, compensated by Cc and its zero-nulling resistor Rz. Measures open-loop gain, unity-gain bandwidth, phase margin and power from one sweep. Needs the PDK. This is also the circuit the design iterator sizes for you.</dd>
+            <dt>Folded cascode (SKY130)</dt>
+            <dd>Fourteen SKY130 transistors: the input pair folds its current into two p-channel sources instead of into a load, and what is left flows through cascodes that build the output resistance. One stage, and around 51 dB of it, because the cascodes make the gain rather than a second stage making it. Against the OTA that is about fourteen decibels more gain and better than twice the bandwidth, at about three times the power. The cascode gate references are ideal sources here, where a finished design would generate them on chip, and it is the one amplifier <strong>Design to spec</strong> cannot yet size for you.</dd>
           </dl>
         </section>
 
         <section class="section prose">
-          <h2>Where the analyses live</h2>
+          <h2 id="where-the-analyses-live">Where the analyses live</h2>
           <p>
             The form at the top sets a circuit up: which circuit, what its parts
             are, and what one run of it measures. Everything that asks a harder
@@ -265,7 +367,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Asking for a design in plain language</h2>
+          <h2 id="asking-for-a-design-in-plain-language">Asking for a design in plain language</h2>
           <p>
             The <strong>Ask for a design</strong> panel at the top of the simulator
             takes a sentence instead of numbers. Say what you want built and which
@@ -295,7 +397,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Designing to a spec</h2>
+          <h2 id="designing-to-a-spec">Designing to a spec</h2>
           <p>
             Some circuits carry a <strong>Design to spec</strong> panel under their
             input form. On the op-amp it offers the full story in one button:
@@ -341,7 +443,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Step response: how fast it can actually move</h2>
+          <h2 id="step-response-how-fast-it-can-actually-move">Step response: how fast it can actually move</h2>
           <p>
             A sweep measures an amplifier held to small signals, where it behaves
             like the linear model. A step asks a different question: how fast can it
@@ -382,7 +484,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Rejection and range: the rest of the datasheet</h2>
+          <h2 id="rejection-and-range-the-rest-of-the-datasheet">Rejection and range: the rest of the datasheet</h2>
           <p>
             Gain, bandwidth and phase margin describe the path you want. Two
             numbers describe the paths you do not: <strong>CMRR</strong> is how
@@ -419,7 +521,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Floorplan: what the sizing costs in silicon</h2>
+          <h2 id="floorplan-what-the-sizing-costs-in-silicon">Layout: what the sizing costs, and whether it is right</h2>
           <p>
             A schematic pretends two things that are not true: that a transistor
             takes no room, and that a wire is free. The <strong>Floorplan</strong>
@@ -428,13 +530,40 @@
             that placement occupies.
           </p>
           <p>
-            Then it does the part that matters. Each net is routed as metal on
-            its own track, and the capacitance is taken from the metal that was
-            actually drawn, stubs included. That capacitance is hung back on the
-            nets and <strong>the same measurements run again</strong>, so the
-            column of numbers says what the interconnect cost: for the default
-            op-amp, about 38 femtofarads and about three tenths of a degree of
-            phase margin.
+            Then it does the part that matters. Each net is routed for real:
+            metal1 runs vertically from each pin, metal2 runs horizontally
+            along the net's own track, and the two are joined only where a via
+            says so. The capacitance is taken from the metal that was actually
+            drawn, stubs included, hung back on the nets, and
+            <strong>the same measurements run again</strong>, so the column of
+            numbers says what the interconnect cost rather than what it was
+            assumed to cost.
+          </p>
+          <p>
+            The two metal layers are not decoration. On one layer every stub
+            coming down from a high track crosses every track below it, which
+            is a short, and a rule checker cannot see it, because two
+            overlapping rectangles look like one wire. Giving the layers
+            directions is how that is avoided.
+          </p>
+          <p>
+            The panel then answers two questions, and they are different
+            questions. <strong>Design rules</strong> asks whether the geometry
+            could be manufactured: thirty-two rules, each read from the PDK's
+            own technology file and each carrying the tag the foundry writes in
+            its own error message. <strong>Layout versus schematic</strong>
+            asks something no rule check can: whether the drawing is the
+            circuit that was simulated. It walks the shapes, works out what is
+            electrically joined to what using only the geometry, finds every
+            transistor where poly crosses diffusion, and compares the nets that
+            fall out against the netlist ngspice ran.
+          </p>
+          <p>
+            That second question is the one worth having. Geometry can satisfy
+            every spacing rule in the deck and still connect a gate to the
+            wrong net, and nothing about the picture would look wrong. A
+            missing via is the ordinary version of this: the metal is drawn
+            right over the pin, it looks connected, and it is not.
           </p>
           <p>
             Every dimension and every capacitance is read out of the PDK's own
@@ -447,24 +576,59 @@
             <strong>Download GDS</strong> writes the placement out in the format
             every layout tool reads, on the real SKY130 layer numbers, so it can
             be opened in KLayout or Magic and looked at properly. Each device is
-            its diffusion with the poly gate crossing it. There are no contacts,
-            no wells and no routing in the file yet.
+            the whole stack it takes to be a device: the diffusion, the poly
+            gate crossing it, the implant that declares the diffusion n-type or
+            p-type, a column of contacts down the source and the drain, and the
+            local interconnect those contacts land on. The gate gets a contact
+            too, on a pad above the channel, because poly cannot be contacted
+            where it crosses the diffusion. The n-well the p-channel devices
+            share is drawn behind them, both taps are in it, and the two metal
+            layers and the vias between them are in the file as well.
           </p>
           <p>
-            The geometry is then checked against ten rules read from the same
-            technology file: the minimum width of poly and of diffusion, the
-            spacing between two diffusions, the diffusion that has to overhang
-            the gate to make a source and a drain, the poly that has to overhang
-            the diffusion so the channel is not shorted around the end of the
-            gate, three for the n-well the p-channel devices sit in, and two
-            for the metal that routes between them. The panel says how many rules were checked as well as
-            what passed, because a clean result means nothing without knowing
-            how much was looked at.
+            The rules are read from the same technology file and each carries
+            the tag the foundry uses: widths and spacings for poly, diffusion,
+            local interconnect and both metals; the overhangs that turn two
+            overlapping rectangles into a transistor; the n-well the p-channel
+            devices share; the contacts that reach down to the silicon and the
+            vias that climb back up; and two that are not about dimensions at
+            all, that every well holds a tap and that every tap is contacted.
+            A well with nothing tying it to a voltage floats, and a floating
+            well is how a CMOS circuit latches up and destroys itself. The
+            panel says how many rules were checked as well as what passed,
+            because a clean result means nothing without knowing how much was
+            looked at.
           </p>
           <p>
-            <strong>Ten rules is not sign-off.</strong> The real deck has
-            thousands and needs Magic or KLayout. Geometry that passes here has
-            passed five rules and has not been checked against the rest.
+            <strong>Those thirty-five rules are the fast loop, not the
+            answer.</strong> The answer is the SKY130 runset, sixteen hundred
+            lines of it, which ships inside the PDK and which KLayout runs
+            over the same GDS. Faradaem hands the file over and reads back
+            what came out; it reimplements nothing.
+          </p>
+          <p>
+            The difference is not academic. The first time the runset ran, it
+            failed geometry the fast checker had called clean, on forty
+            counts across three rules. All three were the same kind of thing:
+            a via needs more metal along one axis than it needs all round,
+            and the fast checker had implemented the all-round half and
+            stopped. Those three are in it now, because an inner loop that
+            misses what the outer one catches is an inner loop nobody can
+            trust. But the reason anyone knows is that something else looked.
+          </p>
+          <p>
+            The comparison against the netlist is still not a full layout
+            versus schematic: a real one matches the two circuits by graph
+            isomorphism and checks every device size, where this one pairs
+            devices by their position in the row and compares connectivity.
+            And it compares transistors, because transistors are what the
+            layout draws. Everything else the circuit holds is listed in the
+            panel under <strong>not in the drawing</strong>, which for the
+            two-stage op-amp is the bias current, the load, and the nulling
+            resistor and compensation capacitor that make it stable. A layout
+            without those is not the whole amplifier, and the panel says so
+            rather than letting a match across the transistors stand in for
+            one.
           </p>
           <p>
             The devices are also grouped by type, NMOS then PMOS, which is not
@@ -484,7 +648,7 @@
         </section>
 
         <section class="section prose">
-          <h2>Robustness: corners and Monte Carlo</h2>
+          <h2 id="robustness-corners-and-monte-carlo">Robustness: corners and Monte Carlo</h2>
           <p>
             One passing simulation shows a circuit works at the typical process, room
             temperature and a nominal supply. The <strong>Robustness</strong> panel on
@@ -513,7 +677,7 @@
         </section>
 
         <section class="section prose">
-          <h2>If something goes wrong</h2>
+          <h2 id="if-something-goes-wrong">If something goes wrong</h2>
           <dl class="manual-list">
             <dt>Could not reach the Faradaem server</dt>
             <dd>The page loaded but the server is not answering. Start it with <code>python server.py</code> and run again.</dd>

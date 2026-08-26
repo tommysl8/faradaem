@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 
-from . import circuits, design, pvt, runner
+from . import circuits, design, pvt, runner, signoff
 
 #: The most model turns one request may take. Each turn may carry tool calls.
 MAX_TURNS = 12
@@ -38,13 +38,18 @@ Rules you must follow:
 - Never state a circuit value or measurement you did not receive from a tool \
 result in this conversation. You choose and explain; the simulator measures.
 - Work with the catalogued circuits from list_circuits. Circuits that declare \
-a design block can be optimized, and the two amplifier topologies can be \
-seeded from targets.
-- Choose the topology to fit the request. opamp_two_stage is the two-stage \
-Miller op-amp: around 70 dB of gain, needs compensation. ota_5t is the \
-single-stage OTA: around 37 to 43 dB, near 90 degrees of margin, and better \
-bandwidth per microwatt. High gain points at the two-stage; modest gain \
-with speed or power pressure points at the OTA. Say which you chose and why.
+a design block can be optimized and seeded from targets.
+- Choose the topology to fit the request. There are three SKY130 amplifiers. \
+opamp_two_stage is the two-stage Miller op-amp: around 70 dB, needs \
+compensation, and two poles to keep apart. ota_5t is the five-transistor \
+OTA: around 37 to 43 dB, near 90 degrees of margin, the fewest devices and \
+the best bandwidth per microwatt. folded_cascode is one stage with cascodes \
+making the output resistance: it reaches 50 to 78 dB depending on sizing, \
+holds 60 to 80 degrees of margin without compensation, and costs more \
+current than the OTA for it. High gain with no compensation to tune points \
+at the folded cascode; high gain with a large output swing points at the \
+two-stage; simplicity, speed or a tight power budget points at the OTA. Say \
+which you chose and why.
 - Prefer the flow: pick the circuit, resolve targets from the request, \
 seed_design if available, simulate the seed, and if any target is missed, \
 run_design to iterate. Quote measured numbers from the tool results.
@@ -57,6 +62,17 @@ sweep does not contain them.
 - When a design meets its targets at the typical corner, verify it with \
 run_corners and report the worst case. A target that fails at a corner is a \
 finding to report, with the corner named.
+- A sized schematic is half an answer. When a design meets its targets, lay \
+it out with lay_out and signoff true. That draws the geometry, checks it \
+against the PDK, compares it against the netlist that was simulated, runs \
+the foundry's own runset, and measures the specs again with the drawn \
+interconnect loading them. Report the area, what the wiring cost, and both \
+verdicts. If the deck did not run, say so; never present the fast check as \
+if it were the deck.
+- lay_out also reports what is not in the drawing: the bias current, the \
+load, and for the two-stage the compensation network. Those are real gaps \
+and you must name them rather than let a clean comparison stand in for a \
+complete layout.
 - When the design is done, summarise what was asked, what was measured, and \
 what trade-offs were made. Keep it short and plain.
 - The user sees your text and, separately, cards for every tool result. Do \
@@ -191,6 +207,32 @@ TOOLS = [
             "required": ["circuit", "params"],
         },
     },
+    {
+        "name": "lay_out",
+        "description": "Draw the design as geometry, check it, and measure "
+                       "the specs again with its own interconnect loading "
+                       "them. Returns the area, what the wiring cost, the "
+                       "rule check, the comparison against the netlist, and "
+                       "the parts of the circuit that are not drawn. Set "
+                       "signoff true to also run the foundry's own runset "
+                       "through KLayout, which takes about a minute. Only "
+                       "the SKY130 amplifiers have a layout.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "circuit": _CIRCUIT_PROP,
+                "params": {"type": "object",
+                           "additionalProperties": {"type": "number"}},
+                "signoff": {
+                    "type": "boolean",
+                    "description": "Run the foundry's deck as well as the "
+                                   "fast check. Slower, and it is the one "
+                                   "that counts.",
+                },
+            },
+            "required": ["circuit", "params"],
+        },
+    },
 ]
 
 #: Errors a tool may raise that are the candidate's fault, not the server's.
@@ -198,6 +240,8 @@ TOOL_ERRORS = (
     pvt.PvtError,
     circuits.NoStepResponseError,
     circuits.NoDatasheetError,
+    circuits.NoFloorplanError,
+    signoff.KlayoutNotFoundError,
     circuits.UnknownCircuitError,
     circuits.CircuitInputError,
     design.DesignError,
@@ -327,6 +371,47 @@ def run_tool(name, arguments, on_progress=None):
                    if key != "transfer"}
         return payload, dict(payload, circuit=arguments["circuit"],
                              mode="rejection")
+
+    if name == "lay_out":
+        params = _full_params(arguments["circuit"], arguments.get("params"))
+        result = circuits.run_layout(arguments["circuit"], params)
+
+        # The fast check is the inner loop. If the caller asked for the
+        # deck, run it and let its answer stand beside the other.
+        if arguments.get("signoff"):
+            if signoff.available():
+                shapes = circuits.layout_shapes(arguments["circuit"], params)
+                result["signoff"] = signoff.run_drc(
+                    shapes, arguments["circuit"])
+            else:
+                # Not a pass. A check that did not run says so.
+                result["signoff"] = {
+                    "ran": False,
+                    "why": "KLayout or the SKY130 runset is not installed, "
+                           "so the foundry's deck was not run. The fast "
+                           "check above is not a substitute for it.",
+                }
+
+        slim = {
+            "area_um2": result["floorplan"]["area_um2"],
+            "interconnect_f": result["total_parasitic_f"],
+            "drc": {
+                "clean": result["drc"]["clean"],
+                "rules_checked": len(result["drc"]["rules_checked"]),
+                "violations": [v["tag"] for v in result["drc"]["violations"]],
+            },
+            "lvs": {
+                "match": result["lvs"]["match"],
+                "nets": result["lvs"]["nets_drawn"],
+                "undrawn": [item["name"] + " (" + item["kind"] + ")"
+                            for item in result["lvs"].get("undrawn", [])],
+            },
+            "after_wiring": result["comparison"],
+        }
+        if "signoff" in result:
+            slim["signoff"] = result["signoff"]
+        return slim, {"circuit": arguments["circuit"], "params": params,
+                      "layout": slim}
 
     if name == "run_corners":
         result = pvt.run_pvt(

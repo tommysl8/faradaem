@@ -249,8 +249,8 @@
         </div>
 
         <div class="analysis-pane hidden" id="pane-layout">
-          <section class="panel design-panel" id="layout" aria-label="Floorplan">
-            <h2 class="panel-head">Floorplan</h2>
+          <section class="panel design-panel" id="layout" aria-label="Layout">
+            <h2 class="panel-head">Layout</h2>
             <div class="panel-body">
               <p class="design-intro">A schematic pretends a wire is free and a
               transistor takes no room. This places the devices in a row at the
@@ -258,14 +258,17 @@
               and hangs the interconnect it implies back on the circuit to
               measure what it costs in margin. Two simulations, about half a
               minute.</p>
-              <p class="static-note">This is a floorplan, not a layout. The
-              geometry is checked against five rules read from the PDK, which is
-              not the sign-off deck: that has thousands and needs Magic or
-              KLayout, neither of which is on this machine. Nothing here is
-              routed or extracted, and the area is the area of this placement,
-              not of a layout anyone has drawn.</p>
+              <p class="static-note">Two questions get answered. The geometry
+              is checked against thirty-two rules read from the PDK, and the
+              drawing is compared against the netlist that was simulated, so a
+              wire on the wrong pin is caught rather than admired. Neither is
+              sign-off: the real rule deck runs to thousands and a real layout
+              versus schematic needs Netgen. The placer is a row and the router
+              is one track a net, which is not what anyone would call
+              placement or routing.</p>
               <div class="design-actions">
-                <button class="chip" id="layout-run" type="button">Run floorplan</button>
+                <button class="chip" id="layout-run" type="button">Draw and verify</button>
+                <button class="chip hidden" id="layout-signoff" type="button">Run the foundry's deck</button>
                 <button class="chip hidden" id="layout-gds" type="button">Download GDS</button>
               </div>
               <div class="design-progress hidden" id="layout-progress">
@@ -273,6 +276,11 @@
                   <span id="layout-state">Running</span>
                 </div>
                 <div class="metric-pairs" id="layout-metrics"></div>
+                <div class="verify hidden" id="layout-verify">
+                  <h4 class="verify-title">Verification</h4>
+                  <ul class="verify-list" id="layout-verify-list"></ul>
+                  <p class="verify-note" id="layout-verify-note"></p>
+                </div>
               </div>
               <p class="field-error hidden" id="layout-error"></p>
             </div>
@@ -335,6 +343,10 @@
 <script src="/static/bodeplot.js"></script>
 <script src="/static/stepplot.js"></script>
 <script src="/static/layoutplot.js"></script>
+<script src="/static/panel-step.js"></script>
+<script src="/static/panel-sheet.js"></script>
+<script src="/static/panel-robust.js"></script>
+<script src="/static/panel-layout.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

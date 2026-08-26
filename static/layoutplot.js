@@ -105,8 +105,30 @@
     // drawing is still to scale; this is the orientation that fits a wide
     // figure, since a row of narrow devices is tall and thin the other way
     // up. Both axes are labelled with what they measure.
-    var fit = Math.min((right - left) / plan.height_um,
-                       (bottom - top) / plan.width_um);
+    // Everything the file holds, not just the devices: the taps sit above
+    // the row and the routing above those, and a drawing that stops at the
+    // devices is not a drawing of this layout.
+    var routing = (data && data.routing) || {};
+    var span = { x1: 0, y1: 0, x2: plan.width_um, y2: plan.height_um };
+    function cover(box) {
+      if (!box) { return; }
+      span.x1 = Math.min(span.x1, box.x1);
+      span.y1 = Math.min(span.y1, box.y1);
+      span.x2 = Math.max(span.x2, box.x2);
+      span.y2 = Math.max(span.y2, box.y2);
+    }
+    (plan.wells || []).forEach(cover);
+    (plan.taps || []).forEach(cover);
+    Object.keys(routing).forEach(function (net) {
+      cover(routing[net].span);
+      (routing[net].stubs || []).forEach(cover);
+    });
+
+    var alongUm = span.x2 - span.x1;
+    var acrossUm = span.y2 - span.y1;
+
+    var fit = Math.min((right - left) / acrossUm,
+                       (bottom - top) / alongUm);
 
     // Shrinking to fit is only honest until the names stop being readable.
     // Below that the scale holds and the drawing grows, the same bargain
@@ -114,8 +136,8 @@
     var pitch = plan.width_um / devices.length;
     var perMicron = Math.max(fit, ROW_PITCH_PX / pitch);
 
-    var drawnWidth = plan.height_um * perMicron;
-    var drawnHeight = plan.width_um * perMicron;
+    var drawnWidth = acrossUm * perMicron;
+    var drawnHeight = alongUm * perMicron;
 
     // Grown past the frame: widen the box and let the figure scroll it.
     if (drawnWidth > right - left || drawnHeight > bottom - top) {
@@ -134,28 +156,68 @@
     var originX = left + ((right - left) - drawnWidth) / 2;
     var originY = top + ((bottom - top) - drawnHeight) / 2;
 
+    // The drawing is transposed: the row runs down the page and each
+    // device's channel width runs across it. Every shape goes through
+    // these two, so nothing can be placed by a different rule.
+    function pageX(acrossUm) {
+      return originX + (acrossUm - span.y1) * perMicron;
+    }
+    function pageY(alongUm) {
+      return originY + (alongUm - span.x1) * perMicron;
+    }
+    function box(cls, item, title) {
+      var node = add(svg, "rect", {
+        "class": cls,
+        x: pageX(item.y1), y: pageY(item.x1),
+        width: (item.y2 - item.y1) * perMicron,
+        height: (item.x2 - item.x1) * perMicron
+      });
+      if (title) {
+        add(node, "title", {}).textContent = title;
+      }
+      return node;
+    }
+
     svg.setAttribute(
       "aria-label",
       "Floorplan " + plan.width_um.toFixed(2) + " by "
       + plan.height_um.toFixed(2) + " microns, "
-      + devices.length + " devices drawn to scale."
+      + devices.length + " devices drawn to scale, with their taps and "
+      + Object.keys(routing).length + " routed nets."
     );
 
     // The bounding box the area was measured over.
     add(svg, "rect", {
       "class": "fp-bounds",
-      x: originX, y: originY, width: drawnWidth, height: drawnHeight
+      x: pageX(0), y: pageY(0),
+      width: plan.height_um * perMicron,
+      height: plan.width_um * perMicron
     });
 
     // The n-well the PMOS group sits in, drawn behind them.
     (plan.wells || []).forEach(function (well) {
-      var x = originX + well.y1 * perMicron;
-      var y = originY + well.x1 * perMicron;
-      add(svg, "rect", {
-        "class": "fp-well",
-        x: x, y: y,
-        width: (well.y2 - well.y1) * perMicron,
-        height: (well.x2 - well.x1) * perMicron
+      box("fp-well", well, "n-well holding " + (well.holds || []).join(", "));
+    });
+
+    // The taps that give the well and the substrate their voltage. Without
+    // one a well floats, which is how a CMOS circuit latches up.
+    (plan.taps || []).forEach(function (tap) {
+      box("fp-tap", tap,
+        (tap.kind === "ntap" ? "n-well tap" : "substrate tap")
+        + " for " + (tap.serves || []).join(", "));
+    });
+
+    // The routing, on the two metal layers it is actually drawn on.
+    Object.keys(routing).sort().forEach(function (net) {
+      var item = routing[net];
+      (item.stubs || []).forEach(function (stub) {
+        box("fp-stub", stub, net + " to " + stub.device + "." + stub.terminal);
+      });
+      box("fp-track", item.span, net + " track");
+      text(svg, {
+        x: pageX(item.span.y2) + 5,
+        y: pageY((item.span.x1 + item.span.x2) / 2) + 3.5,
+        text: net, anchor: "start", className: "fp-net"
       });
     });
 
@@ -164,8 +226,8 @@
       // the dimension that varies between them, so it is the one to see.
       var w = device.height * perMicron;
       var h = device.width * perMicron;
-      var x = originX;
-      var y = originY + device.x * perMicron;
+      var x = pageX(device.y);
+      var y = pageY(device.x);
 
       add(svg, "rect", {
         "class": device.kind === "pfet" ? "fp-device is-pfet" : "fp-device",

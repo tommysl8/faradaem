@@ -7,11 +7,20 @@
 - Run pytest before starting work and report the baseline. Report pass counts between phases. Never git commit.
 - Netlist files are written with ascii encoding.
 - Every version bump adds a changelog entry and ticks the roadmap on about.html.
+- A version number is minted when a state ships, not when a change is made. Work in an uncommitted tree is one release however many separate things it contains, and it gets one changelog entry written at the end. Three entries in one session for work that never shipped separately is a record of edits, not of releases.
 - The frontend stays zero-dependency: no frameworks, no CDNs, system fonts only.
 - New circuits are added through the registry in spice/circuits.py, never as one-off routes.
 - All spacing and type must come from the token scales in static/style.css. No ad hoc px values.
 - UI copy is sentence case and directive: say what to do, not just what went wrong.
 - Presets live in the registry alongside the circuit they demonstrate.
+
+## Sign-off tooling (installed for 1.10.0)
+- KLayout 0.30.11 is machine tooling, both as the `klayout` pip package (for reading GDS) and as the application at %APPDATA%\KLayout\klayout_app.exe (for running decks). Neither goes in requirements.txt. pytest stays the only dependency.
+- The sign-off deck is the PDK's own: sky130A/libs.tech/klayout/drc/sky130A_mr.drc. Never copy a runset into the project; a copy drifts from the models it is supposed to match.
+- spice/drc.py is the fast loop and must say so. spice/signoff.py is the answer. If they ever disagree, the deck is right and the fast loop has a rule missing.
+- Never reimplement a check that a real tool performs. The point of installing them is to delete code, not to add a second opinion.
+- Resolve the KLayout binary from the KLAYOUT_EXE env var first, then the known install paths. Tests that need it skip cleanly when it is absent, same pattern as ngspice and the PDK.
+- Netgen has no Windows build and WSL is not installed. KLayout's LVS deck is the route to a real layout-versus-schematic here, not Netgen.
 
 ## SKY130 PDK (installed for 0.2.0)
 - PDK installed at C:\pdk via ciel, pinned version 7b70722e33c03fcb5dabcf4d479fb0822d9251c9

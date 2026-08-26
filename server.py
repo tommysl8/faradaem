@@ -28,6 +28,7 @@ through a live socket.
 from __future__ import annotations
 
 import json
+import os
 import math
 import sys
 import threading
@@ -37,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from spice import circuits, design, llm, pvt, strategist
+from spice import circuits, design, llm, pvt, signoff, strategist
 from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
@@ -83,7 +84,10 @@ ROBUST_LOCK = threading.Lock()
 MAX_ROBUST_JOBS = 8
 
 HOST = "127.0.0.1"
-PORT = 8000
+
+#: The port, overridable so a second copy can run beside a first without
+#: either of them having to be stopped.
+PORT = int(os.environ.get("FARADAEM_PORT", "8000"))
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -106,6 +110,10 @@ ROUTES = {
     "/static/bodeplot.js": ("static/bodeplot.js", JS),
     "/static/stepplot.js": ("static/stepplot.js", JS),
     "/static/layoutplot.js": ("static/layoutplot.js", JS),
+    "/static/panel-step.js": ("static/panel-step.js", JS),
+    "/static/panel-sheet.js": ("static/panel-sheet.js", JS),
+    "/static/panel-robust.js": ("static/panel-robust.js", JS),
+    "/static/panel-layout.js": ("static/panel-layout.js", JS),
     "/favicon.svg": ("static/favicon.svg", SVG),
     "/favicon.ico": ("static/icon-32.png", PNG),
     "/static/icon.svg": ("static/icon.svg", SVG),
@@ -646,6 +654,8 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_datasheet()
         elif path == "/api/layout":
             self._handle_layout()
+        elif path == "/api/signoff":
+            self._handle_signoff()
         elif path == "/api/robust":
             self._handle_robust_start()
         elif path == "/api/robust/stop":
@@ -751,6 +761,43 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._send_json(200, circuits.run_layout(circuit_id, params))
         except INPUT_ERRORS as exc:
             self._send_json(400, {"error": str(exc)})
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+
+    def _handle_signoff(self):
+        """The foundry's own deck, over the geometry the tool just drew.
+
+        Not part of drawing it: this shells out to KLayout and takes about
+        a minute, so it is a thing the reader asks for once the drawing
+        looks right. When the tool is not installed it says so, because a
+        check that did not run must never be reported as one that passed.
+        """
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+
+        try:
+            circuit_id, params = validate_api_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
+        if not signoff.available():
+            self._send_json(503, {
+                "error": "The sign-off deck needs KLayout and the SKY130 "
+                         "runset. Neither is being guessed at: install "
+                         "KLayout, or set " + signoff.KLAYOUT_ENV_VAR
+                         + " to point at it."
+            })
+            return
+
+        try:
+            shapes = circuits.layout_shapes(circuit_id, params)
+            self._send_json(200, signoff.run_drc(shapes, circuit_id))
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
+        except signoff.KlayoutNotFoundError as exc:
+            self._send_json(503, {"error": str(exc)})
         except SIMULATION_ERRORS as exc:
             self._send_json(500, {"error": str(exc)})
 

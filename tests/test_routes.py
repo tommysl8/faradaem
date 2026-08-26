@@ -102,6 +102,10 @@ def test_the_pages_and_their_assets_are_served():
         "/static/bodeplot.js",
         "/static/stepplot.js",
         "/static/layoutplot.js",
+        "/static/panel-step.js",
+        "/static/panel-sheet.js",
+        "/static/panel-robust.js",
+        "/static/panel-layout.js",
         "/favicon.svg",
         "/favicon.ico",
         "/static/icon.svg",
@@ -444,7 +448,7 @@ def test_catalogue_endpoint_lists_every_circuit(address):
     assert [item["id"] for item in listing] == [
         "divider", "rc_lowpass", "rc_highpass", "rlc_bandpass",
         "inverting_amp", "twopole_amp", "nfet_cs_amp", "opamp_two_stage",
-        "ota_5t",
+        "ota_5t", "folded_cascode",
     ]
 
 
@@ -707,3 +711,52 @@ def test_netlist_preview_validates_like_simulate(address):
     status, _, payload = fetch(address, "/api/netlist", "POST", body)
     assert status == 400
     assert "'r1'" in json.loads(payload)["error"]
+
+
+# ---------------------------------------------------------------------------
+# the foundry's own deck, behind its own endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_signoff_rejects_a_circuit_with_no_layout(address):
+    """Ask for a deck run on a resistive divider and get a plain refusal."""
+    status, content_type, body = fetch(
+        address, "/api/signoff", "POST",
+        json.dumps({"circuit": "divider", "params": {"vin": 5.0, "r1": 1000.0,
+                                                     "r2": 1000.0}})
+    )
+    assert status in (400, 503)
+    assert content_type == JSON
+    assert "error" in json.loads(body)
+
+
+def test_signoff_rejects_an_unknown_circuit(address):
+    status, _, body = fetch(
+        address, "/api/signoff", "POST",
+        json.dumps({"circuit": "not_a_circuit", "params": {}})
+    )
+    assert status == 400
+    assert "error" in json.loads(body)
+
+
+def test_signoff_never_reports_a_pass_it_did_not_perform(address):
+    """The one failure mode that would matter. Without the tool the answer
+    is 503 and an explanation, never a clean result."""
+    from spice import circuits, signoff
+
+    status, _, body = fetch(
+        address, "/api/signoff", "POST",
+        json.dumps({"circuit": "ota_5t",
+                    "params": circuits.defaults("ota_5t")})
+    )
+    payload = json.loads(body)
+    if not signoff.available():
+        assert status == 503
+        assert "clean" not in payload
+        assert "KLayout" in payload["error"]
+    else:
+        assert status == 200
+        assert payload["clean"] is True, payload["violations"]
+        # And it says what it ran, so the result can be read for what it is.
+        assert payload["sections"]
+        assert payload["deck"].endswith(".drc")

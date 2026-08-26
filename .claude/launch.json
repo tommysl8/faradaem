@@ -4,8 +4,21 @@
     {
       "name": "faradaem",
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
-      "runtimeArgs": ["server.py"],
+      "runtimeArgs": [
+        "server.py"
+      ],
       "port": 8000
+    },
+    {
+      "name": "faradaem-dev",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "server.py"
+      ],
+      "port": 8010,
+      "env": {
+        "FARADAEM_PORT": "8010"
+      }
     }
   ]
 }

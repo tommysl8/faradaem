@@ -157,6 +157,29 @@ def fake_tech():
         "metal1_area": 25.78e-18, "metal1_edge": 44.0e-18,
         "li_area": 36.99e-18, "li_edge": 25.5e-18, "poly_area": 106.13e-18,
         "poly_endcap": 0.13, "diff_width": 0.15,
+        "contact_spacing": 0.17,
+        "contact_surround": 0.04,
+        "contact_to_gate": 0.055,
+        "li_width": 0.17,
+        "li_spacing": 0.17,
+        "li_surround": 0.08,
+        "implant_surround": 0.185,
+        "nwell_width": 0.84, "nwell_spacing": 1.27, "nwell_surround": 0.18,
+        "poly_contact_surround": 0.05,
+        "poly_contact_to_diff": 0.19,
+        "npc_surround": 0.1,
+        "via_width": 0.17,
+        "via_spacing": 0.19,
+        "metal1_via_surround": 0.03,
+        "metal2_width": 0.14,
+        "metal2_spacing": 0.14,
+        "via1_width": 0.15,
+        "via1_spacing": 0.17,
+        "via1_surround": 0.055,
+        "metal1_spacing": 0.14,
+        "ndiff_to_nwell": 0.34,
+        "ptap_to_nwell": 0.13,
+        "nwell_tap_surround": 0.18,
     }
 
 
@@ -225,10 +248,32 @@ def test_a_real_floorplan_writes_a_readable_file():
     stream = layout.floorplan_gds(plan)
 
     shapes = boundaries(stream)
-    # Eight devices on two layers, plus the one well the PMOS group shares.
-    assert len(shapes) == 17
-    assert {layer for layer, _, _ in shapes} == {64, 65, 66}
-    assert sum(1 for layer, _, _ in shapes if layer == 64) == 1
+
+    # The whole stack, counted by layer rather than by a single total, so a
+    # failure says which part of the device went missing.
+    counts = {}
+    for layer, datatype, _ in shapes:
+        counts[(layer, datatype)] = counts.get((layer, datatype), 0) + 1
+
+    assert counts[(65, 20)] == 8               # eight diffusions
+    # Two poly shapes a device: the gate stripe, and the wider pad above
+    # the diffusion that the gate contact lands on. Poly cannot be
+    # contacted over the channel, so the pad is not decoration.
+    assert counts[(66, 20)] == 16
+    assert counts[(64, 20)] == 1               # one well, shared by the PMOS
+    assert counts[(93, 44)] == 1               # the n-type implant
+    assert counts[(94, 20)] == 1               # and the p-type one
+    # Three terminals a device, each a piece of local interconnect a wire
+    # can land on: the source, the drain, and now the gate.
+    # Twenty-four for the devices, plus one on each of the two taps.
+    assert counts[(67, 20)] == 26
+    assert counts[(65, 44)] == 2               # the well tap and the substrate tap
+    assert counts[(95, 20)] == 8               # the cut around each gate contact
+    assert counts[(66, 44)] > 8                # and the contacts under it
+
+    # Every contact sits under a piece of local interconnect, so there can
+    # never be fewer strips than devices have sources and drains.
+    assert counts[(66, 44)] >= counts[(67, 20)]
 
     # The widest device is forty microns, so some boundary has to be.
     tallest = max(max(y for _, y in points) - min(y for _, y in points)

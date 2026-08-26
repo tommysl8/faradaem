@@ -32,6 +32,31 @@ def fake_tech():
         "poly_area": 106.13e-18,
         "poly_endcap": 0.13,
         "diff_width": 0.15,
+        "contact_spacing": 0.17,
+        "contact_surround": 0.04,
+        "contact_to_gate": 0.055,
+        "li_width": 0.17,
+        "li_spacing": 0.17,
+        "li_surround": 0.08,
+        "implant_surround": 0.185,
+        "nwell_width": 0.84,
+        "nwell_spacing": 1.27,
+        "nwell_surround": 0.18,
+        "poly_contact_surround": 0.05,
+        "poly_contact_to_diff": 0.19,
+        "npc_surround": 0.1,
+        "via_width": 0.17,
+        "via_spacing": 0.19,
+        "metal1_via_surround": 0.03,
+        "metal2_width": 0.14,
+        "metal2_spacing": 0.14,
+        "via1_width": 0.15,
+        "via1_spacing": 0.17,
+        "via1_surround": 0.055,
+        "metal1_spacing": 0.14,
+        "ndiff_to_nwell": 0.34,
+        "ptap_to_nwell": 0.13,
+        "nwell_tap_surround": 0.18,
     }
 
 
@@ -41,17 +66,39 @@ def fake_tech():
 
 
 def test_a_device_is_its_gate_plus_the_diffusion_around_it():
-    """Along the channel: L plus the overhang on both sides, from poly.7."""
+    """Along the channel: L plus the overhang the source and drain need.
+
+    poly.7 asks for 0.25, but that diffusion has to be contacted, and the
+    contact needs to clear the gate (licon.11 = 0.055), be itself wide
+    (licon.1 = 0.17) and be surrounded by diffusion (licon.5a = 0.04).
+    Those come to 0.265, so poly.7 alone would draw a device nothing could
+    connect to.
+    """
     cell = layout.device_footprint(10e-6, 0.5e-6, fake_tech())
-    assert cell["along"] == pytest.approx(0.5 + 2 * 0.25)
+    # And even that is not what binds here. The transistor wants 1.03, but
+    # source, gate and drain each need a via pad and the pads have to keep
+    # met1.2 apart, which comes to 1.05. A device drawn to the transistor
+    # rules alone is one its own three wires do not fit on.
+    assert 0.5 + 2 * 0.265 == pytest.approx(1.03)
+    assert layout.terminal_pitch_minimum(fake_tech()) == pytest.approx(1.05)
+    assert cell["along"] == pytest.approx(1.05)
     assert cell["across"] == pytest.approx(10.0)
 
 
+def test_the_overhang_is_the_larger_of_the_two_rules():
+    """Whichever rule binds, the footprint takes it. Here poly.7 is made
+    large enough to win, and the answer follows it instead."""
+    tech = fake_tech()
+    tech["diff_overhang"] = 0.9
+    assert layout.source_drain_overhang(tech) == pytest.approx(0.9)
+
+
 def test_a_device_is_never_narrower_than_a_contact():
-    """A device thinner than the contact that has to land on it would be a
-    drawing, not a layout."""
+    """A device thinner than the contact that has to land on it, plus the
+    diffusion that has to surround that contact, would be a drawing rather
+    than a layout."""
     cell = layout.device_footprint(0.05e-6, 0.15e-6, fake_tech())
-    assert cell["across"] == pytest.approx(0.17)
+    assert cell["across"] == pytest.approx(0.17 + 2 * 0.04)
 
 
 def test_devices_sit_a_diffusion_spacing_apart():
@@ -71,11 +118,16 @@ def test_the_row_is_as_tall_as_its_widest_device():
 
 
 def test_area_is_the_bounding_box_and_says_so():
-    """Two devices of one micron each, a 0.27 gap, forty microns tall."""
+    """Two devices of 1.05 microns each, a 0.27 gap, forty microns tall.
+
+    1.05 rather than 1.0: 0.03 of it is the diffusion each source and
+    drain needs to be contactable at all, and the rest is the room the
+    three via pads need to sit side by side without shorting.
+    """
     plan = layout.floorplan(
         [("A", 40e-6, 0.5e-6), ("B", 40e-6, 0.5e-6)], fake_tech()
     )
-    assert plan["width_um"] == pytest.approx(1.0 + 0.27 + 1.0)
+    assert plan["width_um"] == pytest.approx(1.05 + 0.27 + 1.05)
     assert plan["area_um2"] == pytest.approx(plan["width_um"] * 40.0)
     # The active area is the devices themselves, which is less.
     assert plan["active_area_um2"] < plan["area_um2"]
@@ -84,6 +136,78 @@ def test_area_is_the_bounding_box_and_says_so():
 def test_a_floorplan_of_nothing_is_refused():
     with pytest.raises(layout.LayoutDataError):
         layout.floorplan([], fake_tech())
+
+
+# ---------------------------------------------------------------------------
+# the device stack
+# ---------------------------------------------------------------------------
+
+
+def test_a_contact_column_fills_the_diffusion():
+    """One contact carries limited current, so the column takes as many as
+    the spacing rule allows rather than a number someone picked."""
+    column = layout.contact_column(0.0, 0.0, 1.0, fake_tech())
+    # 1.0 tall, less 0.04 of surround at each end, leaves 0.92. Contacts are
+    # 0.17 and sit 0.17 apart, so (2n - 1) * 0.17 <= 0.92 gives three.
+    assert len(column) == 3
+    assert column[1][1] - column[0][3] == pytest.approx(0.17)
+
+
+def test_a_contact_column_stays_inside_its_diffusion():
+    column = layout.contact_column(0.0, 0.0, 1.0, fake_tech())
+    assert column[0][1] >= 0.04 - 1e-12
+    assert column[-1][3] <= 1.0 - 0.04 + 1e-12
+
+
+def test_a_diffusion_too_short_to_contact_gets_no_contacts():
+    """Rather than draw one that breaks the surround rule."""
+    assert layout.contact_column(0.0, 0.0, 0.2, fake_tech()) == []
+
+
+def test_a_taller_device_takes_more_contacts():
+    short = layout.contact_column(0.0, 0.0, 1.0, fake_tech())
+    tall = layout.contact_column(0.0, 0.0, 10.0, fake_tech())
+    assert len(tall) > len(short)
+
+
+def test_the_implants_say_which_diffusion_is_which():
+    plan = layout.floorplan(
+        [("N1", 4e-6, 0.15e-6, "nfet"), ("P1", 4e-6, 0.15e-6, "pfet")],
+        fake_tech()
+    )
+    layers = {implant["layer"] for implant in plan["implants"]}
+    assert layers == {"NSDM", "PSDM"}
+
+
+def test_the_two_implants_never_overlap():
+    """A diffusion cannot be both n-type and p-type, so where the groups
+    meet the implants share a boundary instead of overlapping."""
+    plan = layout.floorplan(
+        [("N1", 4e-6, 0.15e-6, "nfet"), ("P1", 4e-6, 0.15e-6, "pfet")],
+        fake_tech()
+    )
+    n = [i for i in plan["implants"] if i["layer"] == "NSDM"][0]
+    p = [i for i in plan["implants"] if i["layer"] == "PSDM"][0]
+    assert n["x2"] <= p["x1"] + 1e-12
+
+
+def test_an_implant_covers_the_devices_it_is_for():
+    plan = layout.floorplan([("N1", 4e-6, 0.15e-6, "nfet")], fake_tech())
+    implant = plan["implants"][0]
+    device = plan["devices"][0]
+    assert implant["x1"] <= device["x"]
+    assert implant["y1"] <= device["y"]
+    assert implant["x2"] >= device["x"] + device["width"]
+    assert implant["y2"] >= device["y"] + device["height"]
+    assert implant["holds"] == ["N1"]
+
+
+def test_one_type_of_device_gets_one_implant():
+    plan = layout.floorplan(
+        [("N1", 4e-6, 0.15e-6), ("N2", 4e-6, 0.15e-6)], fake_tech()
+    )
+    assert len(plan["implants"]) == 1
+    assert plan["implants"][0]["layer"] == "NSDM"
 
 
 # ---------------------------------------------------------------------------
@@ -186,18 +310,34 @@ def test_the_device_list_matches_the_schematic():
     assert len(circuits.ota_devices(circuits.defaults("ota_5t"))) == 6
 
 
-def test_every_net_names_devices_that_exist():
-    names = {entry[0] for entry in
-             circuits.opamp_devices(circuits.defaults("opamp_two_stage"))}
-    for net, members in circuits.OPAMP_NETS.items():
-        for member in members:
-            assert member in names, (net, member)
+def test_every_net_names_devices_and_pins_that_exist():
+    """The connectivity is read off the netlist now, so this checks the
+    reading rather than a list someone kept in step by hand."""
+    for circuit_id, lister in (("opamp_two_stage", circuits.opamp_devices),
+                               ("ota_5t", circuits.ota_devices)):
+        params = circuits.defaults(circuit_id)
+        placed = {entry[0] for entry in lister(params)}
+        for net, pins in circuits.circuit_nets(circuit_id, params).items():
+            for name, terminal in pins:
+                assert name in placed, (circuit_id, net, name)
+                assert terminal in circuits.TERMINAL_ORDER
 
-    ota_names = {entry[0] for entry in
-                 circuits.ota_devices(circuits.defaults("ota_5t"))}
-    for net, members in circuits.OTA_NETS.items():
-        for member in members:
-            assert member in ota_names, (net, member)
+
+def test_the_netlist_is_the_only_statement_of_the_connectivity():
+    """A second list beside the netlist is a second thing to keep right."""
+    source = open(circuits.__file__, encoding="utf-8").read()
+    for gone in ("OPAMP_NETS", "OTA_NETS"):
+        assert gone not in source, gone
+
+
+def test_the_devices_read_out_match_the_devices_placed():
+    params = circuits.defaults("opamp_two_stage")
+    read = circuits.circuit_devices("opamp_two_stage", params)
+    placed = {entry[0]: entry[3] for entry in circuits.opamp_devices(params)}
+    assert set(read) == set(placed)
+    # And they agree about which are p-channel.
+    for name, device in read.items():
+        assert device["kind"] == placed[name], name
 
 
 def test_the_catalogue_advertises_it():
@@ -207,12 +347,18 @@ def test_the_catalogue_advertises_it():
 
 
 def test_the_code_never_claims_to_have_checked_anything():
-    """The one claim that would be a lie. If a design rule check or an LVS
-    ever does run here, this test should be the thing that changes."""
+    """The one claim that would be a lie.
+
+    This test is meant to change as the tool grows, and it has: it used to
+    require the module to disclaim a router, and there is a router now. What
+    it must still disclaim is layout versus schematic, which nothing here
+    does, and the taps, without which the geometry is not manufacturable
+    however many rules it passes.
+    """
     source = open(layout.__file__, encoding="utf-8").read()
     lowered = source.lower()
-    # It has to name each thing it is not doing, in its own documentation.
-    for disclaimed in ("no router", "design rule check", "layout versus schematic"):
+    # It has to name each thing it is still not doing, in its own docs.
+    for disclaimed in ("layout versus schematic", "taps"):
         assert disclaimed in lowered, disclaimed
     # And it must not claim any of them were passed.
     for boast in ("drc clean", "lvs clean", "design rule clean",
@@ -317,15 +463,52 @@ def routing_tech():
     return tech
 
 
-def test_a_net_gets_a_track_and_a_stub_for_each_device():
+def test_a_net_gets_a_track_and_a_stub_for_each_pin():
     tech = routing_tech()
     plan = layout.floorplan(
         [("A", 10e-6, 0.5e-6), ("B", 10e-6, 0.5e-6)], tech
     )
-    routed = layout.route(plan, {"n": ["A", "B"]}, tech)["n"]
-    # One horizontal run plus one stub per device it serves.
-    assert len(routed["segments"]) == 3
+    routed = layout.route(
+        plan, {"n": [("A", "drain"), ("B", "source")]}, tech
+    )["n"]
+    assert len(routed["stubs"]) == 2
     assert routed["devices"] == ["A", "B"]
+    # One via down to the interconnect and one up to metal2, per pin.
+    assert len(routed["contacts"]) == 2
+    assert len(routed["vias"]) == 2
+
+
+def test_a_net_reaches_pins_not_devices():
+    """Two pins of one device can be on different nets, and one net can
+    reach two pins of the same device. Routing to a device cannot express
+    either."""
+    tech = routing_tech()
+    plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
+    routed = layout.route(
+        plan, {"diode": [("A", "drain"), ("A", "gate")]}, tech
+    )
+    assert "diode" in routed
+    assert routed["diode"]["pins"] == [("A", "drain"), ("A", "gate")]
+
+
+def test_a_bulk_pin_is_carried_by_a_tap_and_not_by_a_stub():
+    """A bulk connects through its well or substrate tap. The net is real
+    and gets wired, but nothing aims a stub at the device's body."""
+    tech = routing_tech()
+    plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
+    routed = layout.route(plan, {"gnd": [("A", "bulk"), ("A", "source")]},
+                          tech)["gnd"]
+    aimed = {(stub["device"], stub["terminal"]) for stub in routed["stubs"]}
+    assert ("A", "bulk") not in aimed
+    assert ("A", "source") in aimed
+    assert ("ptap", "tap") in aimed
+
+
+def test_a_net_with_only_a_bulk_pin_still_needs_no_wire():
+    tech = routing_tech()
+    plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
+    # The tap alone is one landing, and one landing is not a wire.
+    assert layout.route(plan, {"gnd": [("A", "bulk")]}, tech) == {}
 
 
 def test_every_net_gets_its_own_track():
@@ -335,28 +518,33 @@ def test_every_net_gets_its_own_track():
         [("A", 10e-6, 0.5e-6), ("B", 10e-6, 0.5e-6), ("C", 10e-6, 0.5e-6)],
         tech
     )
-    routed = layout.route(plan, {"x": ["A", "B"], "y": ["B", "C"]}, tech)
+    routed = layout.route(plan, {
+        "x": [("A", "drain"), ("B", "source")],
+        "y": [("B", "drain"), ("C", "source")],
+    }, tech)
     assert routed["x"]["track"] != routed["y"]["track"]
     gap = abs(routed["x"]["track"] - routed["y"]["track"])
-    assert gap >= tech["metal1_width"] + tech["metal1_spacing"] - 1e-9
+    assert gap >= tech["metal2_width"] + tech["metal2_spacing"] - 1e-9
 
 
-def test_a_net_reaching_one_device_is_not_routed():
+def test_a_net_reaching_one_pin_is_not_routed():
     tech = routing_tech()
     plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
-    assert layout.route(plan, {"solo": ["A"]}, tech) == {}
+    assert layout.route(plan, {"solo": [("A", "drain")]}, tech) == {}
 
 
 def test_the_length_is_the_metal_that_was_drawn():
-    """Not a bounding box: the sum of the segments, stubs included."""
+    """Not a bounding box: the run plus every stub that climbs to it."""
     tech = routing_tech()
     plan = layout.floorplan(
         [("A", 10e-6, 0.5e-6), ("B", 40e-6, 0.5e-6)], tech
     )
-    routed = layout.route(plan, {"n": ["A", "B"]}, tech)["n"]
-    drawn = sum(part["length_um"] for part in routed["segments"])
+    routed = layout.route(
+        plan, {"n": [("A", "drain"), ("B", "source")]}, tech
+    )["n"]
+    drawn = routed["span"]["length_um"] + sum(
+        stub["length_um"] for stub in routed["stubs"])
     assert routed["length_um"] == pytest.approx(drawn)
-    # The stub onto the short device has to climb past the tall one.
     assert routed["length_um"] > plan["width_um"]
 
 
@@ -366,21 +554,39 @@ def test_drawn_routing_costs_more_than_the_bounding_box_estimate():
     tech = routing_tech()
     devices = [("A", 10e-6, 0.5e-6), ("B", 40e-6, 0.5e-6), ("C", 10e-6, 0.5e-6)]
     plan = layout.floorplan(devices, tech)
-    nets = {"n": ["A", "C"]}
 
-    estimated = layout.net_parasitics(plan, nets, tech)["n"]["capacitance_f"]
+    estimated = layout.net_parasitics(
+        plan, {"n": ["A", "C"]}, tech)["n"]["capacitance_f"]
     drawn = layout.routed_parasitics(
-        layout.route(plan, nets, tech), tech
+        layout.route(plan, {"n": [("A", "drain"), ("C", "source")]}, tech),
+        tech
     )["n"]["capacitance_f"]
     assert drawn > estimated
 
 
-def test_routing_becomes_metal_shapes():
+def test_routing_becomes_shapes_on_both_metals():
+    """Metal1 runs vertically and metal2 horizontally, joined only by a
+    via. On one layer every stub would cross every track beneath it."""
     tech = routing_tech()
     plan = layout.floorplan(
         [("A", 10e-6, 0.5e-6), ("B", 10e-6, 0.5e-6)], tech
     )
-    routed = layout.route(plan, {"n": ["A", "B"]}, tech)
-    shapes = layout.routing_shapes(routed, {"MET1": (68, 20)})
-    assert len(shapes) == 3
-    assert all(shape[0] == 68 for shape in shapes)
+    routed = layout.route(
+        plan, {"n": [("A", "drain"), ("B", "source")]}, tech
+    )
+    layers = {"MET1": (68, 20), "MET2": (69, 20),
+              "VIA1": (68, 44), "MCON": (67, 44)}
+    shapes = layout.routing_shapes(routed, layers)
+    drawn = {shape[:2] for shape in shapes}
+    assert (69, 20) in drawn                    # the track
+    assert (68, 20) in drawn                    # the stubs
+    assert (68, 44) in drawn                    # metal1 to metal2
+    assert (67, 44) in drawn                    # metal1 down to li
+
+
+def test_the_track_clears_everything_already_drawn():
+    """A track over the gate stack would short every gate it crossed."""
+    tech = routing_tech()
+    plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
+    floor = layout.routing_floor(plan, tech)
+    assert floor > plan["height_um"] + layout.gate_stack_height(tech)

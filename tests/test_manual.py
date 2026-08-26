@@ -104,7 +104,8 @@ def test_manual_explains_the_circuits_that_ship_no_analytic_check():
         for cid in circuits.CIRCUIT_ORDER
         if not circuits.get_circuit(cid)["checks"]
     }
-    assert uncheckable == {"NFET amp (SKY130)", "Op-amp (SKY130)", "OTA (SKY130)"}
+    assert uncheckable == {"NFET amp (SKY130)", "Op-amp (SKY130)",
+                           "OTA (SKY130)", "Folded cascode (SKY130)"}
     for name in uncheckable:
         assert name in MANUAL_TEXT, name
     assert "square law" in MANUAL_LOWER
@@ -122,3 +123,63 @@ def test_manual_covers_every_bias_caution_the_server_can_send():
 def test_manual_states_the_pdk_load_time_the_timeout_allows():
     assert runner.PDK_TIMEOUT_S >= 60.0
     assert "10 to 30 seconds" in MANUAL_TEXT
+
+
+# ---------------------------------------------------------------------------
+# the contents, and the verification the panel reports
+# ---------------------------------------------------------------------------
+
+
+def test_every_section_is_in_the_contents():
+    """A contents that misses a section sends the reader scrolling, which
+    is the thing it was added to stop."""
+    headings = re.findall(r'<h2 id="([^"]+)">', MANUAL)
+    listed = set(re.findall(r'<a href="#([^"]+)">', MANUAL))
+    assert headings, "the manual has no anchored headings"
+    for anchor in headings:
+        assert anchor in listed, anchor
+
+
+def test_every_contents_link_points_at_a_real_section():
+    headings = set(re.findall(r'<h2 id="([^"]+)">', MANUAL))
+    for anchor in re.findall(r'<a href="#([^"]+)">', MANUAL):
+        assert anchor in headings, anchor
+
+
+def test_the_contents_is_grouped_by_how_the_tool_is_used():
+    for group in ("Getting a number", "Trusting it", "Building it"):
+        assert group in MANUAL_TEXT, group
+
+
+def test_the_manual_explains_both_verifications_as_different_questions():
+    """A rule check and a layout comparison answer different things, and a
+    reader who thinks they are the same will over-trust a clean result."""
+    assert "layout versus schematic" in MANUAL_LOWER
+    assert "design rules" in MANUAL_LOWER
+    for said in ("thirty-two rules", "netgen", "graph isomorphism"):
+        assert said in MANUAL_LOWER, said
+
+
+def test_the_manual_never_claims_sign_off():
+    for boast in ("is sign-off", "fully verified", "tapeout ready",
+                  "guaranteed to work"):
+        assert boast not in MANUAL_LOWER, boast
+
+
+def test_the_page_has_somewhere_to_report_both_verdicts():
+    page = io.open("index.html", encoding="utf-8").read()
+    for needed in ('id="layout-verify"', 'id="layout-verify-list"',
+                   'id="layout-verify-note"'):
+        assert needed in page, needed
+
+
+def test_the_panel_reports_the_layout_comparison_and_not_only_the_rules():
+    # The layout panel lives in its own file now.
+    app = io.open("static/panel-layout.js", encoding="utf-8").read()
+    assert "result.lvs" in app
+    assert "Layout versus schematic" in app
+    # And it says what it did not check, in the panel itself.
+    assert "Still not checked" in app
+    # And the parts of the circuit that are not in the drawing at all.
+    assert "Not in the drawing" in app
+    assert "result.lvs.undrawn" in app

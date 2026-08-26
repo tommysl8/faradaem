@@ -52,6 +52,71 @@
     <div class="panel">
       <div class="panel-body">
 
+                <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">1.9.0</span>
+            <span class="entry-date">2026-08-25</span>
+          </header>
+          <ul>
+            <li>The drawing is now checked against the circuit it claims to be. Layout versus schematic walks the drawn shapes, works out what is electrically joined to what from the geometry alone, finds every transistor where poly crosses diffusion, and compares the nets that fall out against the netlist ngspice actually ran. All three amplifiers match. Every other check in this project asks whether the geometry is legal; this is the first one that asks whether it is right, and it is the only place the tool could have been wrong rather than merely incomplete.</li>
+            <li>A device became a device. Each transistor is drawn as the whole stack it takes to be one: the diffusion, the gate crossing it, the implant declaring the diffusion n-type or p-type, a column of contacts down the source and the drain, and the local interconnect over them. The gate got a contact too, on a pad above the channel, because poly cannot be contacted where it crosses the diffusion. Before this, every device had a gate that nothing could connect to.</li>
+            <li>The connectivity stopped being a list kept by hand. Two dictionaries recorded which devices shared a net and nothing checked them against the circuit that gets simulated. They are read out of the netlist now, terminal by terminal, which immediately showed what the hand-written version had been missing: the supply, the ground and both inputs were not in it at all. The measured interconnect went from 38 femtofarads to 82, because the nets that were never counted are now routed.</li>
+            <li>One metal layer cannot carry a circuit, and the old router had been pretending otherwise. On a single layer a stub coming down from a high track crosses every track below it, which is a short, and the rule checker could not see it, because two overlapping rectangles look like one wire. Metal1 now runs vertically and metal2 horizontally, joined only where a via says so.</li>
+            <li>The taps are drawn: an n-tap in the well and a p-tap in the substrate, contacted and tied to their rails. A well with nothing setting its voltage floats, and a floating well is how a CMOS circuit latches up and destroys itself. Drawing them found a violation that had been passing silently, because the checker had no rule for it: an n-diffusion has to stay 0.34 microns from an n-well and the row was leaving 0.09.</li>
+            <li>Twenty-two more rules, ten to thirty-two: the poly contact and its clearances, the contacts and the local interconnect, the implants, the vias between the layers and the metal that has to cover them, the second metal layer, the taps and the well spacings. Each is read from the PDK and each is tested against a shape built to break it. Two of them are not about dimensions at all: that every well holds a tap, and that every tap is contacted.</li>
+            <li>Placing the vias found that a device could be legal and unroutable. A transistor drawn to the transistor rules alone is 1.03 microns wide, but its source, gate and drain each need a via pad and the pads have to keep metal spacing apart, which needs 1.05. The footprint takes whichever binds.</li>
+            <li>A third topology, the folded cascode, which is V1.4 arriving late. The reason for it is not the circuit; it is the question a third one answers, whether the machinery built for the first two generalises. It did. Fourteen devices went through the placer, the router, the rule check and the comparison without one line of any of them changing, and came out clean on the first attempt. It earns its place too: 51.5 dB and 32.4 MHz against the five-transistor OTA's 37.0 dB and 14.3 MHz, for 230 microwatts against 69. The sizing was measured rather than chosen, over fifty-four bias points and a second sweep that found the n-channel cascode width moves the gain by seven decibels and nothing else comes close.</li>
+            <li>The layout panel reports two verdicts rather than one more row of numbers, because a rule check and a layout comparison answer different questions, and what was not checked is written underneath rather than left to be assumed. The drawing shows what the file holds, taps and both metal layers included, and the panel is called Layout rather than Floorplan, which it outgrew.</li>
+            <li>The loop closes. The strategist could design and measure and then it stopped: everything past that, drawing the geometry, checking it, comparing it against the netlist, running the foundry's deck, measuring the specs again with the interconnect loading them, was a thing a person did afterwards by clicking. It is one tool call now. A tool that turns a sentence into a sized schematic is a sizing tool; one that turns a sentence into geometry a foundry's own runset passes is a different claim, and the difference was that call.</li>
+            <li>The folded cascode can be designed to a spec like the other two, so the strategist chooses among three topologies rather than two. The seed is built on measurements rather than guesses: power is about 6.4 times the bias current times the supply, gain falls about 25 dB per decade of bias, and bandwidth rises about as its 0.7 power, all measured across a decade rather than assumed.</li>
+            <li>The search promptly beat the sizing that had been chosen by hand. Asked for 55 dB at 8 MHz under 80 microwatts, it returned 77.7 dB at 13.5 MHz on 78, which is twenty-six decibels more gain than the balanced preset at a third of the power. It was re-simulated on its own to confirm before being written down, and it is the High gain preset now.</li>
+            <li>The foundry's own deck runs now. KLayout is installed as machine tooling, and the SKY130 runset the PDK ships is pointed at the same GDS the tool already wrote. Nothing is reimplemented: the file goes over, the report comes back. All three amplifiers pass it, over the front-end, back-end and off-grid sections.</li>
+            <li>The first run of it failed geometry the hand checker had called clean, forty violations across three rules, all of them the same kind: a via needs more metal along one axis than it needs all round, and the hand checker had implemented the all-round half and stopped. The router draws to the directional rules now and the fast checker knows all three, thirty-two to thirty-five. That is the argument for running a real deck stated as an experiment rather than an opinion.</li>
+            <li>The hand checker stopped calling itself the answer. It is the inner loop, it says so in its own result and in the panel, and it points at the deck.</li>
+            <li>The comparison against the netlist stopped overstating. It compares transistors, because transistors are what the layout draws, and it never mentioned that the netlist also holds a bias current, a load, and for the op-amp the nulling resistor and compensation capacitor that make it stable. Those are listed by name now, in the panel, under what is not in the drawing.</li>
+            <li>KLayout also read the GDS the hand-written writer emits and agreed with it exactly: 762 shapes written, 762 read, right database unit, right layers, right bounding box. The writer has been checked against a tool that has no stake in the answer.</li>
+            <li>The manual has a contents, grouped the way the tool is used: getting a number, trusting it, building it. Seventeen sections in one column with no index is a document you scroll through hunting.</li>
+            <li>Two files stopped being one file each. circuits.py had grown to 2,456 lines doing four jobs and is now five modules of a few hundred each, verified by hashing every deck the tool can build before and after and finding all seventy-eight identical. app.js gave up its four measurement panels to their own files, and the three places that named every panel one by one became loops over what registered.</li>
+            <li>Splitting app.js found a bug that had been live and silent: stepValue was declared twice in one closure, once for arrow-key stepping and once to format a step metric, and the later declaration won for the whole scope. Pressing the up arrow on any form field replaced its contents with an em dash. Nothing failed and nothing logged. There is now a test that refuses any script declaring one name twice.</li>
+          </ul>
+        </article>
+
+<article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">1.8.0</span>
+            <span class="entry-date">2026-08-25</span>
+          </header>
+          <ul>
+            <li>The interconnect capacitance had been coming from a length guessed off the bounding box of the devices a net touches. Nothing was drawn, so nothing could be checked, and the number was an estimate wearing the clothes of a measurement. Each net is now routed as metal on its own track with a stub down onto every device it serves, and the length is taken from the geometry that was actually drawn.</li>
+            <li>The correction was material. The default op-amp carries 38 femtofarads of its own interconnect, not the 21 the estimate claimed, and the phase margin it costs goes from 0.17 degrees to 0.29. The estimate was optimistic by nearly half, because it counted the run across the row and not the stubs down onto devices tens of microns tall.</li>
+            <li>Two more rules for the metal that is now there to check: minimum width (met1.1) and minimum spacing (met1.2). Ten rules, and the routing is in the GDS: 2434 bytes for the op-amp, clean on all ten.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">1.7.0</span>
+            <span class="entry-date">2026-08-25</span>
+          </header>
+          <ul>
+            <li>The p-channel devices are drawn as p-channel devices. A PMOS has to sit in an n-well, and until now the floorplan drew every device the same way, which made the picture wrong rather than incomplete.</li>
+            <li>Drawing the well immediately broke a rule, which is the point of drawing it. Two separate n-wells have to stay 1.27 microns apart and PMOS scattered through the row put two of them 1.18 apart. The devices are now grouped by type, NMOS then PMOS, so the p-channel devices share one well. The grouping is not cosmetic and a test says why.</li>
+            <li>Three rules for the well: minimum width (nwell.1), the spacing between two that are not the same well (nwell.2a), and the surround the well owes the p-diffusion inside it (nwell.5).</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <span class="entry-version">1.6.0</span>
+            <span class="entry-date">2026-08-25</span>
+          </header>
+          <ul>
+            <li>The drawn geometry is checked rather than assumed. A drawing nobody has looked at and a drawing checked against the numbers it was supposed to satisfy are different objects, and only one of them can be reported as either.</li>
+            <li>Every rule is tested twice, once against geometry that satisfies it and once against geometry built specifically to break it, because a checker that never fails is worse than no checker: it turns unchecked geometry into geometry someone believes.</li>
+            <li>The result carries its own coverage, so a clean pass can never be presented as more than the rules it actually covered, and a test refuses any wording in the module that would claim sign-off.</li>
+          </ul>
+        </article>
+
         <article class="entry">
           <header class="entry-head">
             <span class="entry-version">1.5.0</span>

@@ -387,10 +387,23 @@
       args[key] = reading[key];
     });
     args[TAG_ARG[current.id]] = result ? result[SCHEMATIC_TAG[current.id]] : null;
-    window[DRAWERS[current.id]](id("schematic"), args);
-    var drawn = id("schematic").viewBox.baseVal;
-    naturalView = { w: drawn.width, h: drawn.height };
-    fitSchematic();
+
+    // A circuit can reach the catalogue before anyone has drawn it. Say so
+    // rather than throwing: the numbers are still real, and a missing
+    // picture should cost the reader a caption, not the whole panel.
+    var drawer = window[DRAWERS[current.id]];
+    var schematicFigure = id("schematic").parentNode.parentNode;
+    if (typeof drawer !== "function") {
+      clear(id("schematic"));
+      show(schematicFigure, false);
+      naturalView = null;
+    } else {
+      show(schematicFigure, true);
+      drawer(id("schematic"), args);
+      var drawn = id("schematic").viewBox.baseVal;
+      naturalView = { w: drawn.width, h: drawn.height };
+      fitSchematic();
+    }
 
     var isAc = current.analysis === "ac";
     show(bodePanel, isAc);
@@ -1259,369 +1272,6 @@
 
 
 
-  /* ---- step response ------------------------------------------------------ */
-
-  var stepPanel = id("step");
-  var stepFigure = id("step-panel");
-  var stepRun = id("step-run");
-  var stepProgress = id("step-progress");
-  var stepState = id("step-state");
-  var stepMetrics = id("step-metrics");
-  var stepError = id("step-error");
-  var stepCaption = id("step-caption");
-
-  var lastStep = null;
-
-  function renderStepPanel() {
-    lastStep = null;
-    stepRun.disabled = false;
-    show(stepProgress, false);
-    show(stepError, false);
-    clear(stepMetrics);
-    show(stepFigure, false);
-  }
-
-  function stepValue(spec, result) {
-    var raw = result[spec.key];
-    if (raw === null || raw === undefined || !isFinite(raw)) {
-      return "\u2014";
-    }
-    if (spec.format === "percent") {
-      return (raw * 100).toFixed(2) + " %";
-    }
-    // Slew rate is volts per second in the API, because that is the SI of
-    // it, and volts per microsecond on the page, because that is how every
-    // datasheet in the field writes it.
-    if (spec.format === "slew") {
-      return (raw / 1e6).toFixed(3) + " V/µs";
-    }
-    return window.formatEngineering(raw, spec.unit || "");
-  }
-
-  function renderStepResult(result) {
-    clear(stepMetrics);
-    (current.step.readout || []).forEach(function (spec) {
-      stepMetrics.appendChild(el("span", "goal-label", spec.label));
-      stepMetrics.appendChild(el("span", "goal-value", stepValue(spec, result)));
-    });
-
-    // Both edges, because the reported rate is the worse of the two and the
-    // reader should be able to see which one that was.
-    if (result.slew_rise && result.slew_fall) {
-      stepMetrics.appendChild(el("span", "goal-label", "rising / falling"));
-      stepMetrics.appendChild(el("span", "goal-value",
-        (result.slew_rise / 1e6).toFixed(3) + "  /  "
-        + (result.slew_fall / 1e6).toFixed(3) + " V/µs"));
-    }
-
-    stepCaption.textContent = (current.step && current.step.caption) || "";
-    show(stepFigure, true);
-    window.drawStep(id("step-plot"), result);
-  }
-
-  function runStep() {
-    if (!current.step || !validate()) {
-      return;
-    }
-    show(stepError, false);
-    clear(stepMetrics);
-    show(stepFigure, false);
-    stepRun.disabled = true;
-    stepState.textContent = "Running one transient, about twenty seconds";
-    show(stepProgress, true);
-
-    fetch("/api/step", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ circuit: current.id, params: values() })
-    })
-      .then(function (response) {
-        return response.json().then(function (payload) {
-          if (!response.ok) {
-            throw new Error(payload && payload.error
-              ? payload.error : "The server refused the request.");
-          }
-          lastStep = payload;
-          stepState.textContent = "Measured";
-          stepRun.disabled = false;
-          renderStepResult(payload);
-        });
-      })
-      .catch(function (error) {
-        stepRun.disabled = false;
-        show(stepProgress, false);
-        stepError.textContent = String(error.message || error);
-        show(stepError, true);
-      });
-  }
-
-  stepRun.addEventListener("click", runStep);
-
-
-  /* ---- rejection and range ------------------------------------------------ */
-
-  var sheetPanel = id("sheet");
-  var sheetFigure = id("sheet-panel");
-  var sheetRun = id("sheet-run");
-  var sheetProgress = id("sheet-progress");
-  var sheetState = id("sheet-state");
-  var sheetMetrics = id("sheet-metrics");
-  var sheetError = id("sheet-error");
-  var sheetCaption = id("sheet-caption");
-
-  var lastSheet = null;
-
-  function renderSheetPanel() {
-    lastSheet = null;
-    sheetRun.disabled = false;
-    show(sheetProgress, false);
-    show(sheetError, false);
-    clear(sheetMetrics);
-    show(sheetFigure, false);
-  }
-
-  function renderSheetResult(result) {
-    clear(sheetMetrics);
-    (current.datasheet.readout || []).forEach(function (spec) {
-      var raw = result[spec.key];
-      sheetMetrics.appendChild(el("span", "goal-label", spec.label));
-      sheetMetrics.appendChild(el("span", "goal-value",
-        typeof raw === "number" && isFinite(raw)
-          ? window.formatEngineering(raw, spec.unit || "")
-          : "\u2014"));
-    });
-
-    // The range is two numbers, and which end it ran out at is the useful
-    // half of the answer.
-    sheetMetrics.appendChild(el("span", "goal-label", "follows from"));
-    sheetMetrics.appendChild(el("span", "goal-value",
-      result.input_low.toFixed(3) + " V to " + result.input_high.toFixed(3)
-      + " V, on a " + result.supply.toFixed(2) + " V supply"));
-
-    sheetCaption.textContent =
-      (current.datasheet && current.datasheet.caption) || "";
-    show(sheetFigure, true);
-    window.drawTransfer(id("sheet-plot"), result);
-  }
-
-  function runSheet() {
-    if (!current.datasheet || !validate()) {
-      return;
-    }
-    show(sheetError, false);
-    clear(sheetMetrics);
-    show(sheetFigure, false);
-    sheetRun.disabled = true;
-    sheetState.textContent = "Running four amplifiers, about half a minute";
-    show(sheetProgress, true);
-
-    fetch("/api/datasheet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ circuit: current.id, params: values() })
-    })
-      .then(function (response) {
-        return response.json().then(function (payload) {
-          if (!response.ok) {
-            throw new Error(payload && payload.error
-              ? payload.error : "The server refused the request.");
-          }
-          lastSheet = payload;
-          sheetState.textContent = "Measured";
-          sheetRun.disabled = false;
-          renderSheetResult(payload);
-        });
-      })
-      .catch(function (error) {
-        sheetRun.disabled = false;
-        show(sheetProgress, false);
-        sheetError.textContent = String(error.message || error);
-        show(sheetError, true);
-      });
-  }
-
-  sheetRun.addEventListener("click", runSheet);
-
-  /* ---- robustness --------------------------------------------------------- */
-
-  var robustPanel = id("robust");
-  var robustPvt = id("robust-pvt");
-  var robustMc = id("robust-mc");
-  var robustStop = id("robust-stop");
-  var robustProgress = id("robust-progress");
-  var robustState = id("robust-state");
-  var robustCount = id("robust-count");
-  var robustTable = id("robust-table");
-  var robustError = id("robust-error");
-
-  var robustJob = null;
-  var robustTimer = null;
-
-  function robustIdle() {
-    if (robustTimer) {
-      clearTimeout(robustTimer);
-      robustTimer = null;
-    }
-    robustJob = null;
-    robustPvt.disabled = false;
-    robustMc.disabled = false;
-    show(robustProgress, false);
-    show(robustError, false);
-    clear(robustTable);
-  }
-
-  function renderRobustPanel() {
-    robustIdle();
-  }
-
-  function robustValue(value) {
-    return typeof value === "number" && isFinite(value)
-      ? window.formatEngineering(value, "")
-      : "\u2014";
-  }
-
-  function renderRobustTable(snapshot) {
-    clear(robustTable);
-    var keys = snapshot.keys && snapshot.keys.length
-      ? snapshot.keys
-      : (snapshot.rows[0] && snapshot.rows[0].measured
-         ? Object.keys(snapshot.rows[0].measured) : []);
-    if (!snapshot.rows.length) {
-      return;
-    }
-
-    var table = document.createElement("table");
-    var head = el("tr");
-    head.appendChild(el("th", null, snapshot.mode === "pvt" ? "condition" : "seed"));
-    keys.forEach(function (key) { head.appendChild(el("th", null, key)); });
-    table.appendChild(head);
-
-    snapshot.rows.forEach(function (row) {
-      var tr = el("tr");
-      tr.appendChild(el("td", null,
-        snapshot.mode === "pvt" ? row.label : String(row.seed)));
-      if (row.error) {
-        var cell = el("td", "is-bad", row.error);
-        cell.colSpan = keys.length;
-        tr.appendChild(cell);
-      } else {
-        keys.forEach(function (key) {
-          tr.appendChild(el("td", null, robustValue(row.measured[key])));
-        });
-      }
-      table.appendChild(tr);
-    });
-
-    if (snapshot.summary) {
-      if (snapshot.mode === "pvt") {
-        var tr = el("tr", "is-summary");
-        tr.appendChild(el("td", null, "worst case"));
-        keys.forEach(function (key) {
-          var item = snapshot.summary[key];
-          tr.appendChild(el("td", null,
-            item ? robustValue(item.value) + " @ " + item.at : "\u2014"));
-        });
-        table.appendChild(tr);
-      } else {
-        [["mean", "mean"], ["sigma", "sigma"]].forEach(function (pair) {
-          var line = el("tr", "is-summary");
-          line.appendChild(el("td", null, pair[1]));
-          keys.forEach(function (key) {
-            var item = snapshot.summary[key];
-            line.appendChild(el("td", null,
-              item ? robustValue(item[pair[0]]) : "\u2014"));
-          });
-          table.appendChild(line);
-        });
-      }
-    }
-    robustTable.appendChild(table);
-  }
-
-  function pollRobust() {
-    if (!robustJob) {
-      return;
-    }
-    fetch("/api/robust/status?job=" + encodeURIComponent(robustJob))
-      .then(function (response) { return response.json(); })
-      .then(function (snapshot) {
-        if (!robustJob) {
-          return;
-        }
-        robustCount.textContent =
-          snapshot.done + " / " + snapshot.total + " simulations";
-        renderRobustTable(snapshot);
-        if (snapshot.status === "running") {
-          robustState.textContent = "Running";
-          robustTimer = setTimeout(pollRobust, 1500);
-          return;
-        }
-        robustState.textContent =
-          snapshot.status === "done" ? "Finished"
-          : snapshot.status === "stopped" ? "Stopped" : "Failed";
-        robustPvt.disabled = false;
-        robustMc.disabled = false;
-        show(robustStop, false);
-        if (snapshot.status === "failed") {
-          robustError.textContent = snapshot.error ||
-            "The run failed. Check the console running server.py.";
-          show(robustError, true);
-        }
-      })
-      .catch(function () {
-        if (robustJob) {
-          robustTimer = setTimeout(pollRobust, 3000);
-        }
-      });
-  }
-
-  function startRobust(mode) {
-    if (!current.pdk || !validate()) {
-      return;
-    }
-    show(robustError, false);
-    clear(robustTable);
-    robustPvt.disabled = true;
-    robustMc.disabled = true;
-    robustState.textContent = "Starting";
-    robustCount.textContent = "";
-    show(robustProgress, true);
-    show(robustStop, true);
-
-    fetch("/api/robust", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ circuit: current.id, params: values(), mode: mode })
-    })
-      .then(function (response) {
-        return response.json().then(function (payload) {
-          if (!response.ok) {
-            throw new Error(payload && payload.error
-              ? payload.error : "The server refused the request.");
-          }
-          robustJob = payload.job;
-          pollRobust();
-        });
-      })
-      .catch(function (error) {
-        robustIdle();
-        robustError.textContent = String(error.message || error);
-        show(robustError, true);
-      });
-  }
-
-  robustPvt.addEventListener("click", function () { startRobust("pvt"); });
-  robustMc.addEventListener("click", function () { startRobust("mc"); });
-  robustStop.addEventListener("click", function () {
-    if (robustJob) {
-      fetch("/api/robust/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job: robustJob })
-      }).catch(function () {});
-    }
-  });
-
   /* ---- figure scale ------------------------------------------------------- */
 
   /* How many CSS pixels one drawing unit may become. A three-part divider
@@ -1671,15 +1321,11 @@
 
   function refitFigures() {
     fitSchematic();
-    if (lastStep && !stepFigure.classList.contains("hidden")) {
-      window.drawStep(id("step-plot"), lastStep);
-    }
-    if (lastSheet && !sheetFigure.classList.contains("hidden")) {
-      window.drawTransfer(id("sheet-plot"), lastSheet);
-    }
-    if (lastLayout && !layoutFigure.classList.contains("hidden")) {
-      window.drawFloorplan(id("layout-plot"), lastLayout);
-    }
+    panels.forEach(function (panel) {
+      if (panel.refit) {
+        panel.refit();
+      }
+    });
     if (lastBode && !bodePanel.classList.contains("hidden")) {
       window.drawBode(id("bode"), lastBode);
     }
@@ -1689,136 +1335,24 @@
 
 
 
-  /* ---- the floorplan ------------------------------------------------------ */
+  /* ---- the measurement panels -------------------------------------------
+     Each lives in its own file and registers a factory on
+     window.FaradaemPanels. They are handed the handful of things every
+     panel needs and nothing else, which is what let them move out of this
+     closure without their bodies changing. */
+  var panelContext = {
+    id: id,
+    show: show,
+    clear: clear,
+    el: el,
+    values: values,
+    validate: validate,
+    current: function () { return current; }
+  };
 
-  var layoutPanel = id("layout");
-  var layoutFigure = id("layout-figure");
-  var layoutRun = id("layout-run");
-  var layoutProgress = id("layout-progress");
-  var layoutState = id("layout-state");
-  var layoutMetrics = id("layout-metrics");
-  var layoutError = id("layout-error");
-  var layoutCaption = id("layout-caption");
-
-  var lastLayout = null;
-
-  function renderLayoutPanel() {
-    lastLayout = null;
-    layoutRun.disabled = false;
-    show(layoutProgress, false);
-    show(layoutError, false);
-    clear(layoutMetrics);
-    show(layoutFigure, false);
-    show(id("layout-gds"), false);
-  }
-
-  function pair(label, value) {
-    layoutMetrics.appendChild(el("span", "goal-label", label));
-    layoutMetrics.appendChild(el("span", "goal-value", value));
-  }
-
-  function renderLayoutResult(result) {
-    clear(layoutMetrics);
-    var plan = result.floorplan;
-
-    pair("area", plan.area_um2.toFixed(1) + " \u00b5m\u00b2");
-    pair("bounding box", plan.width_um.toFixed(2) + " \u00d7 "
-      + plan.height_um.toFixed(2) + " \u00b5m");
-    pair("device active area", plan.active_area_um2.toFixed(1) + " \u00b5m\u00b2");
-    pair("interconnect", window.formatEngineering(result.total_parasitic_f, "F"));
-    if (result.gds_bytes) {
-      pair("geometry", result.gds_bytes + " bytes of GDS");
-    }
-    // What was checked, and how much of the deck that is.
-    if (result.drc) {
-      pair("rule check", result.drc.clean
-        ? "clean on " + result.drc.rules_checked.length + " rules"
-        : result.drc.violations.length + " violations of "
-          + result.drc.rules_checked.length + " rules");
-    }
-
-    // What the interconnect actually cost, measured rather than asserted.
-    result.comparison.forEach(function (item) {
-      if (Math.abs(item.change) < 1e-12) {
-        return;
-      }
-      pair(item.key + " after wiring",
-        window.formatEngineering(item.after, "")
-        + "  (" + (item.change > 0 ? "+" : "")
-        + window.formatEngineering(item.change, "") + ")");
-    });
-
-    layoutCaption.textContent =
-      (current.floorplan && current.floorplan.caption) || "";
-    show(layoutFigure, true);
-    show(id("layout-gds"), Boolean(result.gds_base64));
-    window.drawFloorplan(id("layout-plot"), result);
-  }
-
-  function runLayout() {
-    if (!current.floorplan || !validate()) {
-      return;
-    }
-    show(layoutError, false);
-    clear(layoutMetrics);
-    show(layoutFigure, false);
-    layoutRun.disabled = true;
-    layoutState.textContent = "Placing devices, then measuring twice";
-    show(layoutProgress, true);
-
-    fetch("/api/layout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ circuit: current.id, params: values() })
-    })
-      .then(function (response) {
-        return response.json().then(function (payload) {
-          if (!response.ok) {
-            throw new Error(payload && payload.error
-              ? payload.error : "The server refused the request.");
-          }
-          lastLayout = payload;
-          layoutState.textContent = "Measured";
-          layoutRun.disabled = false;
-          renderLayoutResult(payload);
-        });
-      })
-      .catch(function (error) {
-        layoutRun.disabled = false;
-        show(layoutProgress, false);
-        layoutError.textContent = String(error.message || error);
-        show(layoutError, true);
-      });
-  }
-
-  layoutRun.addEventListener("click", runLayout);
-
-  var layoutGds = id("layout-gds");
-
-  /* The geometry, as the file every layout tool reads. Built in the page
-     from the bytes the server computed, so nothing is written to disk
-     unless the reader asks for it. */
-  function downloadGds() {
-    if (!lastLayout || !lastLayout.gds_base64) {
-      return;
-    }
-    var binary = window.atob(lastLayout.gds_base64);
-    var bytes = new Uint8Array(binary.length);
-    for (var i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    var url = URL.createObjectURL(new Blob([bytes],
-      { type: "application/octet-stream" }));
-    var link = document.createElement("a");
-    link.href = url;
-    link.download = current.id + "-floorplan.gds";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
-
-  layoutGds.addEventListener("click", downloadGds);
+  var panels = (window.FaradaemPanels || []).map(function (make) {
+    return make(panelContext);
+  });
 
 
   /* ---- the analysis tabs -------------------------------------------------- */
@@ -1835,7 +1369,7 @@
       available: function () { return Boolean(current.step); } },
     { key: "sheet", label: "Rejection and range",
       available: function () { return Boolean(current.datasheet); } },
-    { key: "layout", label: "Floorplan",
+    { key: "layout", label: "Layout",
       available: function () { return Boolean(current.floorplan); } },
     { key: "robust", label: "Robustness",
       available: function () { return Boolean(current.pdk); } }
@@ -1859,15 +1393,11 @@
     );
     // A plot drawn while its pane was hidden measured zero width, so it is
     // redrawn on the way in, when the element finally has a size.
-    if (key === "step" && lastStep) {
-      window.drawStep(id("step-plot"), lastStep);
-    }
-    if (key === "sheet" && lastSheet) {
-      window.drawTransfer(id("sheet-plot"), lastSheet);
-    }
-    if (key === "layout" && lastLayout) {
-      window.drawFloorplan(id("layout-plot"), lastLayout);
-    }
+    panels.forEach(function (panel) {
+      if (panel.key === key && panel.reveal) {
+        panel.reveal();
+      }
+    });
   }
 
   function renderAnalysis() {
@@ -1919,10 +1449,9 @@
     renderPresets();
     renderInputs(memory[current.id]);
     renderDesignPanel();
-    renderStepPanel();
-    renderSheetPanel();
-    renderLayoutPanel();
-    renderRobustPanel();
+    panels.forEach(function (panel) {
+      panel.render(current);
+    });
     renderAnalysis();
     hideNetlist();
     validate();

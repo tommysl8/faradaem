@@ -21,6 +21,15 @@ schematic, with the verification done by the simulator rather than asserted by a
 - [x] **V0.8** topology selection
 - [x] **V0.9** PVT + Monte Carlo
 - [x] **V1.0** spec in, verified schematic out
+- [x] **V1.2** slew rate and settling, measured on a real step
+- [x] **V1.3** swing, common-mode range, CMRR and PSRR
+- [x] **V1.5** floorplan area, GDS output, and the specs measured again under the interconnect
+- [x] **V1.6** the drawn geometry checked against the PDK rather than assumed
+- [x] **V1.7** the p-channel devices drawn in an n-well, and the well checked
+- [x] **V1.8** the nets routed, so the interconnect is measured off drawn metal
+- [x] **V1.9** contacts, local interconnect and implants
+- [x] **V1.10** gate contacts, two metal layers, taps, and layout versus schematic
+- [ ] **V2.0** the full sign-off rule deck, device sizes compared, and real extraction
 
 0.1.5 expanded the circuit library to five circuits behind a data-driven registry
 (`spice/circuits.py`): DC divider, RC low-pass, RC high-pass, series RLC band-pass, and an
@@ -65,8 +74,24 @@ across conditions rather than demonstrated once.
 1.0.0 closed the loop. In the acceptance run, one plain-English sentence became
 a two-stage op-amp that meets every target at every one of eleven PVT
 conditions, designed by a model driving the seed, simulate, iterate and corner
-tools, with every number measured by ngspice. Verified does not yet mean
-layout or silicon; per the longer plan, those come next.
+tools, with every number measured by ngspice.
+
+1.10.0 closed the other one. The devices are drawn as a real stack, the nets are
+routed on two metal layers joined by vias, the wells and substrate have their
+taps, and the geometry is checked twice: against thirty-two rules read from the
+PDK, and against the netlist ngspice actually ran. That second check is the one
+that matters, because geometry can satisfy every spacing rule in the deck while
+connecting a gate to the wrong net, and nothing about the picture would look
+wrong.
+
+The foundry's own deck runs over the result. The first time it did, it failed
+geometry the hand checker had called clean, forty violations across three
+rules, all of them a via needing more metal along one axis than it needs all
+round. That is the case for installing real tools rather than writing more
+checks, made as an experiment rather than an argument. What is still missing
+is device sizes compared against the schematic, a field-solver extraction, and
+the parts of each circuit that no layout here draws: the bias current, the
+load, and the compensation network.
 
 0.6.1 made the flow spec-first: enter only the targets and the system creates the
 starting design itself, measures it, and iterates only when the measurement falls
@@ -113,14 +138,16 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `static/schematic.js` | SVG symbol primitives plus one compose function per circuit. |
 | `static/bodeplot.js` | SVG Bode plot: stacked magnitude and phase axes over log frequency. |
 | `static/stepplot.js` | SVG plots with a linear x axis: the step response over time, and the DC transfer curve over input voltage. |
-| `static/layoutplot.js` | The floorplan drawn to scale in microns, with a scale bar. |
+| `static/layoutplot.js` | The layout drawn to scale in microns: devices, wells, taps and both metal layers, with a scale bar. |
 | `static/app.js` | Mode switching, form handling, simulate calls, result and error rendering. |
 | `spice/design.py` | The design iterator: goals, margins, and a coordinate search with a real simulator in the loop. |
 | `spice/llm.py`, `spice/strategist.py` | The LLM layer: Anthropic and OpenAI clients over urllib, and the tool-driving strategist that never computes a value. |
 | `spice/pvt.py` | PVT corners and Monte Carlo mismatch, done by editing the finished netlist text. |
-| `spice/layout.py` | Floorplan and interconnect: device geometry and layer capacitance read from the PDK's own technology file. |
+| `spice/layout.py` | Placement, the device stack, the taps and the router: every dimension read from the PDK's own technology file. |
 | `spice/gds.py` | A GDSII writer in the standard library, so the geometry can be opened in a layout tool. |
-| `spice/drc.py` | The five design rules that apply to the drawn geometry, checked against the PDK's own values. Not the sign-off deck. |
+| `spice/drc.py` | Thirty-five design rules read from the PDK, checked while the geometry is drawn. The fast loop, not the answer. |
+| `spice/signoff.py` | The answer: the SKY130 runset the PDK ships, run by KLayout over the same GDS. Reimplements nothing. |
+| `spice/lvs.py` | Layout versus schematic: what the drawing connects, worked out from the geometry, compared against the netlist that was simulated. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `tools/make_brand.py` | The mark: the AE ligature lifted out of a font file and baked into the favicon, the touch icon and the Open Graph card, all from one geometry. |
 | `tools/build_static.py` | The published site: the pages, the assets and the catalogue, for a host that cannot run a simulator. |

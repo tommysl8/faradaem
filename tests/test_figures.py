@@ -59,9 +59,14 @@ def test_the_analyses_live_in_one_tabbed_section():
     assert "function renderAnalysis()" in app
     assert "function showAnalysis(" in app
     # A plot drawn while its pane was hidden measures zero width, so it has
-    # to be drawn again on the way in.
+    # to be drawn again on the way in. Each panel owns that redraw now, so
+    # what this checks is that the reveal reaches every panel rather than
+    # naming three of them.
     reveal = app.split("function showAnalysis")[1][:900]
-    assert "drawStep" in reveal and "drawTransfer" in reveal
+    assert "panels.forEach" in reveal
+    assert "panel.reveal()" in reveal
+    for name in ("panel-step", "panel-sheet", "panel-layout"):
+        assert "reveal:" in read("static/%s.js" % name), name
 
 
 def test_the_hidden_utility_cannot_be_overridden():
@@ -80,13 +85,15 @@ def test_metric_pairs_are_cells_not_wrapped_rows():
     assert "display: grid;" in grid[:120]
     assert "grid-template-columns: max-content 1fr;" in grid[:200]
 
-    app = read("static/app.js")
-    for container in ("stepMetrics", "sheetMetrics"):
-        assert container + '.appendChild(el("span", "goal-label"' in app
-        assert container + '.appendChild(el("span", "goal-value"' in app
-    # No wrapper survives in either renderer.
-    for renderer in ("renderStepResult", "renderSheetResult"):
-        body = app.split("function " + renderer)[1][:1200]
+    # The renderers live with their panels now.
+    for container, source, renderer in (
+            ("stepMetrics", "panel-step", "renderStepResult"),
+            ("sheetMetrics", "panel-sheet", "renderSheetResult")):
+        panel = read("static/%s.js" % source)
+        assert container + '.appendChild(el("span", "goal-label"' in panel
+        assert container + '.appendChild(el("span", "goal-value"' in panel
+        # No wrapper survives in either renderer.
+        body = panel.split("function " + renderer)[1][:1200]
         assert 'el("div")' not in body, renderer
 
 
@@ -119,3 +126,83 @@ def test_plot_titles_live_outside_the_frames():
     assert 'text: "mag"' not in bode
     # Ticks read 10 kHz, not 10.00 kHz, so neighbours cannot touch.
     assert "function decadeLabel(" in bode
+
+
+# ---------------------------------------------------------------------------
+# the layout drawing shows what the file holds
+# ---------------------------------------------------------------------------
+
+
+def test_the_layout_drawing_shows_the_taps_and_the_routing():
+    """A picture that leaves out what the GDS holds is not a picture of that
+    GDS. The taps and both metal layers are in the file, so they are in the
+    drawing."""
+    plot = read("static/layoutplot.js")
+    for drawn in ("fp-tap", "fp-track", "fp-stub", "fp-well"):
+        assert drawn in plot, drawn
+    # And each has somewhere to be styled.
+    style = read("static/style.css")
+    for rule in (".fp-tap", ".fp-track", ".fp-stub"):
+        assert rule in style, rule
+
+
+def test_the_drawing_sizes_itself_to_everything_it_draws():
+    """The taps sit above the device row and the routing above those. A
+    drawing that measures only the devices clips the rest."""
+    plot = read("static/layoutplot.js")
+    assert "plan.taps" in plot
+    assert "data.routing" in plot
+    # One span covering all of it, not the device row alone.
+    assert "function cover(box)" in plot
+
+
+def test_every_shape_goes_through_one_mapping():
+    """Two ways of turning microns into pixels is two chances to disagree
+    with the geometry the numbers were measured over."""
+    plot = read("static/layoutplot.js")
+    assert "function pageX(" in plot
+    assert "function pageY(" in plot
+
+
+def test_the_panel_is_no_longer_called_a_floorplan():
+    """It routes, checks thirty-two rules and compares against the netlist.
+    Calling that a floorplan undersells it and misleads."""
+    page = read("index.html")
+    app = read("static/app.js")
+    assert '<h2 class="panel-head">Layout</h2>' in page
+    assert 'label: "Layout"' in app
+
+
+# ---------------------------------------------------------------------------
+# the front end has no module system, so scope is the thing to watch
+# ---------------------------------------------------------------------------
+
+
+def test_no_script_declares_one_name_twice():
+    """Two `function foo()` in one closure is not an error in JavaScript.
+    The later one silently wins for the whole scope, including for calls
+    written above it.
+
+    This is not hypothetical. app.js declared stepValue twice, once for
+    arrow-key stepping and once to format a step-response metric, and the
+    formatter won: pressing the up arrow on any form field replaced its
+    contents with an em dash. Nothing failed, nothing logged, and the
+    feature was simply gone.
+    """
+    import re
+
+    for name in ("app.js", "schematic.js", "bodeplot.js", "stepplot.js",
+                 "layoutplot.js"):
+        source = read("static/" + name)
+        declared = re.findall(r"^  function ([A-Za-z_$][\w$]*)", source, re.M)
+        repeated = sorted({n for n in declared if declared.count(n) > 1})
+        assert not repeated, (name, repeated)
+
+
+def test_the_arrow_key_stepper_is_the_one_exposed_for_testing():
+    """FaradaemAppInternals exists so the stepping arithmetic can be
+    checked. It has to be pointing at the stepper."""
+    source = read("static/app.js")
+    assert "window.FaradaemAppInternals = { stepValue: stepValue };" in source
+    # Three arguments: the value, the direction, and whether shift was held.
+    assert "function stepValue(value, direction, shift)" in source

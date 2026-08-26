@@ -38,6 +38,7 @@ PAGES = ("index.html", "manual.html", "about.html", "changelog.html")
 ASSETS = (
     "style.css", "app.js", "schematic.js", "bodeplot.js", "stepplot.js",
     "layoutplot.js",
+    "panel-step.js", "panel-sheet.js", "panel-robust.js", "panel-layout.js",
     "icon.svg", "icon-32.png", "apple-touch-icon.png", "og.png",
     "favicon.svg",
 )

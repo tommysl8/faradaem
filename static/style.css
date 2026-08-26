@@ -1,4 +1,4 @@
-/* Faradaem 1.6.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.9.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -109,7 +109,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.6.0";
+  --app-version: "v1.9.0";
 }
 
 *,
@@ -1812,4 +1812,172 @@ input {
   html {
     scroll-behavior: auto;
   }
+}
+
+/* ---- verification: verdicts, not measurements ---------------------------
+   A rule check and a layout-versus-schematic answer a yes-or-no question,
+   so they are shown as answers rather than as two more rows of numbers. */
+.verify {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: var(--hairline);
+}
+
+.verify-title {
+  margin: 0 0 var(--s3);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.verify-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s2);
+}
+
+.verify-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.verify-mark {
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  padding: var(--s1) var(--s2);
+  border: var(--hairline-w) solid currentColor;
+  white-space: nowrap;
+}
+
+.verify-item.is-pass .verify-mark { color: var(--ok); }
+.verify-item.is-fail .verify-mark { color: var(--err); }
+
+.verify-text {
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  color: var(--text);
+  min-width: 0;
+}
+
+.verify-text .verify-what {
+  display: block;
+  color: var(--muted);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+}
+
+.verify-problems {
+  margin: var(--s2) 0 0;
+  padding: 0 0 0 var(--s4);
+  color: var(--err);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+}
+
+.verify-note {
+  margin: var(--s3) 0 0;
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  color: var(--muted);
+}
+
+/* ---- the manual's contents ---------------------------------------------
+   Nineteen sections in one column is a document you scroll through hunting.
+   The groups are the order the tool is actually used in, not the order the
+   sections happen to sit in. */
+.toc {
+  margin: 0 0 var(--s6);
+  padding-bottom: var(--s5);
+  border-bottom: var(--hairline);
+}
+
+.toc-title {
+  margin: 0 0 var(--s4);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.toc-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--col-min), 1fr));
+  gap: var(--s5);
+}
+
+.toc-group {
+  min-width: 0;
+}
+
+.toc-group-name {
+  margin: 0 0 var(--s2);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.toc-list {
+  margin: 0;
+  padding-left: var(--s4);
+  display: grid;
+  gap: var(--s1);
+}
+
+.toc-list li {
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  color: var(--muted);
+}
+
+.toc-list a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: var(--hairline-w) solid transparent;
+  transition: color var(--step) ease, border-color var(--step) ease;
+}
+
+.toc-list a:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent-underline);
+}
+
+/* A heading landed on from the contents should not sit under the sticky
+   nav bar. */
+.prose h2[id] {
+  scroll-margin-top: calc(var(--s6) + var(--s5));
+}
+
+/* The taps, and the routing above them. Both are in the GDS, so both are
+   in the picture: a drawing that leaves out what the file holds is not a
+   drawing of that file. */
+.figure svg .fp-tap {
+  fill: rgba(198, 205, 218, 0.35);
+  stroke: var(--line-strong);
+  stroke-width: 0.8;
+}
+
+.figure svg .fp-track {
+  fill: rgba(34, 211, 238, 0.55);
+  stroke: none;
+}
+
+.figure svg .fp-stub {
+  fill: rgba(34, 211, 238, 0.28);
+  stroke: none;
+}
+
+.figure svg .fp-net {
+  fill: var(--accent);
+  font-family: var(--mono);
+  font-size: 9px;
 }
