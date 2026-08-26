@@ -14,6 +14,14 @@
 - UI copy is sentence case and directive: say what to do, not just what went wrong.
 - Presets live in the registry alongside the circuit they demonstrate.
 
+## Matching and the experiment (added for 1.11.0)
+- Matched pairs are declared per circuit in the registry as `"matched": [["M1","M2"], ...]`, and drawn common centroid: two fingers each, interleaved A B B A, with a dummy at each end. The test is exact: both centroids must be equal.
+- A finger is named `M1@1`. `layout.device_of()` maps it back; `layout.is_dummy()` spots a dummy. Dummies are drawn, tied to their body rail, and declared in the LVS netlist, because the layout has them.
+- Fingering makes one device into N in parallel. Both sides of the LVS comparison are combined with KLayout's `combine_devices`, never one side only.
+- Simulations are counted at the two `subprocess.run` sites in `spice/runner.py`, never at the caller. Use `runner.SimObserver` + `runner.observing()`. A budget is enforced there too.
+- The ledger (`spice/ledger.py`) writes to `~/.faradaem/ledger` or `FARADAEM_LEDGER`, never the project folder. `KINDS` and `AUTHORS` are closed sets on purpose.
+- The comparison spec must be proved infeasible at the reference sizing before it is run. At the registry defaults every circuit already meets its own targets, which makes the experiment vacuous.
+
 ## Sign-off tooling (installed for 1.10.0)
 - KLayout 0.30.11 is machine tooling, both as the `klayout` pip package (for reading GDS) and as the application at %APPDATA%\KLayout\klayout_app.exe (for running decks). Neither goes in requirements.txt. pytest stays the only dependency.
 - The sign-off deck is the PDK's own: sky130A/libs.tech/klayout/drc/sky130A_mr.drc. Never copy a runset into the project; a copy drifts from the models it is supposed to match.

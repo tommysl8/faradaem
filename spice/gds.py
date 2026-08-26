@@ -29,6 +29,10 @@ BOUNDARY = 0x0800
 LAYER = 0x0D02
 DATATYPE = 0x0E02
 XY = 0x1003
+TEXT = 0x0C00
+TEXTTYPE = 0x1602
+PRESENTATION = 0x1701
+STRING = 0x1906
 ENDEL = 0x1100
 ENDSTR = 0x0700
 ENDLIB = 0x0400
@@ -108,7 +112,26 @@ def rectangle(layer, datatype, x1, y1, x2, y2):
             + _record(ENDEL))
 
 
-def library(name, structure, shapes, when=None):
+def label(layer, datatype, x, y, text):
+    """One text record, in database units.
+
+    A cell with no labels is a picture of a circuit: correct, and unusable
+    by anyone else's tool, because nothing in it says which piece of metal
+    is the output. Every layout format carries these and every downstream
+    step -- an LVS that matches by name, a router placing this cell, a
+    person probing it -- reads them.
+    """
+    return (_record(TEXT)
+            + _record(LAYER, struct.pack(">h", layer))
+            + _record(TEXTTYPE, struct.pack(">h", datatype))
+            # Centred on the point, which is where a pin label belongs.
+            + _record(PRESENTATION, struct.pack(">H", 0x0005))
+            + _record(XY, struct.pack(">ii", int(round(x)), int(round(y))))
+            + _record(STRING, _ascii(text))
+            + _record(ENDEL))
+
+
+def library(name, structure, shapes, when=None, labels=None):
     """A complete GDSII stream holding one structure of rectangles.
 
     shapes is a list of (layer, datatype, x1, y1, x2, y2) in microns; they
@@ -121,6 +144,11 @@ def library(name, structure, shapes, when=None):
                   x2 * DB_PER_MICRON, y2 * DB_PER_MICRON)
         for layer, datatype, x1, y1, x2, y2 in shapes
     )
+
+    for entry in labels or []:
+        layer, datatype, x, y, text = entry
+        body += label(layer, datatype,
+                      x * DB_PER_MICRON, y * DB_PER_MICRON, text)
 
     stamp = _timestamp(when)
     return (

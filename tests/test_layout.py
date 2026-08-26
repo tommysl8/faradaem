@@ -427,7 +427,10 @@ def live_layout():
 @requires_live_pdk
 def test_live_floorplan_is_the_size_of_its_devices(live_layout):
     plan = live_layout["floorplan"]
-    assert len(plan["devices"]) == 8
+    # Eight schematic devices, drawn matched: the two declared pairs split
+    # into two fingers each and gain a dummy at both ends of each array,
+    # so eight becomes sixteen placed transistors.
+    assert len(plan["devices"]) == 16
     # The output driver is the widest device, so it sets the height.
     assert plan["height_um"] == pytest.approx(40.0)
     assert plan["area_um2"] > plan["active_area_um2"] > 0
@@ -507,11 +510,18 @@ def test_a_bulk_pin_is_carried_by_a_tap_and_not_by_a_stub():
     assert ("ptap", "tap") in aimed
 
 
-def test_a_net_with_only_a_bulk_pin_still_needs_no_wire():
+def test_a_net_with_only_a_bulk_pin_ties_the_ring_and_nothing_else():
+    """Before guard rings, a bulk-only net drew nothing: the tap alone was
+    one landing, and one landing is not a wire. The ring changed that --
+    an untied guard ring is a doped strip that does nothing -- so the rail
+    is now drawn. What must still be true is that it lands only on taps
+    and rings, never on the transistor's own terminals."""
     tech = routing_tech()
     plan = layout.floorplan([("A", 10e-6, 0.5e-6)], tech)
-    # The tap alone is one landing, and one landing is not a wire.
-    assert layout.route(plan, {"gnd": [("A", "bulk")]}, tech) == {}
+    routed = layout.route(plan, {"gnd": [("A", "bulk")]}, tech)
+    assert "gnd" in routed
+    for name, terminal in routed["gnd"]["pins"]:
+        assert terminal == "tap", (name, terminal)
 
 
 def test_every_net_gets_its_own_track():

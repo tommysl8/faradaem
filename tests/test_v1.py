@@ -102,13 +102,15 @@ def test_spec_in_verified_schematic_out(monkeypatch):
     tools_used = [e["tool"] for e in events if e["kind"] == "tool" and e["ok"]]
     assert tools_used == ["seed_design", "run_design", "run_corners"]
 
-    design_card = [e for e in events if e.get("tool") == "run_design"][0]
+    design_card = [e for e in events if e["kind"] == "tool"
+                   and e.get("tool") == "run_design"][0]
     assert design_card["display"]["feasible"] is True
     best = design_card["display"]["best"]
     # The design's own load condition survived into the winning params.
     assert best["params"]["cl"] == pytest.approx(5e-12)
 
-    corners_card = [e for e in events if e.get("tool") == "run_corners"][0]
+    corners_card = [e for e in events if e["kind"] == "tool"
+                    and e.get("tool") == "run_corners"][0]
     worst = corners_card["display"]["worst"]
     # Verified across corners: the worst case still meets every target.
     assert worst["loop_gain_db"]["value"] >= TARGETS["loop_gain_db"]

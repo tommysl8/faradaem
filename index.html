@@ -45,22 +45,36 @@
   <div class="wrap">
 
     <section class="hero">
-      <p class="hero-kicker">Analog IC design, verified</p>
-      <h1 class="hero-title">Spec in. Verified schematic out.</h1>
-      <p class="hero-sub">Describe the circuit you need in plain language. A
-      strategist sizes it against real ngspice runs, iterates until your numbers
-      hold, and proves them across corners. No value on this page was ever
-      estimated.</p>
-      <div class="hero-actions">
-        <a class="hero-cta" href="#advise">Ask for a design</a>
-        <a class="hero-alt" href="/manual">Read the manual</a>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="hero-kicker">Analog IC design, verified</p>
+          <h1 class="hero-title">Spec in. Signed-off silicon out.</h1>
+          <p class="hero-sub">Describe the circuit you need in plain language.
+          A strategist sizes it against real ngspice runs, iterates until your
+          numbers hold, lays it out matched and guarded, and has the foundry's
+          own deck check the result. No value on this page was ever
+          estimated.</p>
+          <div class="hero-actions">
+            <a class="hero-cta" href="#advise">Ask for a design</a>
+            <a class="hero-alt" href="/manual">Read the manual</a>
+          </div>
+          <ul class="hero-facts">
+            <li>Real ngspice runs</li>
+            <li>Foundry deck: 0 violations</li>
+            <li>LVS by KLayout's engine</li>
+            <li>11 PVT corners</li>
+          </ul>
+        </div>
+        <figure class="hero-figure">
+          <img src="/static/hero-layout.svg" alt="The folded cascode as
+          Faradaem drew it: thirty-four placed devices, five common-centroid
+          arrays, guard rings and two metal layers of routing."
+          width="472" height="578" loading="eager">
+          <figcaption>The folded cascode, exactly as this tool drew it.
+          Every rectangle is in the GDS the foundry's deck checked:
+          common-centroid pairs, dummies, guard rings, two metals.</figcaption>
+        </figure>
       </div>
-      <ul class="hero-facts">
-        <li>Real ngspice runs</li>
-        <li>SKY130 transistors</li>
-        <li>11 PVT corners</li>
-        <li>Mismatch Monte Carlo</li>
-      </ul>
     </section>
 
     <div class="sim">
@@ -103,7 +117,10 @@
           </div>
           <div id="inputs"></div>
           <button class="run" id="run" type="submit"><span id="run-label">Run simulation</span></button>
-          <p class="hint">Press Enter to run. Use the arrow keys to step a value.</p>
+          <p class="hint"><kbd>Enter</kbd> runs &middot;
+          <kbd>&uarr;</kbd><kbd>&darr;</kbd> step a digit &middot;
+          <kbd>Shift</kbd> steps a decade &middot;
+          <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs from anywhere</p>
           <button class="chip netlist-toggle" id="netlist-toggle" type="button">View netlist</button>
           <pre class="netlist-pre hidden" id="netlist-view"></pre>
         </div>
@@ -131,6 +148,25 @@
 
 
         <h2 class="section-label">Measurement</h2>
+
+        <div class="bench" id="bench" aria-label="Verification state">
+          <div class="bench-slot" id="bench-sim">
+            <span class="bench-label">Simulated</span>
+            <span class="bench-state">not yet</span>
+          </div>
+          <div class="bench-slot" id="bench-drc">
+            <span class="bench-label">Rules, fast</span>
+            <span class="bench-state">not yet</span>
+          </div>
+          <div class="bench-slot" id="bench-signoff">
+            <span class="bench-label">Foundry deck</span>
+            <span class="bench-state">not yet</span>
+          </div>
+          <div class="bench-slot" id="bench-lvs">
+            <span class="bench-label">LVS, engine</span>
+            <span class="bench-state">not yet</span>
+          </div>
+        </div>
 
         <div class="result" id="result">
           <div class="result-row">

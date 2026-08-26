@@ -1,22 +1,34 @@
-"""The four-way comparison from the research plan, measured head to head.
+"""The four-way comparison from the research plan, run end to end.
 
-Four ways to arrive at an op-amp meeting one spec, all judged by the same
-simulator on the same targets:
+Four ways to arrive at one op-amp meeting one spec, judged by the same
+simulator on the same targets, counted on the same axis:
 
-    human            the hand-designed Balanced sizing, simulated as-is
-    optimizer        seed from the targets, iterate only if the seed is short
-    llm              a model proposing parameter sets directly; its only tool
-                     is the simulator, so every proposal is measured, but the
-                     numeric search is on the model
-    llm+optimizer    the full strategist, with seeding and the iterator
+    reference        the sizing already in the registry, measured once. It
+                     did not see the spec and it does not search. It is the
+                     baseline, and it is not a human-design arm: a person
+                     designing to this spec, with their attempts recorded,
+                     has not been run.
+    optimizer        the numerical search, from the geometric centre of the
+                     declared box -- cold, owing nothing to any design.
+    llm              a model with the simulator and nothing else: it must
+                     propose complete parameter sets and measure each.
+    llm+optimizer    the same model with the full shipped toolset.
 
-The LLM rows run once per provider that has a key, and are marked pending
-when no key is set. Every number in the output came from ngspice.
+and two ablations, which are the honest measurement of what the hand design
+and the hand-written seed heuristic are worth:
 
-Run it from the project root:
+    optimizer_from_reference   the same search, started at the hand sizing
+    optimizer_from_seed        the same search, started at the seed rule
+
+Every simulation is counted where it happens, at the ngspice subprocess, so
+a session that calls the corner suite is charged the eleven runs it spends.
+Every arm gets the same budget. Every arm is scored on the design it
+declares, re-simulated afterwards by this harness rather than on the best
+point it happened to touch. Every attempt is written to the ledger.
 
     .venv\\Scripts\\python.exe compare.py
-    .venv\\Scripts\\python.exe compare.py --target power=1e-4 --budget 40
+    .venv\\Scripts\\python.exe compare.py --repeats 3 --provider anthropic
+    .venv\\Scripts\\python.exe compare.py --skip-llm
 """
 
 from __future__ import annotations
@@ -24,183 +36,122 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import tempfile
+import random
+import sys
 import time
 
-from spice import circuits, design, llm, strategist
-
-CIRCUIT = "opamp_two_stage"
-
-LLM_ONLY_TOOLS = [
-    tool for tool in strategist.TOOLS if tool["name"] in ("list_circuits", "simulate")
-]
+from spice import circuits, design, experiment, ledger, llm
 
 
-def spec_message(targets):
-    return (
-        "Design the SKY130 two-stage op-amp (circuit id opamp_two_stage) to "
-        "meet all of these, then stop: open-loop gain at least "
-        + "%g" % targets["loop_gain_db"] + " dB, unity-gain bandwidth at least "
-        + "%g" % targets["f_crossover"] + " Hz, phase margin at least "
-        + "%g" % targets["phase_margin"] + " degrees, power at most "
-        + "%g" % targets["power"] + " W."
-    )
+def run_all(spec, repeats, provider, skip_llm, restarts, book):
+    """Every arm, in an order that puts the cheap certainties first."""
+    results = []
 
+    found = experiment.preflight(spec, book)
+    print(experiment.table([], found))
 
-def score_of(measured, goals, targets):
+    print("Running: reference ...", flush=True)
+    results.append(experiment.arm_reference(spec, book))
+
+    print("Running: optimizer (cold start) ...", flush=True)
+    results.append(experiment.arm_optimizer(spec, book))
+
+    sets = experiment.toolsets(spec)
+    for name in ("llm", "llm_optimizer"):
+        for index in range(repeats):
+            label = name if repeats == 1 else "%s#%d" % (name, index + 1)
+            if skip_llm:
+                results.append(experiment._result(
+                    label, "not_run", why="--skip-llm was given"))
+                continue
+            print("Running: %s (%s) ..." % (label, provider), flush=True)
+            results.append(experiment.arm_llm(
+                spec, provider, sets[name], label, book,
+                message=experiment.spec_message(spec, sets[name])))
+
+    # The ablations, below the four: what the priors are worth.
+    print("Running: ablation, optimizer from the reference sizing ...",
+          flush=True)
+    results.append(experiment.arm_optimizer(
+        spec, book, start=dict(circuits.defaults(spec["circuit"])),
+        label="optimizer_from_reference", origin="reference"))
+
     try:
-        score, _ = design.score_measurement(goals, targets, measured)
-        return score
-    except (KeyError, TypeError):
-        return None
+        seeded, _ = design.seed_params(
+            spec["circuit"], spec["targets"],
+            dict(circuits.defaults(spec["circuit"])))
+        print("Running: ablation, optimizer from the seed heuristic ...",
+              flush=True)
+        results.append(experiment.arm_optimizer(
+            spec, book, start=seeded, label="optimizer_from_seed",
+            origin="seed_heuristic"))
+    except design.DesignError as exc:
+        results.append(experiment._result(
+            "optimizer_from_seed", "not_run", why=str(exc).splitlines()[0]))
 
+    rng = random.Random(20260826)
+    for index in range(restarts):
+        label = "optimizer_restart#%d" % (index + 1)
+        print("Running: %s ..." % label, flush=True)
+        results.append(experiment.arm_optimizer(
+            spec, book, start=experiment.random_start(spec, rng),
+            label=label, origin="random", rng_seed=20260826 + index))
 
-def row_human(goals, targets):
-    balanced = [p for p in circuits.get_circuit(CIRCUIT)["presets"]
-                if p["label"] == "Balanced"][0]["params"]
-    started = time.time()
-    measured = circuits.simulate(CIRCUIT, dict(balanced))
-    return {
-        "measured": {g["key"]: measured[g["key"]] for g in goals},
-        "score": score_of(measured, goals, targets),
-        "sims": 1,
-        "seconds": time.time() - started,
-    }
-
-
-def row_optimizer(goals, targets, budget):
-    started = time.time()
-    seeded, resolved = design.seed_params(
-        CIRCUIT, targets, circuits.defaults(CIRCUIT)
-    )
-    measured = circuits.simulate(CIRCUIT, seeded)
-    sims = 1
-    score = score_of(measured, goals, resolved)
-    best = {g["key"]: measured[g["key"]] for g in goals}
-
-    if score is None or score < 0:
-        result = design.run_design(CIRCUIT, seeded, targets, budget)
-        sims += result["evals"]
-        if result["best"] is not None:
-            best = result["best"]["measured"]
-            score = result["best"]["score"]
-
-    return {"measured": best, "score": score, "sims": sims,
-            "seconds": time.time() - started}
-
-
-def row_llm(provider, goals, targets, tools):
-    """One strategist session; the best measured op-amp point wins."""
-    client = llm.get_client(provider)
-    started = time.time()
-    best = None
-    best_score = None
-    sims = 0
-
-    def on_event(event):
-        nonlocal best, best_score, sims
-        if event["kind"] != "tool" or not event["ok"]:
-            return
-        display = event["display"]
-        candidates = []
-        if display.get("circuit") == CIRCUIT and display.get("measured"):
-            candidates.append(display["measured"])
-            sims += 1
-        if display.get("circuit") == CIRCUIT and display.get("best"):
-            candidates.append(display["best"]["measured"])
-            sims += display.get("evals") or 0
-        for measured in candidates:
-            score = score_of(measured, goals, targets)
-            if score is not None and (best_score is None or score > best_score):
-                best, best_score = measured, score
-
-    message = spec_message(targets)
-    if tools is not None:
-        # The llm-only row has no seeder and no iterator, and the system
-        # prompt describes both. Say plainly what this mode asks of it.
-        message += (" You have no seeding or optimizer tool in this session: "
-                    "propose complete parameter sets yourself and verify every "
-                    "one with the simulate tool. Report your best measured "
-                    "design.")
-    state = strategist.advise(
-        client,
-        [{"role": "user", "text": message}],
-        on_event,
-        tools=tools,
-    )
-    return {
-        "measured": best, "score": best_score, "sims": sims,
-        "seconds": time.time() - started, "state": state,
-    }
-
-
-def fmt_row(name, row):
-    if row is None:
-        return "%-28s %s" % (name, "pending: no API key set")
-    if row.get("measured") is None:
-        return "%-28s %s" % (name, "no measured op-amp point (state: "
-                             + row.get("state", "?") + ")")
-    m = row["measured"]
-    return ("%-28s gain %6.2f dB  UGBW %9.4g Hz  PM %6.2f deg  "
-            "power %7.2f uW  score %+.3f  sims %3d  %5.0f s" % (
-                name, m["loop_gain_db"], m["f_crossover"], m["phase_margin"],
-                m["power"] * 1e6, row["score"], row["sims"], row["seconds"]))
+    return results, found
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--target", action="append", default=[],
-                        metavar="key=value",
-                        help="override one target, e.g. --target power=1e-4")
-    parser.add_argument("--budget", type=int, default=40,
-                        help="iterator budget for the optimizer rows")
-    parser.add_argument("--skip-llm", action="store_true",
-                        help="run only the offline rows")
+    parser.add_argument("--repeats", type=int, default=3,
+                        help="LLM sessions per arm; they are not deterministic")
+    parser.add_argument("--restarts", type=int, default=0,
+                        help="extra random cold starts for the numerical arm")
+    parser.add_argument("--provider", default="anthropic")
+    parser.add_argument("--skip-llm", action="store_true")
+    parser.add_argument("--budget", type=int, default=None,
+                        help="simulations per arm; the spec's default is 60")
     args = parser.parse_args()
 
-    block = circuits.get_circuit(CIRCUIT)["design"]
-    goals = block["goals"]
-    overrides = {}
-    for item in args.target:
-        key, _, value = item.partition("=")
-        overrides[key] = value
-    targets = design.resolve_targets(block, overrides)
+    spec = dict(experiment.AMP1)
+    if args.budget:
+        spec["budget"] = args.budget
 
-    print("Spec:", spec_message(targets))
+    book = ledger.Ledger()
+    print("Ledger:", book.path)
     print()
 
-    results = {}
-    results["human"] = row_human(goals, targets)
-    print(fmt_row("human (Balanced)", results["human"]))
-    results["optimizer"] = row_optimizer(goals, targets, args.budget)
-    print(fmt_row("optimizer", results["optimizer"]))
+    started = time.time()
+    results, found = run_all(spec, args.repeats, args.provider,
+                             args.skip_llm, args.restarts, book)
 
-    providers = [] if args.skip_llm else [
-        item["name"] for item in llm.available_providers()
-    ]
-    for provider in ("anthropic", "openai"):
-        for mode, tools in (("llm", LLM_ONLY_TOOLS), ("llm+optimizer", None)):
-            name = mode + " (" + provider + ")"
-            if provider not in providers:
-                results[name] = None
-                print(fmt_row(name, None))
-                continue
-            try:
-                results[name] = row_llm(provider, goals, targets, tools)
-            except llm.LlmError as exc:
-                results[name] = {"error": str(exc)}
-                print("%-28s error: %s" % (name, exc))
-                continue
-            print(fmt_row(name, results[name]))
-
-    # Dash, not underscore: faradaem_* names are reserved for throwaway
-    # simulation files, and the temp-hygiene test treats any leftover as a leak.
-    out_path = os.path.join(tempfile.gettempdir(), "faradaem-comparison.json")
-    with open(out_path, "w", encoding="utf-8") as handle:
-        json.dump({"targets": targets, "results": results}, handle, indent=1)
     print()
-    print("Full results written to", out_path)
+    print(experiment.table(results, found))
+    print()
+    print("Ran in %.0f s. Every number above came from ngspice."
+          % (time.time() - started))
+
+    book.record("end", by="tool",
+                arms_planned=len(results),
+                arms_completed=sum(1 for row in results
+                                   if row["status"] == "completed"))
+
+    out = os.path.join(os.path.dirname(book.path), book.run_id + "-summary.json")
+    with open(out, "w", encoding="utf-8") as handle:
+        json.dump({"spec": spec, "preflight": found, "results": results},
+                  handle, indent=1, default=str)
+    print("Summary:", out)
+
+    # The plan asks for a comparison of four approaches. If fewer than four
+    # ran, say so rather than printing three rows and a blank.
+    try:
+        experiment.ranked([row for row in results
+                           if row["arm"] in ("reference", "optimizer",
+                                             "llm", "llm_optimizer")])
+    except experiment.PartialComparisonError as exc:
+        print()
+        print("No four-way ranking:", exc)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

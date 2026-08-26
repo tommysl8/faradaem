@@ -246,15 +246,19 @@ LAID_OUT = [item["id"] for item in circuits.catalog()
 def drawn(circuit_id):
     """Build a circuit's geometry the way the tool does.
 
-    The device list comes off the registry rather than a branch here, so a
-    topology added to the registry is covered by these tests without any of
-    them being edited. That is the point of a registry.
+    That means the matched ordering -- fingers, dummies, guard rings --
+    and the drawn passives, because that is the file that ships. Testing
+    any other construction checks a layout nobody emits.
     """
     tech = layout.tech_constants()
     layers = layout.gds_layers()
     params = circuits.defaults(circuit_id)
-    lister = circuits.get_circuit(circuit_id)["floorplan"]["devices"]
-    plan = layout.floorplan(lister(params), tech)
+    block = circuits.get_circuit(circuit_id)["floorplan"]
+    ordered, _ = layout.matched_layout(block["devices"](params),
+                                       block.get("matched"))
+    plan = layout.floorplan(
+        ordered, tech,
+        passives=circuits.drawable_passives(circuit_id, params))
     routed = layout.route(plan, circuits.circuit_nets(circuit_id, params),
                           tech)
     shapes = (layout.floorplan_shapes(plan, layers, tech)
@@ -268,10 +272,10 @@ def test_the_emitted_layout_is_the_circuit_that_was_simulated(circuit_id):
     """The whole point. If this fails, the drawing and the numbers are of
     two different circuits."""
     plan, shapes, layers, _, params = drawn(circuit_id)
-    result = lvs.compare(
-        shapes, layers, circuits.circuit_devices(circuit_id, params),
-        [item["name"] for item in plan["devices"]]
-    )
+    # Declared: the netlist of what is physically drawn -- fingers carry
+    # their parent's nets, dummies sit on their body rail.
+    declared, order = circuits.drawn_devices(circuit_id, params, plan)
+    result = lvs.compare(shapes, layers, declared, order)
     assert result["match"], result["problems"][:5]
     assert result["nets_drawn"] == result["nets_expected"]
 
@@ -282,8 +286,12 @@ def test_every_transistor_in_the_netlist_is_in_the_drawing(circuit_id):
     plan, shapes, layers, _, params = drawn(circuit_id)
     found = lvs.extract(shapes, layers)
     assert len(found["devices"]) == len(plan["devices"])
-    assert len(found["devices"]) == len(
-        circuits.circuit_devices(circuit_id, params))
+    # The drawing holds more transistors than the schematic on purpose:
+    # fingers and dummies. Every schematic device must still be there.
+    fingered = {layout.device_of(item["name"]) or item["name"]
+                for item in plan["devices"]
+                if not layout.is_dummy(item["name"])}
+    assert fingered == set(circuits.circuit_devices(circuit_id, params))
 
 
 @requires_pdk
@@ -315,7 +323,5 @@ def test_the_real_layout_is_both_legal_and_correct():
             for item in plan["devices"] if item["kind"] == "pfet"]
 
     assert drc.check(shapes, layers, tech, pmos=pmos)["clean"]
-    assert lvs.compare(
-        shapes, layers, circuits.circuit_devices("opamp_two_stage", params),
-        [item["name"] for item in plan["devices"]]
-    )["match"]
+    declared, order = circuits.drawn_devices("opamp_two_stage", params, plan)
+    assert lvs.compare(shapes, layers, declared, order)["match"]

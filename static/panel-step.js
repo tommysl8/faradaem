@@ -18,6 +18,9 @@
     var el = ctx.el;
     var values = ctx.values;
     var validate = ctx.validate;
+    var tickStart = ctx.tickStart || function () {};
+    var tickStop = ctx.tickStop || function () {};
+    var markTab = ctx.markTab || function () {};
     var current = null;
 
     /* ---- step response ------------------------------------------------------ */
@@ -90,6 +93,7 @@
       stepRun.disabled = true;
       stepState.textContent = "Running one transient, about twenty seconds";
       show(stepProgress, true);
+      tickStart(stepState);
 
       fetch("/api/step", {
         method: "POST",
@@ -103,7 +107,8 @@
                 ? payload.error : "The server refused the request.");
             }
             lastStep = payload;
-            stepState.textContent = "Measured";
+            tickStop(stepState, "Measured");
+            markTab("step");
             stepRun.disabled = false;
             renderStepResult(payload);
           });
@@ -111,6 +116,8 @@
         .catch(function (error) {
           stepRun.disabled = false;
           show(stepProgress, false);
+          tickStop(stepState, "Running");
+          markTab("step", true);
           stepError.textContent = String(error.message || error);
           show(stepError, true);
         });

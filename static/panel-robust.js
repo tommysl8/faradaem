@@ -18,6 +18,9 @@
     var el = ctx.el;
     var values = ctx.values;
     var validate = ctx.validate;
+    var tickStart = ctx.tickStart || function () {};
+    var tickStop = ctx.tickStop || function () {};
+    var markTab = ctx.markTab || function () {};
     var current = null;
 
     /* ---- robustness --------------------------------------------------------- */
@@ -137,6 +140,7 @@
           robustState.textContent =
             snapshot.status === "done" ? "Finished"
             : snapshot.status === "stopped" ? "Stopped" : "Failed";
+          markTab("robust", snapshot.status === "failed");
           robustPvt.disabled = false;
           robustMc.disabled = false;
           show(robustStop, false);

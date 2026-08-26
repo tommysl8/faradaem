@@ -206,3 +206,78 @@ def test_the_arrow_key_stepper_is_the_one_exposed_for_testing():
     assert "window.FaradaemAppInternals = { stepValue: stepValue };" in source
     # Three arguments: the value, the direction, and whether shift was held.
     assert "function stepValue(value, direction, shift)" in source
+
+
+# ---------------------------------------------------------------------------
+# the hero, the bench, and the keyboard
+# ---------------------------------------------------------------------------
+
+
+def test_the_hero_shows_the_real_layout_and_not_an_illustration():
+    """The image beside the claim is the folded cascode as the tool drew
+    it, generated from the same shapes the GDS is written from. A stock
+    picture would be decoration; this is the product."""
+    page = read("index.html")
+    assert "/static/hero-layout.svg" in page
+
+    art = read("static/hero-layout.svg")
+    assert art.count("<rect") > 300         # hundreds of real rectangles
+    assert "foundry" in art                  # and it says what it is
+
+
+def test_the_bench_has_a_slot_per_verdict():
+    page = read("index.html")
+    for slot in ("bench-sim", "bench-drc", "bench-signoff", "bench-lvs"):
+        assert 'id="%s"' % slot in page, slot
+    # And the panels can reach it.
+    assert "window.FaradaemBench" in read("static/app.js")
+    assert "FaradaemBench.set" in read("static/panel-layout.js")
+
+
+def test_the_bench_resets_when_the_circuit_changes():
+    """A verdict about one circuit says nothing about the next."""
+    app = read("static/app.js")
+    assert "function benchReset()" in app
+    select_body = app.split("function select(")[1][:900]
+    assert "benchReset()" in select_body
+
+
+def test_every_circuit_chip_carries_a_glyph():
+    from spice import circuits
+    app = read("static/app.js")
+    glyphs = app.split("var GLYPHS = {")[1].split("};")[0]
+    for circuit_id in circuits.CIRCUIT_ORDER:
+        assert circuit_id + ":" in glyphs, circuit_id
+
+
+def test_ctrl_enter_runs_and_the_hint_says_so():
+    app = read("static/app.js")
+    assert 'event.ctrlKey || event.metaKey' in app
+    page = read("index.html")
+    assert "<kbd>Ctrl</kbd>" in page
+
+
+def test_a_delta_formats_like_its_own_stat():
+    """Half a decibel is 0.50 dB, never 500 mdB: the delta goes through
+    the same presenter the number itself does."""
+    app = read("static/app.js")
+    delta = app.split("function deltaText")[1][:600]
+    assert "present(Math.abs(change), spec)" in delta
+    assert "formatEngineering" not in delta
+
+
+def test_the_slow_paths_keep_time():
+    """A reader watching a forty-second run sees seconds climb, not a
+    frozen caption."""
+    app = read("static/app.js")
+    assert "function tickStart(" in app
+    for panel in ("panel-step", "panel-sheet", "panel-layout"):
+        assert "tickStart(" in read("static/" + panel + ".js"), panel
+
+
+def test_the_manual_contents_is_a_rail_on_wide_screens():
+    css = read("static/style.css")
+    rail = css.split(".manual-grid {")[1][:800]
+    assert "grid-template-columns" in rail
+    assert "position: sticky" in css.split(".manual-grid .toc {")[1][:300]
+    assert '<div class="manual-grid">' in read("manual.html")

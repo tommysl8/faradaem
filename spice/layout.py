@@ -254,12 +254,15 @@ def gds_layers():
 def group_gap(tech):
     """How far an n-channel device has to sit from the p-channel group.
 
-    Not the diffusion spacing. The p-channel devices are in an n-well, the
-    well reaches nwell.5 past them, and an n-diffusion has to stay
-    diff/tap.9 clear of any n-well. Those two in a row are what separates
-    the groups, and they come to about twice the plain diffusion spacing.
+    Three things stack up here. The p-channel devices are in an n-well and
+    the well reaches nwell.5 past them; an n-diffusion has to stay
+    diff/tap.9 clear of any n-well; and each group now carries a guard ring
+    whose inner segment stands between them. Without room for both rings
+    the substrate ring and the well ring would meet in the middle, which is
+    a short from the substrate to the well.
     """
-    return tech["nwell_surround"] + tech["ndiff_to_nwell"]
+    rings = 2.0 * (tap_height(tech) + tech["diff_spacing"])
+    return tech["nwell_surround"] + tech["ndiff_to_nwell"] + rings
 
 
 def tap_height(tech):
@@ -473,6 +476,12 @@ def floorplan_shapes(plan, layers, tech):
         shapes.extend(tap_shapes(tap, layers, tech))
         tap["terminal"] = tap_terminal(tap, tech)
 
+    # A guard ring is a tap that goes round. Same doped strip, same
+    # contacts, same interconnect over them; what makes it a ring is where
+    # it is, not what it is made of.
+    for guard in plan.get("guards", []):
+        shapes.extend(tap_shapes(guard, layers, tech))
+
     for item in plan.get("passives", []):
         if item["kind"] == "resistor":
             shapes.extend(resistor_shapes(item, layers, tech))
@@ -482,15 +491,41 @@ def floorplan_shapes(plan, layers, tech):
     return shapes
 
 
+def tap_contacts(tap, tech):
+    """The cuts along a tap, laid out the long way.
+
+    A wide strip takes a row of them and a tall one takes a column. Putting
+    a row at the bottom of a tall strip contacts a five-micron guard-ring
+    upright in one place and puts that one place in the corner, next to the
+    contacts of the strip it meets there -- which is both a poor connection
+    and a spacing violation.
+    """
+    inset = tech["contact_surround"]
+    wide = (tap["x2"] - tap["x1"]) >= (tap["y2"] - tap["y1"])
+    if wide:
+        return contact_row(tap["y1"] + inset, tap["x1"], tap["x2"], tech)
+
+    # A ring's uprights meet its bottom strip at a corner. The doped
+    # regions there are one region and should be; their contacts are not,
+    # and the interconnect over them owes li.3. So the column starts clear
+    # of the corner, which is what a drawn guard ring looks like: contacted
+    # along its length, bare where it turns.
+    low = tap["y1"] + tap.get("contact_from", 0.0)
+    return contact_column(tap["x1"] + inset, low, tap["y2"], tech)
+
+
 def tap_terminal(tap, tech):
     """The local interconnect on a tap, which is what ties it to a rail."""
-    row = contact_row(tap["y1"] + tech["contact_surround"],
-                      tap["x1"], tap["x2"], tech)
-    if not row:
+    cuts = tap_contacts(tap, tech)
+    if not cuts:
         return None
     reach = tech["li_surround"]
-    return (row[0][0] - reach, row[0][1],
-            row[-1][2] + reach, row[-1][3])
+    wide = (tap["x2"] - tap["x1"]) >= (tap["y2"] - tap["y1"])
+    if wide:
+        return (cuts[0][0] - reach, cuts[0][1],
+                cuts[-1][2] + reach, cuts[-1][3])
+    return (cuts[0][0], cuts[0][1] - reach,
+            cuts[-1][2], cuts[-1][3] + reach)
 
 
 def tap_shapes(tap, layers, tech):
@@ -508,9 +543,7 @@ def tap_shapes(tap, layers, tech):
     if "CONT" not in layers or "LI" not in layers:
         return shapes
 
-    row = contact_row(tap["y1"] + tech["contact_surround"],
-                      tap["x1"], tap["x2"], tech)
-    for box in row:
+    for box in tap_contacts(tap, tech):
         shapes.append((layers["CONT"][0], layers["CONT"][1],
                        box[0], box[1], box[2], box[3]))
     strip = tap_terminal(tap, tech)
@@ -571,6 +604,164 @@ def contact_column(x_left, y1, y2, tech):
     return [(x_left, start + index * (size + gap),
              x_left + size, start + index * (size + gap) + size)
             for index in range(count)]
+
+
+# ---------------------------------------------------------------------------
+# matching: common centroid, dummies, and guard rings
+# ---------------------------------------------------------------------------
+
+#: How many fingers each device of a matched pair is split into. Two is the
+#: smallest number that can share a centroid, and it gives the classic
+#: A B B A array. More fingers match better and cost more area; two is the
+#: honest minimum and what is drawn here.
+FINGERS = 2
+
+#: A dummy at each end of a matched array. The outermost real finger would
+#: otherwise see open field on one side and a neighbour on the other, and
+#: etch differently for it.
+DUMMIES = 1
+
+
+def centroid_of(items):
+    """The centre of mass of a set of placed fingers, weighted by area.
+
+    The definition the whole technique is built on, so it is written once
+    and the test uses the same one.
+    """
+    total = sum(item["width"] * item["height"] for item in items)
+    if not total:
+        return None
+    x = sum((item["x"] + item["width"] / 2.0) * item["width"] * item["height"]
+            for item in items) / total
+    y = sum((item["y"] + item["height"] / 2.0) * item["width"] * item["height"]
+            for item in items) / total
+    return (x, y)
+
+
+def common_centroid_order(names, fingers=FINGERS):
+    """The order fingers are laid down in so both devices share a centroid.
+
+    For two devices and two fingers each this is A B B A: the classic
+    common-centroid quad. The property that matters is that the sequence
+    reads the same forwards and backwards, because that is what puts both
+    centroids at the middle of the array.
+    """
+    if len(names) != 2:
+        # Interleaved rather than centroid-shared. Honest for three or more
+        # and better than adjacency, which is what it would otherwise be.
+        return [name for _ in range(fingers) for name in names]
+
+    first, second = names
+    half = [first, second] * (fingers // 2)
+    return half + list(reversed(half))
+
+
+def fingered(entry, fingers=FINGERS):
+    """One device as N devices of a share of its width, in parallel.
+
+    The width divides; the length does not. This is what a folded device
+    physically is, and saying so lets the comparison against the netlist
+    combine them back rather than being told to ignore the difference.
+    """
+    name, width_m, length_m = entry[0], entry[1], entry[2]
+    kind = entry[3] if len(entry) > 3 else "nfet"
+    share = width_m / float(fingers)
+    return [(name + "@" + str(index + 1), share, length_m, kind)
+            for index in range(fingers)]
+
+
+def matched_layout(devices, matched, fingers=FINGERS):
+    """Re-order a device list so every matched pair is common centroid.
+
+    Returns (ordered, arrays). Devices not in a matched group keep their
+    place; each matched pair is replaced by its interleaved fingers, with a
+    dummy at each end of the array.
+    """
+    if not matched:
+        return list(devices), []
+
+    by_name = {entry[0]: entry for entry in devices}
+    grouped = set()
+    ordered, arrays = [], []
+
+    for group in matched:
+        if not all(name in by_name for name in group):
+            continue
+        grouped.update(group)
+
+    placed_group = set()
+    for entry in devices:
+        name = entry[0]
+        if name not in grouped:
+            ordered.append(entry)
+            continue
+
+        group = next(g for g in matched if name in g)
+        if tuple(group) in placed_group:
+            continue
+        placed_group.add(tuple(group))
+
+        pieces = {member: fingered(by_name[member], fingers)
+                  for member in group}
+        taken = {member: 0 for member in group}
+        array = []
+
+        # A dummy of the same shape at each end, drawn and tied off but not
+        # part of the circuit.
+        template = by_name[group[0]]
+        dummy = (template[1] / float(fingers), template[2],
+                 template[3] if len(template) > 3 else "nfet")
+        for index in range(DUMMIES):
+            array.append(("DUMMY_" + group[0] + "_L" + str(index + 1),
+                          dummy[0], dummy[1], dummy[2]))
+
+        for member in common_centroid_order(list(group), fingers):
+            array.append(pieces[member][taken[member]])
+            taken[member] += 1
+
+        for index in range(DUMMIES):
+            array.append(("DUMMY_" + group[0] + "_R" + str(index + 1),
+                          dummy[0], dummy[1], dummy[2]))
+
+        ordered.extend(array)
+        arrays.append({"group": list(group),
+                       "fingers": fingers,
+                       "names": [item[0] for item in array]})
+
+    return ordered, arrays
+
+
+def guard_ring(box, tech, margin=None):
+    """A tapped ring around a box, as four rectangles.
+
+    Held at a rail through its own contacts, it gives injected charge
+    somewhere to go that is not the next circuit, and it fixes the
+    substrate potential under the devices it surrounds.
+    """
+    width = tap_height(tech)
+    gap = margin if margin is not None else tech["diff_spacing"]
+    x1 = box[0] - gap - width
+    y1 = box[1] - gap - width
+    x2 = box[2] + gap + width
+    y2 = box[3] + gap + width
+    return [
+        {"side": "bottom", "x1": x1, "y1": y1, "x2": x2, "y2": y1 + width},
+        {"side": "top", "x1": x1, "y1": y2 - width, "x2": x2, "y2": y2},
+        {"side": "left", "x1": x1, "y1": y1, "x2": x1 + width, "y2": y2},
+        {"side": "right", "x1": x2 - width, "y1": y1, "x2": x2, "y2": y2},
+    ]
+
+
+def is_dummy(name):
+    """Whether a placed device is a dummy rather than part of the circuit."""
+    return name.startswith("DUMMY_")
+
+
+def device_of(name):
+    """The circuit device a finger belongs to, or None for a dummy."""
+    if is_dummy(name):
+        return None
+    return name.split("@")[0]
 
 
 def device_footprint(width_m, length_m, tech):
@@ -648,6 +839,7 @@ def floorplan(devices, tech, passives=None):
     # height of the row, and a metal1 wire that long picks up every via it
     # passes on the way, shorting the tap into net after net.
     taps = []
+    guards = []
     height = tap_height(tech)
     above = max(item["y"] + item["height"] for item in placed)         + gate_stack_height(tech) + tech["diff_spacing"]
     for kind, members in (("ntap", [i for i in placed if i["kind"] == "pfet"]),
@@ -678,6 +870,44 @@ def floorplan(devices, tech, passives=None):
         })
         taps[-1]["terminal"] = tap_terminal(taps[-1], tech)
 
+        # A guard ring closes the tap around the group it biases. The strip
+        # above is the top of it; a strip below and one down each side make
+        # it a ring. What that buys is a substrate potential held all the
+        # way round the devices rather than at one edge, and somewhere for
+        # injected charge to go that is not the next circuit. It stops
+        # below the gate stack, because a doped strip beside a poly contact
+        # owes it licon.14 and there is not room up there.
+        clear = tech["diff_spacing"]
+        low = min(item["y"] for item in members) - clear - height
+        ring_left = min(item["x"] for item in members) - clear - height
+        ring_right = max(item["x"] + item["width"]
+                         for item in members) + clear + height
+        if kind == "ntap":
+            ring_right = max(ring_right, right)
+        else:
+            ring_left = min(ring_left, left)
+
+        row_top = max(item["y"] + item["height"] for item in members)
+        for side, box in (
+                ("bottom", (ring_left, low, ring_right, low + height)),
+                # The uprights start where the bottom strip ends. The doped
+                # regions still abut, so the ring is continuous, but their
+                # contacts no longer overlap in the corner: two contacts on
+                # top of each other merge into a bar, and a bar is not a
+                # contact any rule in the deck will accept.
+                ("left", (ring_left, low, ring_left + height, row_top)),
+                ("right", (ring_right - height, low, ring_right, row_top))):
+            guards.append({
+                "kind": kind, "side": side,
+                # The uprights keep their contacts clear of the corner the
+                # bottom strip already contacts.
+                "contact_from": 0.0 if side == "bottom"
+                else height + tech["li_spacing"],
+                "implant": "NSDM" if kind == "ntap" else "PSDM",
+                "x1": box[0], "y1": box[1], "x2": box[2], "y2": box[3],
+                "serves": [item["name"] for item in members],
+            })
+
     wells = []
     pmos = [item for item in placed if item["kind"] == "pfet"]
     if pmos:
@@ -687,6 +917,10 @@ def floorplan(devices, tech, passives=None):
                 for i in pmos]
         held += [(t["x1"], t["y1"], t["x2"], t["y2"])
                  for t in taps if t["kind"] == "ntap"]
+        # The guard ring is n-type too, so the well has to hold it as well
+        # as the devices: an n-tap outside the well is not a well tap.
+        held += [(g["x1"], g["y1"], g["x2"], g["y2"])
+                 for g in guards if g["kind"] == "ntap"]
         margin = max(tech["nwell_surround"], tech["nwell_tap_surround"])
         left = min(box[0] for box in held) - margin
         right = max(box[2] for box in held) + margin
@@ -745,6 +979,8 @@ def floorplan(devices, tech, passives=None):
         # it sits under the same implant.
         covered += [(t["x1"], t["y1"], t["x2"], t["y2"]) for t in taps
                     if t["implant"] == layer]
+        covered += [(g["x1"], g["y1"], g["x2"], g["y2"]) for g in guards
+                    if g["implant"] == layer]
         boxes[kind] = {
             "layer": layer,
             "kind": kind,
@@ -774,6 +1010,7 @@ def floorplan(devices, tech, passives=None):
         "passives": drawn_passives,
         "wells": wells,
         "taps": taps,
+        "guards": guards,
         "implants": implants,
         "width_um": span,
         "height_um": tallest,
@@ -1080,6 +1317,44 @@ def route(plan, nets, tech):
     """
     index = {item["name"]: item for item in plan["devices"]}
     index.update({item["name"]: item for item in plan.get("passives", [])})
+
+    # A device split into fingers is several placed devices sharing one
+    # name in the netlist. Every finger of it lands on the net its parent
+    # is on, which is what makes the fingers parallel rather than
+    # unconnected. Dummies are drawn and are on no net.
+    fingers_of = {}
+    for item in plan["devices"]:
+        parent = device_of(item["name"])
+        if parent is not None:
+            fingers_of.setdefault(parent, []).append(item)
+
+    # A dummy exists to give the outermost real finger a neighbour. Left
+    # floating it is worse than useless: an unconnected gate is a
+    # reliability problem and an extractor reads it as a transistor wired
+    # to nothing. Every terminal of one is tied to the body rail of its own
+    # kind, which turns it off and connects it to something real.
+    bulk_net = {}
+    for (device_name, terminal), net in [
+            ((name, term), net)
+            for net, pins in nets.items() for name, term in pins]:
+        if terminal != "bulk":
+            continue
+        # The netlist names the parent; the placement holds its fingers.
+        reached = fingers_of.get(device_name)
+        item = reached[0] if reached else index.get(device_name)
+        if item is not None:
+            bulk_net.setdefault(item["kind"], net)
+
+    dummy_pins = {}
+    for item in plan["devices"]:
+        if not is_dummy(item["name"]):
+            continue
+        net = bulk_net.get(item["kind"])
+        if net is None:
+            continue
+        for terminal in ("source", "drain", "gate"):
+            dummy_pins.setdefault(net, []).append((item["name"], terminal))
+
     pad = via_pad(tech)
     # A track thinner than a via pad cannot enclose the via that joins it
     # to metal1, so the track takes the pad as its floor.
@@ -1100,29 +1375,45 @@ def route(plan, nets, tech):
     for net in sorted(nets):
         landings = []
         bulks = set()
-        for device_name, terminal in nets[net]:
+        for device_name, terminal in list(nets[net]) + dummy_pins.get(net, []):
             if terminal == "bulk":
                 bulks.add(device_name)
                 continue                       # a tap carries it, not a wire
-            item = index.get(device_name)
-            if item is None:
-                continue
-            box = item.get("terminals", {}).get(terminal)
-            if box is not None:
-                landings.append((device_name, terminal, box))
+            reached = fingers_of.get(device_name)
+            if reached is None:
+                reached = [index[device_name]] if device_name in index else []
+            for item in reached:
+                box = item.get("terminals", {}).get(terminal)
+                if box is not None:
+                    landings.append((item["name"], terminal, box))
 
         # A device's body is held at a voltage by its well or substrate
         # tap, so the tap belongs on whichever net that is. Without this
         # the taps are drawn and connected to nothing.
-        for tap in plan.get("taps", []):
-            if tap.get("terminal") is None or not (bulks & set(tap["serves"])):
+        # The ring's segments abut, so the ring is one conductor and wants
+        # one wire down to it. Landing on each segment separately put three
+        # vias within a via's width of each other, which merge into a bar
+        # the deck rejects.
+        ties = list(plan.get("taps", [])) + [
+            item for item in plan.get("guards", [])
+            if item.get("side") == "bottom"
+        ]
+        for tap in ties:
+            served = {device_of(name) or name for name in tap["serves"]}
+            if not (bulks & served) or tap_terminal(tap, tech) is None:
                 continue
-            strip = tap["terminal"]
+            strip = tap.get("terminal") or tap_terminal(tap, tech)
             middle = tap.get("landing")
             if middle is None:
                 middle = clear_landing(strip, occupied, pad, tech)
             middle = min(max(middle, strip[0] + pad / 2.0),
                          strip[2] - pad / 2.0)
+
+            # A landing already used is a place the next one may not go: a
+            # tap and its own guard ring are on the same net, and two vias
+            # a via's width apart merge into a bar the deck rejects.
+            occupied.append(middle)
+            occupied.sort()
             cut = tech["via_width"]
             landings.append((tap["kind"], "tap",
                              (middle - cut / 2.0, strip[1],
@@ -1292,3 +1583,25 @@ def parasitic_transform(parasitics):
         return netlist.replace(marker, "\n" + block + marker, 1)
 
     return transform
+
+
+def net_labels(routed, layers):
+    """One text label per routed net, on the metal2 track that carries it.
+
+    A cell with no labels is a picture of a circuit: correct, and unusable
+    by anyone else's tool, because nothing in the file says which piece of
+    metal is the output. The label sits at the middle of the net's own
+    track, on the layer that track is drawn on, which is where every tool
+    that reads labels expects to find one.
+    """
+    if "MET2" not in layers:
+        return []
+    number, datatype = layers["MET2"]
+    found = []
+    for net in sorted(routed):
+        span = routed[net]["span"]
+        found.append((number, datatype,
+                      (span["x1"] + span["x2"]) / 2.0,
+                      (span["y1"] + span["y2"]) / 2.0,
+                      net))
+    return found

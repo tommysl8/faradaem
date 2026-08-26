@@ -338,12 +338,18 @@ def test_the_emitted_geometry_satisfies_the_rules_it_was_drawn_for(circuit_id):
     tech = layout.tech_constants()
     layers = layout.gds_layers()
     params = circuits.defaults(circuit_id)
-    devices = circuits.get_circuit(circuit_id)["floorplan"]["devices"](params)
-    plan = layout.floorplan(devices, tech)
-    shapes = (layout.floorplan_shapes(plan, layers, tech)
-              + layout.routing_shapes(
-                  layout.route(plan, circuits.circuit_nets(circuit_id, params),
-                               tech), layers))
+
+    # The geometry the tool actually emits, matched ordering, guard rings,
+    # passives and all. Building a different one here would check a layout
+    # nobody ships.
+    shapes = circuits.layout_shapes(circuit_id, params)
+
+    block = circuits.get_circuit(circuit_id)["floorplan"]
+    ordered, _ = layout.matched_layout(block["devices"](params),
+                                       block.get("matched"))
+    plan = layout.floorplan(
+        ordered, tech,
+        passives=circuits.drawable_passives(circuit_id, params))
     pmos = [(item["x"], item["y"], item["x"] + item["width"],
              item["y"] + item["height"])
             for item in plan["devices"] if item["kind"] == "pfet"]

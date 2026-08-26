@@ -345,6 +345,7 @@ CIRCUITS = {
         ],
         "floorplan": {
             "devices": ota_devices,
+            "matched": [["M1", "M2"], ["M3", "M4"]],
             "caption": "Figure 15: six devices in a row at the minimum "
                        "diffusion spacing, drawn to scale. A floorplan, not a "
                        "layout: nothing here has been design rule checked.",
@@ -430,6 +431,10 @@ CIRCUITS = {
         ],
         "floorplan": {
             "devices": folded_cascode_devices,
+            # The pair, the folding sources, and both cascode pairs: every
+            # place this topology relies on two devices being the same.
+            "matched": [["M1", "M2"], ["M3", "M4"], ["M6", "M7"],
+                        ["M9", "M10"], ["M11", "M12"]],
             "caption": "Figure 17: fourteen devices in a row, n-channel first "
                        "so the five p-channel devices share one well. Drawn "
                        "to scale, checked, and compared against the netlist.",
@@ -513,6 +518,11 @@ CIRCUITS = {
         ],
         "floorplan": {
             "devices": opamp_devices,
+            # The input pair and the mirror load. A differential pair whose
+            # halves sample the process gradient at two different points
+            # shows it at the output as an offset the schematic never
+            # predicted, so these are drawn common centroid.
+            "matched": [["M1", "M2"], ["M3", "M4"]],
             "caption": "Figure 14: the eight devices in a row at the minimum "
                        "diffusion spacing, drawn to scale. A floorplan, not a "
                        "layout: nothing here has been design rule checked.",

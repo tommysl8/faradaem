@@ -242,10 +242,15 @@ def test_the_layer_numbers_are_the_published_ones():
 @requires_pdk
 def test_a_real_floorplan_writes_a_readable_file():
     tech = layout.tech_constants()
-    plan = layout.floorplan(
-        circuits.opamp_devices(circuits.defaults("opamp_two_stage")), tech
-    )
+    params = circuits.defaults("opamp_two_stage")
+    block = circuits.get_circuit("opamp_two_stage")["floorplan"]
+    # The layout the tool emits: matched pairs split into fingers, with a
+    # dummy at each end and a guard ring round each group.
+    ordered, _ = layout.matched_layout(block["devices"](params),
+                                       block.get("matched"))
+    plan = layout.floorplan(ordered, tech)
     stream = layout.floorplan_gds(plan)
+    drawn = len(plan["devices"])
 
     shapes = boundaries(stream)
 
@@ -255,21 +260,24 @@ def test_a_real_floorplan_writes_a_readable_file():
     for layer, datatype, _ in shapes:
         counts[(layer, datatype)] = counts.get((layer, datatype), 0) + 1
 
-    assert counts[(65, 20)] == 8               # eight diffusions
+    # Counted against what was placed rather than a number typed here, so
+    # the test still means something after the next placement change.
+    assert counts[(65, 20)] == drawn           # one diffusion a device
     # Two poly shapes a device: the gate stripe, and the wider pad above
     # the diffusion that the gate contact lands on. Poly cannot be
     # contacted over the channel, so the pad is not decoration.
-    assert counts[(66, 20)] == 16
+    assert counts[(66, 20)] == 2 * drawn
     assert counts[(64, 20)] == 1               # one well, shared by the PMOS
     assert counts[(93, 44)] == 1               # the n-type implant
     assert counts[(94, 20)] == 1               # and the p-type one
     # Three terminals a device, each a piece of local interconnect a wire
-    # can land on: the source, the drain, and now the gate.
-    # Twenty-four for the devices, plus one on each of the two taps.
-    assert counts[(67, 20)] == 26
-    assert counts[(65, 44)] == 2               # the well tap and the substrate tap
-    assert counts[(95, 20)] == 8               # the cut around each gate contact
-    assert counts[(66, 44)] > 8                # and the contacts under it
+    # can land on: the source, the drain, and the gate. Plus one on each
+    # tap and one on each drawn guard-ring segment.
+    taps = len(plan["taps"]) + len(plan["guards"])
+    assert counts[(67, 20)] == 3 * drawn + taps
+    assert counts[(65, 44)] == taps            # the taps and their rings
+    assert counts[(95, 20)] == drawn           # a cut round each gate contact
+    assert counts[(66, 44)] > drawn            # and the contacts under it
 
     # Every contact sits under a piece of local interconnect, so there can
     # never be fewer strips than devices have sources and drains.
@@ -279,3 +287,55 @@ def test_a_real_floorplan_writes_a_readable_file():
     tallest = max(max(y for _, y in points) - min(y for _, y in points)
                   for _, _, points in shapes)
     assert tallest >= 40000                     # nanometres
+
+
+# ---------------------------------------------------------------------------
+# named ports
+# ---------------------------------------------------------------------------
+
+
+def test_a_label_is_a_text_record_a_reader_can_find():
+    stream = gds.library("X", "X", [(68, 20, 0.0, 0.0, 1.0, 1.0)],
+                         labels=[(68, 20, 0.5, 0.5, "out")])
+    assert b"out" in stream
+    # And the boundary is still there beside it.
+    assert boundaries(stream)
+
+
+def test_a_file_with_no_labels_is_unchanged():
+    """Labels are additive: a caller that does not pass any gets exactly
+    the stream it got before."""
+    shapes = [(68, 20, 0.0, 0.0, 1.0, 1.0)]
+    when = 0
+    assert gds.library("X", "X", shapes, when=when) == \
+        gds.library("X", "X", shapes, when=when, labels=[])
+
+
+@requires_pdk
+def test_the_emitted_layout_names_its_ports():
+    """A cell with no labels is a picture of a circuit: correct, and
+    unusable by anyone else's tool, because nothing in the file says which
+    piece of metal is the output."""
+    from spice import layout as layout_module
+
+    params = circuits.defaults("ota_5t")
+    block = circuits.get_circuit("ota_5t")["floorplan"]
+    tech = layout_module.tech_constants()
+    layers = layout_module.gds_layers()
+    ordered, _ = layout_module.matched_layout(block["devices"](params),
+                                              block.get("matched"))
+    plan = layout_module.floorplan(ordered, tech)
+    routed = layout_module.route(
+        plan, circuits.circuit_nets("ota_5t", params), tech)
+
+    labels = layout_module.net_labels(routed, layers)
+    named = {item[4] for item in labels}
+    for net in ("out", "inp", "inn", "vdd"):
+        assert net in named, net
+
+    # Each sits on the track that carries it, on the layer it is drawn on.
+    for number, datatype, x, y, net in labels:
+        assert (number, datatype) == layers["MET2"]
+        span = routed[net]["span"]
+        assert span["x1"] <= x <= span["x2"]
+        assert span["y1"] <= y <= span["y2"]

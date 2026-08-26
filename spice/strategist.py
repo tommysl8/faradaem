@@ -26,7 +26,11 @@ DESIGN_BUDGET = 40
 
 #: Tool results are clipped before going back to the model, so a Bode curve
 #: with hundreds of points does not flood the conversation.
-MAX_RESULT_CHARS = 2000
+#: How much of a tool result the model is sent. The slimmed catalogue is
+#: about six thousand characters and every circuit in it has to arrive, so
+#: the budget is set above it deliberately rather than left where it was
+#: when the catalogue held five passive circuits.
+MAX_RESULT_CHARS = 8000
 
 SYSTEM_PROMPT = """You are the design strategist inside Faradaem, an analog \
 circuit tool in which ngspice is the sole source of numerical truth.
@@ -257,11 +261,40 @@ TOOL_ERRORS = (
 
 
 def _clip(payload):
-    """A tool result as text for the model, clipped to a sane size."""
+    """A tool result as text for the model, shortened without being broken.
+
+    Cutting a JSON string at a character offset produces something no model
+    can parse, and the model cannot tell a truncated result from a strange
+    one. So a list is shortened by dropping whole items and saying how many
+    went, and anything else that is still too long comes back as an object
+    that states the problem. What the model receives is always valid JSON
+    and always says what it is missing.
+    """
     text = json.dumps(payload)
     if len(text) <= MAX_RESULT_CHARS:
         return text
-    return text[:MAX_RESULT_CHARS] + '... (clipped)"}'
+
+    if isinstance(payload, list):
+        kept = []
+        for item in payload:
+            trial = kept + [item]
+            marker = {"omitted": len(payload) - len(trial),
+                      "why": "the result was too long to send whole"}
+            if len(json.dumps(trial + [marker])) > MAX_RESULT_CHARS:
+                break
+            kept = trial
+        omitted = len(payload) - len(kept)
+        if omitted:
+            kept = kept + [{"omitted": omitted,
+                            "why": "the result was too long to send whole"}]
+        return json.dumps(kept)
+
+    return json.dumps({
+        "truncated": True,
+        "why": "the result was " + str(len(text)) + " characters, over the "
+               + str(MAX_RESULT_CHARS) + " a tool result may be. Ask for one "
+               "circuit or one measurement at a time.",
+    })
 
 
 def _strip_curves(result):
@@ -300,9 +333,33 @@ def run_tool(name, arguments, on_progress=None):
     the JSON-ready version the UI renders as a card.
     """
     if name == "list_circuits":
-        listing = circuits.catalog()
-        for entry in listing:
-            entry.pop("readout", None)
+        # What a model needs to choose and drive a circuit: what it is, the
+        # knobs with their ranges, and what it can be designed against. The
+        # captions, presets, checks and readout layout are for the page.
+        # Sending all of it was sending nineteen thousand characters into a
+        # two thousand character budget, which is how the model ended up
+        # unable to see a single amplifier.
+        listing = []
+        for entry in circuits.catalog():
+            block = entry.get("design")
+            listing.append({
+                "id": entry["id"],
+                "name": entry["name"],
+                "analysis": entry["analysis"],
+                "params": [
+                    {"key": spec["key"], "unit": spec["unit"],
+                     "default": spec["default"],
+                     "min": spec["min"], "max": spec["max"]}
+                    for spec in entry["params"]
+                ],
+                "designable": bool(block),
+                "tunable": block["tunable"] if block else None,
+                "goals": [
+                    {"key": goal["key"], "op": goal["op"],
+                     "unit": goal["unit"], "default": goal["default"]}
+                    for goal in block["goals"]
+                ] if block else None,
+            })
         return listing, {"circuits": [entry["id"] for entry in listing]}
 
     if name == "simulate":
@@ -475,7 +532,16 @@ def advise(client, messages, on_event, should_stop=None, run_tool_fn=run_tool,
             })
             for call in turn["tool_calls"]:
                 try:
-                    payload, display = run_tool_fn(call["name"], call["arguments"])
+                    # Third argument: without it run_design's per-evaluation
+                    # callback is None inside a session, so a strategist
+                    # iterating for a minute reported nothing while it did.
+                    payload, display = run_tool_fn(
+                        call["name"], call["arguments"],
+                        lambda entry, best=None: on_event({
+                            "kind": "progress", "tool": call["name"],
+                            "entry": entry,
+                        }),
+                    )
                     on_event({"kind": "tool", "tool": call["name"],
                               "ok": True, "display": display})
                     content = _clip(payload)

@@ -285,11 +285,20 @@ def seed_params(circuit_id, targets, params):
 
 
 def run_design(circuit_id, params, targets, max_evals,
-               on_eval=None, should_stop=None):
+               on_eval=None, should_stop=None, transform=None, ledger=None,
+               arm=None):
     """Optimize one catalogued circuit toward a set of targets.
 
     params is the complete parameter set to start from; only the circuit's
     declared tunables move, and each stays inside its own declared min/max.
+
+    transform is a netlist edit applied to every candidate, so a search can
+    be run against something other than the ideal schematic. The one that
+    matters is the drawn interconnect: sizing against a deck that does not
+    have the wiring in it optimises a circuit nobody is going to build.
+
+    ledger, if given, records every evaluation as it happens, so the run can
+    be compared against another method afterwards rather than remembered.
     """
     circuit, block = design_block(circuit_id)
     targets = resolve_targets(block, targets)
@@ -306,11 +315,24 @@ def run_design(circuit_id, params, targets, max_evals,
     def evaluate(tuned):
         candidate = dict(fixed)
         candidate.update(tuned)
-        return circuits.simulate(circuit_id, candidate)
+        return circuits.simulate(circuit_id, candidate, transform=transform)
+
+    def watch(entry, best):
+        if ledger is not None:
+            ledger.record(
+                "attempt", arm=arm, circuit=circuit_id, by="optimizer",
+                params=entry.get("params"), measured=entry.get("measured"),
+                margins=entry.get("margins"), score=entry.get("score"),
+                feasible=entry.get("feasible"), error=entry.get("error"),
+                loaded=transform is not None,
+            )
+        if on_eval is not None:
+            on_eval(entry, best)
 
     result = optimize(
         evaluate, start, bounds, block["goals"], targets, max_evals,
-        on_eval=on_eval, should_stop=should_stop,
+        on_eval=watch, should_stop=should_stop,
     )
     result["targets"] = targets
+    result["loaded"] = transform is not None
     return result

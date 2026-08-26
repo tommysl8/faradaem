@@ -29,11 +29,21 @@ LAID_OUT = [item["id"] for item in circuits.catalog()
 
 
 def drawn(circuit_id):
+    """Build a circuit's geometry the way the tool does.
+
+    That means the matched ordering -- fingers, dummies, guard rings --
+    and the drawn passives, because that is the file that ships. Testing
+    any other construction checks a layout nobody emits.
+    """
     tech = layout.tech_constants()
     layers = layout.gds_layers()
     params = circuits.defaults(circuit_id)
-    devices = circuits.get_circuit(circuit_id)["floorplan"]["devices"](params)
-    plan = layout.floorplan(devices, tech)
+    block = circuits.get_circuit(circuit_id)["floorplan"]
+    ordered, _ = layout.matched_layout(block["devices"](params),
+                                       block.get("matched"))
+    plan = layout.floorplan(
+        ordered, tech,
+        passives=circuits.drawable_passives(circuit_id, params))
     routed = layout.route(plan, circuits.circuit_nets(circuit_id, params),
                           tech)
     shapes = (layout.floorplan_shapes(plan, layers, tech)

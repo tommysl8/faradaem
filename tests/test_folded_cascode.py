@@ -160,12 +160,17 @@ def test_the_layout_machinery_generalised_without_being_told_about_it():
     layers = layout.gds_layers()
     params = circuits.defaults(CIRCUIT)
 
-    plan = layout.floorplan(circuits.folded_cascode_devices(params), tech)
+    block = circuits.get_circuit(CIRCUIT)["floorplan"]
+    ordered, _ = layout.matched_layout(block["devices"](params),
+                                      block.get("matched"))
+    plan = layout.floorplan(ordered, tech)
     routed = layout.route(plan, circuits.circuit_nets(CIRCUIT, params), tech)
     shapes = (layout.floorplan_shapes(plan, layers, tech)
               + layout.routing_shapes(routed, layers))
 
-    assert len(plan["devices"]) == 14
+    # Fourteen schematic devices; five declared pairs finger into twenty,
+    # four stay whole, and each array gains two dummies.
+    assert len(plan["devices"]) == len(ordered) == 34
     assert len(plan["taps"]) == 2
     assert len(routed) >= 10
 
@@ -174,10 +179,8 @@ def test_the_layout_machinery_generalised_without_being_told_about_it():
             for item in plan["devices"] if item["kind"] == "pfet"]
     assert drc.check(shapes, layers, tech, pmos=pmos)["clean"]
 
-    compared = lvs.compare(
-        shapes, layers, circuits.circuit_devices(CIRCUIT, params),
-        [item["name"] for item in plan["devices"]]
-    )
+    declared, order = circuits.drawn_devices(CIRCUIT, params, plan)
+    compared = lvs.compare(shapes, layers, declared, order)
     assert compared["match"], compared["problems"][:5]
 
 

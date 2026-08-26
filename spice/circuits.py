@@ -239,6 +239,38 @@ def has_floorplan(circuit_id):
     return "floorplan" in get_circuit(circuit_id)
 
 
+def drawn_devices(circuit_id, values, plan):
+    """The netlist of what is physically in the drawing.
+
+    A finger is its parent in parallel: same four nets. A dummy is a
+    transistor with every terminal on the body rail of its kind, which is
+    exactly how the router ties it and how the comparison netlist for the
+    KLayout engine declares it. Comparing the schematic against a fingered
+    drawing without this step reports a device-count mismatch that is not
+    a wiring error but a description error.
+    """
+    base = circuit_devices(circuit_id, values)
+    declared = {}
+    order = []
+    for item in plan["devices"]:
+        name = item["name"]
+        order.append(name)
+        parent = layout.device_of(name)
+        if parent is not None:
+            declared[name] = dict(base[parent], name=name)
+        elif layout.is_dummy(name):
+            # DUMMY_<parent>_<end>: the rail is the parent's own bulk net.
+            source = base[name.split("_")[1]]
+            rail = source["terminals"]["bulk"]
+            declared[name] = dict(
+                source, name=name,
+                terminals={"drain": rail, "gate": rail,
+                           "source": rail, "bulk": rail})
+        else:
+            declared[name] = base[name]
+    return declared, order
+
+
 def layout_shapes(circuit_id, params):
     """Just the geometry, without measuring anything.
 
@@ -261,14 +293,16 @@ def layout_shapes(circuit_id, params):
         raise NoFloorplanError(str(exc)) from None
 
     layers = layout.gds_layers()
-    plan = layout.floorplan(block["devices"](values), tech,
+    ordered, _ = layout.matched_layout(block["devices"](values),
+                                       block.get("matched"))
+    plan = layout.floorplan(ordered, tech,
                             passives=drawable_passives(circuit_id, values))
     routed = layout.route(plan, circuit_nets(circuit_id, values), tech)
     return (layout.floorplan_shapes(plan, layers, tech)
             + layout.routing_shapes(routed, layers))
 
 
-def run_layout(circuit_id, params):
+def run_layout(circuit_id, params, ledger=None, arm=None):
     """Area, interconnect, and the specs measured again with it loading them.
 
     Two simulations: the circuit as drawn on the schematic, and the same
@@ -289,8 +323,11 @@ def run_layout(circuit_id, params):
     except layout.LayoutDataError as exc:
         raise NoFloorplanError(str(exc)) from None
 
-    plan = layout.floorplan(block["devices"](values), tech,
+    ordered, arrays = layout.matched_layout(block["devices"](values),
+                                            block.get("matched"))
+    plan = layout.floorplan(ordered, tech,
                             passives=drawable_passives(circuit_id, values))
+    plan["matched_arrays"] = arrays
 
     # Route the nets, then take the capacitance off the metal that was
     # actually drawn. The bounding-box estimate this replaces was
@@ -341,13 +378,17 @@ def run_layout(circuit_id, params):
                 for item in plan["devices"] if item.get("kind") == "pfet"]
         checked = drc.check(shapes, layers, tech, pmos=pmos)
         # And the question no rule check asks: is this the right circuit.
+        declared, order = drawn_devices(circuit_id, values, plan)
         compared = lvs.compare(
-            shapes, layers, circuit_devices(circuit_id, values),
-            [item["name"] for item in plan["devices"]],
+            shapes, layers, declared, order,
             undrawn=external_elements(circuit_id, values)
         )
+        # Named ports: without them the file is a correct picture that no
+        # other tool can connect to, because nothing in it says which piece
+        # of metal is the output.
         stream = gds.library(circuit_id.upper(), circuit_id.upper(),
-                             shapes)
+                             shapes,
+                             labels=layout.net_labels(routed, layers))
         encoded = base64.b64encode(stream).decode("ascii")
     except layout.LayoutDataError:
         encoded = None
@@ -364,7 +405,7 @@ def run_layout(circuit_id, params):
         except klvs.KlvsError as caught:
             engine = {"match": None, "ran": False, "why": str(caught)}
 
-    return {
+    answer = {
         "floorplan": plan,
         "routing": routed,
         "gds_base64": encoded,
@@ -379,6 +420,21 @@ def run_layout(circuit_id, params):
         "comparison": comparison,
         "tech": {name: tech[name] for name in sorted(tech)},
     }
+
+    # The plan asks for every layout version to be recorded, because a
+    # redesign loop produces several and only the record says which one the
+    # numbers came from.
+    if ledger is not None:
+        ledger.record(
+            "layout", by="tool", arm=arm, circuit=circuit_id, params=values,
+            area_um2=plan["area_um2"],
+            interconnect_f=answer["total_parasitic_f"],
+            drc_clean=checked["clean"] if checked else None,
+            lvs_match=compared["match"] if compared else None,
+            klvs_match=(engine or {}).get("match"),
+            comparison=comparison,
+        )
+    return answer
 
 
 def simulate(circuit_id, params, transform=None):

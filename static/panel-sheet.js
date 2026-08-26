@@ -18,6 +18,9 @@
     var el = ctx.el;
     var values = ctx.values;
     var validate = ctx.validate;
+    var tickStart = ctx.tickStart || function () {};
+    var tickStop = ctx.tickStop || function () {};
+    var markTab = ctx.markTab || function () {};
     var current = null;
 
     /* ---- rejection and range ------------------------------------------------ */
@@ -75,6 +78,7 @@
       show(sheetFigure, false);
       sheetRun.disabled = true;
       sheetState.textContent = "Running four amplifiers, about half a minute";
+      tickStart(sheetState);
       show(sheetProgress, true);
 
       fetch("/api/datasheet", {
@@ -89,7 +93,8 @@
                 ? payload.error : "The server refused the request.");
             }
             lastSheet = payload;
-            sheetState.textContent = "Measured";
+            tickStop(sheetState, "Measured");
+            markTab("sheet");
             sheetRun.disabled = false;
             renderSheetResult(payload);
           });
@@ -97,6 +102,8 @@
         .catch(function (error) {
           sheetRun.disabled = false;
           show(sheetProgress, false);
+          tickStop(sheetState, "Running");
+          markTab("sheet", true);
           sheetError.textContent = String(error.message || error);
           show(sheetError, true);
         });

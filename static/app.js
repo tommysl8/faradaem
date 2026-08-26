@@ -131,6 +131,23 @@
   /* The most recent successful measurement, for flows that act on it. */
   var lastResult = null;
 
+  /* The previous measurement per circuit, for saying what an edit changed.
+     A neutral fact in the accent colour: whether a bigger number is better
+     depends on which number it is, and the page does not pretend to know. */
+  var lastMeasured = {};
+
+  function deltaText(before, now, spec) {
+    if (typeof before !== "number" || typeof now !== "number"
+        || before === now) {
+      return null;
+    }
+    var change = now - before;
+    var sign = change > 0 ? "+" : "\u2212";
+    // Formatted the way the number itself is: half a decibel is 0.50 dB,
+    // never 500 mdB.
+    return sign + present(Math.abs(change), spec);
+  }
+
   //: True when the pages are served with no simulator behind them.
   var isStatic = false;
 
@@ -246,10 +263,38 @@
 
   /* ---- rendering the panel -------------------------------------------- */
 
+  /* One small glyph per circuit family, drawn like the schematics are:
+     strokes, no fills, meaning over ornament. A chip you can recognise
+     before you read it. */
+  var GLYPHS = {
+    divider: "M8 1v3 M5 4h6l-1.5 2h3l-1.5 2h3l-1.5 2h3L14 12 M8 12v3",
+    rc_lowpass: "M1 8h4l1-2 2 4 2-4 1 2h4 M11 8v4 M13 8v4",
+    rc_highpass: "M1 8h3 M6 5v6 M8 5v6 M8 8h2l1-2 2 4 1-2",
+    rlc_bandpass: "M1 8h2l1-2 2 4 1-2h1a2 2 0 014 0h1 M13 6v4 M15 6v4",
+    inverting_amp: "M3 3v10l9-5z M3 5H1 M3 11H1 M12 8h3",
+    twopole_amp: "M2 3v10l8-5z M10 6l4-1 M10 10l4 1",
+    nfet_cs_amp: "M4 3v10 M6 5v6 M6 6h6v-3 M6 10h6v3 M1 8h3",
+    opamp_two_stage: "M2 3v10l7-5z M9 5l5-2v10l-5-2 M2 5H1 M2 11H1",
+    ota_5t: "M3 3v10l9-5z M3 5H1 M3 11H1 M12 8h3 M13 6v4",
+    folded_cascode: "M2 4v8 M4 5v6 M4 6h4v-3h4 M4 10h4v3h4 M12 3v3 M12 10v3",
+  };
+
   function renderTabs() {
     clear(modesEl);
     tabs = catalogue.map(function (circuit) {
-      var tab = el("button", "mode", circuit.name);
+      var tab = el("button", "mode");
+      if (GLYPHS[circuit.id]) {
+        var glyph = document.createElementNS("http://www.w3.org/2000/svg",
+                                             "svg");
+        glyph.setAttribute("viewBox", "0 0 16 16");
+        glyph.setAttribute("aria-hidden", "true");
+        var stroke = document.createElementNS(
+          "http://www.w3.org/2000/svg", "path");
+        stroke.setAttribute("d", GLYPHS[circuit.id]);
+        glyph.appendChild(stroke);
+        tab.appendChild(glyph);
+      }
+      tab.appendChild(document.createTextNode(circuit.name));
       var active = circuit.id === current.id;
       tab.type = "button";
       tab.setAttribute("role", "tab");
@@ -492,11 +537,22 @@
     id("note").textContent = noteText;
     show(id("note"), Boolean(noteText));
 
+    var previous = lastMeasured[current.id] || {};
+    var headlineDelta = deltaText(previous[headline.key],
+                                  result[headline.key], headline);
+    if (headlineDelta) {
+      id("headline-value").appendChild(el("span", "delta", headlineDelta));
+    }
+
     clear(statsEl);
     readout.stats.forEach(function (stat) {
       var cell = el("div");
       cell.appendChild(el("span", "stat-label", stat.label));
       cell.appendChild(el("span", "stat-value", present(result[stat.key], stat)));
+      var moved = deltaText(previous[stat.key], result[stat.key], stat);
+      if (moved) {
+        cell.appendChild(el("span", "delta", moved));
+      }
 
       var statCheck = stat.check ? checkFor(current, stat.check) : null;
       if (statCheck && typeof analytic[statCheck.key] === "number") {
@@ -511,6 +567,18 @@
       statsEl.appendChild(cell);
     });
     show(statsEl, readout.stats.length > 0);
+
+    // Remember what was measured, so the next run can say what changed.
+    var kept = {};
+    [headline].concat(readout.stats).forEach(function (spec) {
+      if (typeof result[spec.key] === "number") {
+        kept[spec.key] = result[spec.key];
+      }
+    });
+    lastMeasured[current.id] = kept;
+
+    // And the bench hears it.
+    benchSet("sim", "pass", present(result[headline.key], headline));
   }
 
   /* ---- errors ------------------------------------------------------------ */
@@ -631,6 +699,8 @@
     }
 
     setPending(true);
+    tickStart(captionState);
+    benchSet("sim", "run");
     try {
       var response = await fetch("/api/simulate", {
         method: "POST",
@@ -660,6 +730,11 @@
                 "server.py and run again.");
     } finally {
       setPending(false);
+      tickStop(captionState, lastResult ? "" : captionState.textContent
+               .replace(/ \u00b7 \d+ s$/, ""));
+      if (!lastResult) {
+        benchSet("sim", "idle");
+      }
     }
   }
 
@@ -1338,6 +1413,84 @@
 
 
 
+  /* ---- the bench: where every verdict lands ----------------------------
+     The checks run in different panels at different times. Each reports
+     here, so the state of the circuit on the bench is one look. The slots
+     reset when the circuit changes, because a verdict about one circuit
+     says nothing about the next. */
+  var BENCH_STATES = {
+    idle: ["", "not yet"],
+    run: ["is-run", "running"],
+  };
+
+  function benchSet(slot, state, text) {
+    var host = id("bench-" + slot);
+    if (!host) {
+      return;
+    }
+    host.classList.remove("is-pass", "is-fail", "is-run");
+    var label = host.querySelector(".bench-state");
+    if (state === "pass") {
+      host.classList.add("is-pass");
+      label.textContent = text || "clean";
+    } else if (state === "fail") {
+      host.classList.add("is-fail");
+      label.textContent = text || "failed";
+    } else if (state === "run") {
+      host.classList.add("is-run");
+      label.textContent = text || "running";
+    } else {
+      label.textContent = text || "not yet";
+    }
+  }
+
+  function benchReset() {
+    ["sim", "drc", "signoff", "lvs"].forEach(function (slot) {
+      benchSet(slot, "idle");
+    });
+  }
+
+  /* The layout panel lives in its own file; this is how its verdicts
+     reach the strip. */
+  window.FaradaemBench = { set: benchSet };
+
+  /* ---- elapsed time on anything slow ------------------------------------
+     One clock, shared. A panel starts it on its status line and stops it
+     with the text the line should end on; the reader sees the seconds
+     climb instead of wondering whether anything is happening. */
+  var ticking = [];
+
+  window.setInterval(function () {
+    var now = Date.now();
+    ticking.forEach(function (entry) {
+      entry.node.textContent = entry.base + " \u00b7 "
+        + Math.round((now - entry.started) / 1000) + " s";
+    });
+  }, 1000);
+
+  function tickStart(node) {
+    tickStop(node, null);
+    ticking.push({ node: node, base: node.textContent,
+                   started: Date.now() });
+  }
+
+  function tickStop(node, finalText) {
+    ticking = ticking.filter(function (entry) { return entry.node !== node; });
+    if (finalText !== null && finalText !== undefined) {
+      node.textContent = finalText;
+    }
+  }
+
+  /* A tab whose pane holds a result says so with a dot. */
+  function markTab(key, bad) {
+    var tab = document.querySelector(
+      '.analysis-tab[data-analysis="' + key + '"]');
+    if (tab) {
+      tab.classList.remove("has-result", "has-error");
+      tab.classList.add(bad ? "has-error" : "has-result");
+    }
+  }
+
   /* ---- the measurement panels -------------------------------------------
      Each lives in its own file and registers a factory on
      window.FaradaemPanels. They are handed the handful of things every
@@ -1350,7 +1503,10 @@
     el: el,
     values: values,
     validate: validate,
-    current: function () { return current; }
+    current: function () { return current; },
+    tickStart: tickStart,
+    tickStop: tickStop,
+    markTab: markTab
   };
 
   var panels = (window.FaradaemPanels || []).map(function (make) {
@@ -1449,6 +1605,7 @@
     id("caption").textContent = current.caption;
 
     renderTabs();
+    benchReset();
     renderPresets();
     renderInputs(memory[current.id]);
     renderDesignPanel();
@@ -1535,6 +1692,28 @@
       applyStaticMode();
     }
   }
+
+  /* Ctrl+Enter runs from anywhere on the page -- except the advise box,
+     where it sends the message, because that is what Ctrl+Enter means in
+     a message box. */
+  document.addEventListener("keydown", function (event) {
+    if (!(event.ctrlKey || event.metaKey) || event.key !== "Enter") {
+      return;
+    }
+    var advise = id("advise-input");
+    if (advise && document.activeElement === advise) {
+      var send = id("advise-send");
+      if (send && !send.disabled) {
+        event.preventDefault();
+        send.click();
+      }
+      return;
+    }
+    if (!runButton.disabled) {
+      event.preventDefault();
+      runButton.click();
+    }
+  });
 
   start();
 })(window, document);

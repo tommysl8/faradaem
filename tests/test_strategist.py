@@ -108,7 +108,8 @@ def events_of(client, run_tool_fn=None, messages=None):
         client,
         messages if messages is not None else [{"role": "user", "text": "design"}],
         seen.append,
-        run_tool_fn=run_tool_fn or (lambda name, args: ({"ok": True}, {"ok": True})),
+        run_tool_fn=run_tool_fn or (
+            lambda name, args, progress=None: ({"ok": True}, {"ok": True})),
     )
     return state, seen
 
@@ -141,7 +142,7 @@ def test_a_trailing_question_pauses_for_the_user():
 
 
 def test_tool_failures_are_reported_and_the_loop_continues():
-    def failing(name, args):
+    def failing(name, args, progress=None):
         raise circuits.CircuitInputError("that bias does not settle")
 
     client = llm.FakeClient([
@@ -175,7 +176,7 @@ def test_should_stop_ends_the_session():
     state = strategist.advise(
         client, [{"role": "user", "text": "x"}], seen.append,
         should_stop=lambda: True,
-        run_tool_fn=lambda n, a: ({}, {}),
+        run_tool_fn=lambda n, a, progress=None: ({}, {}),
     )
     assert state == "stopped"
 
@@ -492,3 +493,70 @@ def test_the_folded_cascode_seed_stays_inside_the_declared_range():
              "phase_margin": 60.0, "power": power}, base)
         for key, value in seeded.items():
             assert spec[key]["min"] <= value <= spec[key]["max"], (key, value)
+
+
+# ---------------------------------------------------------------------------
+# the model has to be able to see the circuits it is asked to design
+# ---------------------------------------------------------------------------
+
+
+def test_the_catalogue_reaches_the_model_whole():
+    """It did not. list_circuits returned 19,080 characters into a 2,000
+    character budget, so every design session ran with the model unable to
+    see a single one of the three amplifiers -- not their names, not their
+    parameters, not their ranges."""
+    payload, _ = strategist.run_tool("list_circuits", {})
+    text = strategist._clip(payload)
+
+    back = json.loads(text)                    # must be parseable at all
+    ids = {entry.get("id") for entry in back}
+    for circuit_id in ("opamp_two_stage", "ota_5t", "folded_cascode"):
+        assert circuit_id in ids, circuit_id
+
+
+def test_the_catalogue_carries_what_a_design_needs():
+    payload, _ = strategist.run_tool("list_circuits", {})
+    entry = [item for item in payload if item["id"] == "opamp_two_stage"][0]
+    assert entry["designable"] is True
+    assert entry["tunable"]
+    assert entry["goals"]
+    # Ranges, or the model proposes values the validator rejects.
+    for spec in entry["params"]:
+        assert "min" in spec and "max" in spec and "default" in spec
+
+
+def test_a_clipped_result_is_still_valid_json():
+    """Cutting JSON at a character offset gives the model something it
+    cannot parse and cannot tell apart from a strange answer."""
+    huge = [{"index": n, "padding": "x" * 200} for n in range(400)]
+    text = strategist._clip(huge)
+    back = json.loads(text)
+    assert len(text) <= strategist.MAX_RESULT_CHARS
+    # And it says what it dropped rather than pretending it is complete.
+    assert any("omitted" in item for item in back)
+
+
+def test_a_clipped_object_says_it_was_clipped():
+    text = strategist._clip({"blob": "y" * 40000})
+    back = json.loads(text)
+    assert back["truncated"] is True
+    assert "at a time" in back["why"]
+
+
+def test_progress_from_a_tool_reaches_the_caller():
+    """advise called run_tool with two arguments, so run_design's
+    per-evaluation callback was always None inside a session."""
+    seen = []
+
+    def tool(name, args, progress=None):
+        if progress is not None:
+            progress({"evals": 1, "score": 0.5}, None)
+        return ({"ok": True}, {"ok": True})
+
+    client = llm.FakeClient([
+        {"tool_calls": [{"id": "1", "name": "simulate", "arguments": {}}]},
+        {"text": "done."},
+    ])
+    events = []
+    strategist.advise(client, [], events.append, run_tool_fn=tool)
+    assert any(event["kind"] == "progress" for event in events), events

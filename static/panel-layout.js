@@ -18,6 +18,9 @@
     var el = ctx.el;
     var values = ctx.values;
     var validate = ctx.validate;
+    var tickStart = ctx.tickStart || function () {};
+    var tickStop = ctx.tickStop || function () {};
+    var markTab = ctx.markTab || function () {};
     var current = null;
 
     /* ---- the floorplan ------------------------------------------------------ */
@@ -220,6 +223,11 @@
       layoutRun.disabled = true;
       layoutState.textContent = "Placing devices, then measuring twice";
       show(layoutProgress, true);
+      tickStart(layoutState);
+      if (window.FaradaemBench) {
+        window.FaradaemBench.set("drc", "run");
+        window.FaradaemBench.set("lvs", "run");
+      }
 
       fetch("/api/layout", {
         method: "POST",
@@ -233,7 +241,27 @@
                 ? payload.error : "The server refused the request.");
             }
             lastLayout = payload;
-            layoutState.textContent = "Measured";
+            tickStop(layoutState, "Measured");
+            markTab("layout");
+            if (window.FaradaemBench) {
+              if (payload.drc) {
+                window.FaradaemBench.set("drc",
+                  payload.drc.clean ? "pass" : "fail",
+                  payload.drc.clean
+                    ? payload.drc.rules_checked.length + " rules"
+                    : payload.drc.violations.length + " broken");
+              }
+              var engine = payload.klvs;
+              if (engine && engine.ran !== false) {
+                window.FaradaemBench.set("lvs",
+                  engine.match ? "pass" : "fail",
+                  engine.match ? "match" : "mismatch");
+              } else if (payload.lvs) {
+                window.FaradaemBench.set("lvs",
+                  payload.lvs.match ? "pass" : "fail",
+                  (payload.lvs.match ? "match" : "mismatch") + ", own");
+              }
+            }
             layoutRun.disabled = false;
             renderLayoutResult(payload);
           });
@@ -241,6 +269,12 @@
         .catch(function (error) {
           layoutRun.disabled = false;
           show(layoutProgress, false);
+          tickStop(layoutState, "Running");
+          markTab("layout", true);
+          if (window.FaradaemBench) {
+            window.FaradaemBench.set("drc", "idle");
+            window.FaradaemBench.set("lvs", "idle");
+          }
           layoutError.textContent = String(error.message || error);
           show(layoutError, true);
         });
@@ -285,6 +319,10 @@
       layoutState.textContent = "Running the SKY130 runset, about a minute";
       show(layoutProgress, true);
       show(layoutError, false);
+      tickStart(layoutState);
+      if (window.FaradaemBench) {
+        window.FaradaemBench.set("signoff", "run");
+      }
 
       fetch("/api/signoff", {
         method: "POST",
@@ -298,7 +336,13 @@
                 ? payload.error : "The server refused the request.");
             }
             button.disabled = false;
-            layoutState.textContent = "Measured";
+            tickStop(layoutState, "Measured");
+            if (window.FaradaemBench) {
+              window.FaradaemBench.set("signoff",
+                payload.clean ? "pass" : "fail",
+                payload.clean ? "0 violations"
+                              : payload.total + " violations");
+            }
 
             var list = id("layout-verify-list");
             var broken = payload.violations || {};
@@ -318,6 +362,10 @@
         .catch(function (error) {
           button.disabled = false;
           show(layoutProgress, false);
+          tickStop(layoutState, "Measured");
+          if (window.FaradaemBench) {
+            window.FaradaemBench.set("signoff", "idle");
+          }
           layoutError.textContent = String(error.message || error);
           show(layoutError, true);
         });

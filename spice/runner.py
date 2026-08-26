@@ -12,12 +12,16 @@ Extension points for later versions:
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import math
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 
 #: Environment variable that overrides ngspice discovery.
 NGSPICE_ENV_VAR = "FARADAEM_NGSPICE"
@@ -158,6 +162,128 @@ def build_divider_netlist(vdd: float, r1: float, r2: float) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# counting the simulations, at the only two places one happens
+# ---------------------------------------------------------------------------
+
+#: The observer is per-thread: the server answers requests on several, and a
+#: budget belonging to one experiment must never be spent by another.
+_LOCAL = threading.local()
+
+
+#: Where a deck names a throwaway file. Two runs of one design differ only
+#: in these, so they are normalised out before the deck is hashed: a hash
+#: that changes every run cannot show that two runs were the same circuit.
+_SCRATCH = re.compile(r"(wrdata|write|\.lib)\s+\S+", re.IGNORECASE)
+
+
+def deck_digest(netlist):
+    """A hash of what the deck says, not of where it wrote its output."""
+    normalised = _SCRATCH.sub(lambda m: m.group(1) + " <path>", netlist)
+    return hashlib.sha256(normalised.encode("ascii", "replace")).hexdigest()
+
+
+class SimBudgetExhausted(NgspiceRunError):
+    """Raised when a run has spent the simulations it was given.
+
+    A budget that stops the work is the point: it is what makes two design
+    methods comparable. An arm that hits it has not failed to converge, it
+    has run out, and the difference is recorded rather than inferred.
+    """
+
+
+class SimObserver:
+    """Watches every ngspice subprocess for one piece of work.
+
+    ledger, when given, gets one record per simulation: what was run, how
+    long it took, and whether it worked. budget, when given, is a hard
+    ceiling on how many may be run.
+    """
+
+    def __init__(self, ledger=None, arm=None, budget=None, phase="search",
+                 exp=None):
+        self.ledger = ledger
+        self.arm = arm
+        self.budget = budget
+        self.phase = phase
+        self.exp = exp
+        self.count = 0
+        self.seconds = 0.0
+        self.durations = []
+
+    def about_to_run(self):
+        if self.budget is not None and self.count >= self.budget:
+            raise SimBudgetExhausted(
+                "This run has spent its budget of " + str(self.budget)
+                + " simulations. The budget is what makes two design methods "
+                "comparable, so it stops the work rather than being exceeded."
+            )
+        self.count += 1
+        return self.count
+
+    def ran(self, index, netlist, seconds, returncode, error=None):
+        self.seconds += seconds
+        self.durations.append(seconds)
+        if self.ledger is None:
+            return
+        self.ledger.record(
+            "sim", by="tool", arm=self.arm, exp=self.exp,
+            sim_index=index, phase=self.phase,
+            netlist_sha256=deck_digest(netlist),
+            netlist_bytes=len(netlist),
+            duration_s=round(seconds, 4),
+            returncode=returncode,
+            error=error,
+        )
+
+    def median_seconds(self):
+        if not self.durations:
+            return None
+        ordered = sorted(self.durations)
+        middle = len(ordered) // 2
+        if len(ordered) % 2:
+            return ordered[middle]
+        return (ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def observer():
+    """The observer watching this thread, if any."""
+    return getattr(_LOCAL, "observer", None)
+
+
+@contextlib.contextmanager
+def observing(watcher):
+    """Install an observer for the duration of a block.
+
+    Nested blocks are refused rather than stacked: two budgets in force at
+    once is a counting bug waiting to be argued about.
+    """
+    if observer() is not None:
+        raise NgspiceRunError(
+            "A simulation observer is already watching this thread. Two "
+            "budgets in force at once cannot both be the budget."
+        )
+    _LOCAL.observer = watcher
+    try:
+        yield watcher
+    finally:
+        _LOCAL.observer = None
+
+
+def _watch_start(netlist):
+    """Called immediately before a subprocess. Returns (watcher, index)."""
+    watcher = observer()
+    if watcher is None:
+        return None, None
+    return watcher, watcher.about_to_run()
+
+
+def _watch_end(watcher, index, netlist, started, returncode, error=None):
+    if watcher is None:
+        return
+    watcher.ran(index, netlist, time.time() - started, returncode, error)
+
+
 def run_netlist(netlist: str, timeout_s: float = DEFAULT_TIMEOUT_S) -> str:
     """Run a netlist through ngspice in batch mode and return its stdout.
 
@@ -170,6 +296,8 @@ def run_netlist(netlist: str, timeout_s: float = DEFAULT_TIMEOUT_S) -> str:
     temp_dir = tempfile.gettempdir()
 
     handle, path = tempfile.mkstemp(suffix=".cir", prefix=TEMP_PREFIX, dir=temp_dir)
+    watcher, index = _watch_start(netlist)
+    started = time.time()
     try:
         with os.fdopen(handle, "w", encoding="ascii") as netlist_file:
             netlist_file.write(netlist)
@@ -182,7 +310,9 @@ def run_netlist(netlist: str, timeout_s: float = DEFAULT_TIMEOUT_S) -> str:
                 timeout=timeout_s,
                 cwd=temp_dir,
             )
+            _watch_end(watcher, index, netlist, started, completed.returncode)
         except subprocess.TimeoutExpired as exc:
+            _watch_end(watcher, index, netlist, started, None, "timeout")
             raise NgspiceRunError(
                 "ngspice did not finish within the " + str(timeout_s) + " s timeout"
                 " (executable: " + executable + "). The circuit may not be converging."
@@ -302,6 +432,8 @@ def run_data_netlist(netlist, out_paths, timeout_s, with_stdout=False):
     handle, netlist_path = tempfile.mkstemp(
         suffix=".cir", prefix=TEMP_PREFIX, dir=temp_dir
     )
+    watcher, index = _watch_start(netlist)
+    started = time.time()
     try:
         with os.fdopen(handle, "w", encoding="ascii") as netlist_file:
             netlist_file.write(netlist)
@@ -314,7 +446,9 @@ def run_data_netlist(netlist, out_paths, timeout_s, with_stdout=False):
                 timeout=timeout_s,
                 cwd=temp_dir,
             )
+            _watch_end(watcher, index, netlist, started, completed.returncode)
         except subprocess.TimeoutExpired as exc:
+            _watch_end(watcher, index, netlist, started, None, "timeout")
             raise NgspiceRunError(
                 "ngspice did not finish within the "
                 + str(timeout_s) + " s timeout (executable: " + executable + ")."

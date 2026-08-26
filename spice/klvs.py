@@ -178,6 +178,12 @@ def extract_netlist(shapes, layers, tech, name):
     l2n.connect(ptap, psub)
 
     l2n.extract_netlist()
+
+    # A device drawn as N fingers is N devices in parallel, which is what
+    # it physically is. The netlist calls it one device, so the extracted
+    # side is combined the way a sign-off LVS combines it, rather than the
+    # comparison being told to overlook the difference.
+    l2n.netlist().combine_devices()
     return l2n
 
 
@@ -215,7 +221,49 @@ def cell_netlist(circuit_id, params):
         lines.append(letter + item["name"] + " " + item["nodes"][0] + " "
                      + item["nodes"][1] + " " + repr(item["value"]))
 
+    # The dummies are in the layout, so they are in the netlist it is
+    # compared against. Leaving them out would mean either an LVS that
+    # fails on devices that are supposed to be there, or one told to
+    # ignore a class of device, and both are worse than saying what is
+    # drawn.
+    lines.extend(dummy_lines(circuit_id, params))
+
     return "\n".join(lines) + "\n"
+
+
+def dummy_lines(circuit_id, params):
+    """The matching dummies, every terminal on the body rail of its kind.
+
+    A dummy is off and connected: gate, source and drain all tied to the
+    rail its body sits at, which is what makes it a neighbour for the
+    outermost real finger rather than a floating transistor.
+    """
+    from . import circuits, layout
+
+    block = circuits.get_circuit(circuit_id).get("floorplan")
+    if not block:
+        return []
+    ordered, _ = layout.matched_layout(block["devices"](params),
+                                       block.get("matched"))
+    rail = {}
+    for device in circuits.circuit_devices(circuit_id, params).values():
+        rail.setdefault(device["kind"], device["terminals"]["bulk"])
+
+    lines = []
+    for entry in ordered:
+        if not layout.is_dummy(entry[0]):
+            continue
+        kind = entry[3] if len(entry) > 3 else "nfet"
+        net = rail.get(kind)
+        if net is None:
+            continue
+        lines.append(
+            "M" + entry[0] + " " + net + " " + net + " " + net + " " + net
+            + " " + kind
+            + " W=" + ("%.6g" % (entry[1] * 1e6)) + "U"
+            + " L=" + ("%.6g" % (entry[2] * 1e6)) + "U"
+        )
+    return lines
 
 
 def _read_spice(text):
@@ -283,6 +331,13 @@ def compare(circuit_id, params, shapes=None, layers=None, tech=None):
 
     for netlist in (extracted, schematic):
         _tolerant(netlist)
+
+    # Both sides are combined, not just the drawn one. The extractor merges
+    # parallel fingers into one device; a schematic left uncombined would
+    # then differ from it by exactly the simplification that was applied to
+    # only one side, which is a comparison of two different simplifications
+    # rather than of two circuits.
+    schematic.combine_devices()
 
     logger = _Log()
     comparer = kdb.NetlistComparer(logger)

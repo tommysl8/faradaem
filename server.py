@@ -117,6 +117,7 @@ ROUTES = {
     "/favicon.svg": ("static/favicon.svg", SVG),
     "/favicon.ico": ("static/icon-32.png", PNG),
     "/static/icon.svg": ("static/icon.svg", SVG),
+    "/static/hero-layout.svg": ("static/hero-layout.svg", SVG),
     "/static/icon-32.png": ("static/icon-32.png", PNG),
     "/static/apple-touch-icon.png": ("static/apple-touch-icon.png", PNG),
     "/static/og.png": ("static/og.png", PNG),

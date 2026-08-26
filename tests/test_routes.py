@@ -109,6 +109,7 @@ def test_the_pages_and_their_assets_are_served():
         "/favicon.svg",
         "/favicon.ico",
         "/static/icon.svg",
+        "/static/hero-layout.svg",
         "/static/icon-32.png",
         "/static/apple-touch-icon.png",
         "/static/og.png",
