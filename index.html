@@ -96,11 +96,48 @@
       redraws circuits but does not run ngspice. Run the local app to measure
       them. Everything below that does not need a measured number is real:
       pick a circuit, load an example, edit any value, and the schematic
-      redraws as you type. To measure one,
-      <a href="{{repo_url}}" rel="noreferrer">clone the repository</a> and run
-      <code>python install.py</code> once, which fetches the simulator and the
-      process kit; then <code>python server.py</code> and every panel is
-      here.</p>
+      redraws as you type.</p>
+
+      <!-- The strategist is the point of the project, so the published page
+           says what it is rather than going quiet about it. What it must not
+           do is ship the control: an input that cannot send is a promise the
+           page cannot keep, and it is what the old build did for one second
+           before deleting itself. Prose and a way in, no dead box. -->
+      <section class="panel advise-panel" id="advise-preview"
+               aria-labelledby="advise-preview-head">
+        <h2 class="panel-head" id="advise-preview-head">Ask for a design</h2>
+        <div class="panel-body">
+          <p class="design-intro">This is what Faradaem is for. You describe
+          the circuit in a sentence, and a strategist chooses the topology,
+          sizes it, and reads back what it measured. It never states a number
+          it did not get from the simulator: it decides and explains, ngspice
+          measures.</p>
+          <figure class="advise-example">
+            <blockquote>An op-amp driving 5 pF: at least 60 dB and 60 degrees
+            of margin, under 150 microwatts.</blockquote>
+            <figcaption>It picks between {{topologies_word}} SKY130 amplifier
+            topologies it can size, the two-stage Miller op-amp, the
+            five-transistor OTA and the folded cascode, sizes one against real
+            ngspice runs until the numbers hold, then lays it out and has the
+            foundry's own deck check the geometry.</figcaption>
+          </figure>
+          <p class="design-intro">It runs on your machine, because every step
+          of it is a real simulation and there is no simulator behind this
+          page. One command sets that up.</p>
+          <div class="design-actions">
+            <a class="run" href="{{repo_url}}" rel="noreferrer">Run Faradaem
+            locally</a>
+            <a class="chip" href="/manual#asking-for-a-design-in-plain-language">
+            Read what it does</a>
+          </div>
+          <p class="hint">Clone it, run <code>python install.py</code> once to
+          fetch the simulator and the process kit, then
+          <code>python server.py</code>. Set
+          <code>FARADAEM_ANTHROPIC_KEY</code> or
+          <code>FARADAEM_OPENAI_KEY</code> and this panel becomes the real
+          thing.</p>
+        </div>
+      </section>
 <!--/static-only-->
 <!--local-only-->      <section class="panel advise-panel" id="advise" aria-label="Ask for a design">
         <h2 class="panel-head">Ask for a design</h2>

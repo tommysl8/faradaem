@@ -876,6 +876,29 @@ input {
   margin-bottom: var(--s5);
 }
 
+/* The published page shows the request rather than a box that cannot send
+   it. Quoted like a specification, because that is what it is. */
+.advise-example {
+  margin: var(--s4) 0;
+  padding-left: var(--s4);
+  border-left: var(--stroke) solid var(--accent);
+}
+
+.advise-example blockquote {
+  margin: 0 0 var(--s2);
+  color: var(--text);
+  font-size: var(--t-section);
+  line-height: var(--lh-section);
+  text-wrap: balance;
+}
+
+.advise-example figcaption {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+}
+
 .advise-input {
   width: 100%;
   min-width: 0;

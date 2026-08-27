@@ -138,6 +138,41 @@ def test_the_published_page_offers_a_way_to_run_it_instead(site):
     assert siteinfo.REPO_URL in page
 
 
+def test_the_published_page_still_says_what_faradaem_is_for(site):
+    """Omitting the broken control is not the same as going quiet about the
+    feature. The first cut of this deleted the strategist panel outright and
+    the published home page then said nothing at all about the thing the
+    project exists to do."""
+    page = site["text"]["index.html"]
+    assert 'id="advise-preview"' in page
+    text = " ".join(page.split())
+    assert "Ask for a design" in text
+    assert "strategist" in text
+    assert "ngspice measures" in text
+    # The example request, so a visitor sees what asking looks like.
+    assert "at least 60 dB and 60 degrees of margin" in text
+    assert siteinfo.REPO_URL in page
+
+
+def test_the_published_preview_ships_no_control_it_cannot_honour(site):
+    """Prose and a way in, never a box that cannot send."""
+    page = site["text"]["index.html"]
+    at = page.index('id="advise-preview"')
+    block = page[page.rindex("<section", 0, at):page.index("</section>", at)]
+    for control in ("<form", "<textarea", "<input", 'id="advise-send"',
+                    'id="advise-input"'):
+        assert control not in block, control
+
+
+def test_the_local_page_keeps_the_working_strategist(local_pages):
+    page = local_pages["index.html"]
+    assert 'id="advise"' in page
+    assert 'id="advise-input"' in page
+    assert 'id="advise-send"' in page
+    # And does not also carry the published stand-in.
+    assert 'id="advise-preview"' not in page
+
+
 def test_the_published_page_says_what_it_is(site):
     # Collapsed, because the sentence is wrapped in the source and the
     # reader sees it as one line either way.
