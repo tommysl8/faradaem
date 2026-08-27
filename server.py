@@ -40,8 +40,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import doctor as doctor_checks
 import workbench
-from spice import (autopsy, charact, circuits, design, llm, packet, pins,
-                   pvt, signoff, strategist, triage)
+from spice import (autopsy, charact, circuits, deployment, design, llm,
+                   packet, pins, pvt, runner, signoff, strategist, triage)
 from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
@@ -109,6 +109,7 @@ ROUTES = {
     "/changelog": ("changelog.html", HTML),
     "/static/style.css": ("static/style.css", CSS),
     "/static/app.js": ("static/app.js", JS),
+    "/static/import-validate.js": ("static/import-validate.js", JS),
     "/static/schematic.js": ("static/schematic.js", JS),
     "/static/bodeplot.js": ("static/bodeplot.js", JS),
     "/static/stepplot.js": ("static/stepplot.js", JS),
@@ -131,6 +132,16 @@ ROUTES = {
     "/static/apple-touch-icon.png": ("static/apple-touch-icon.png", PNG),
     "/static/og.png": ("static/og.png", PNG),
 }
+
+#: Which Faradaem this process is serving. Local by default, because a
+#: running server is the local tool by definition; $FARADAEM_DEPLOYMENT can
+#: say otherwise, which is how the published build is previewed by hand.
+DEPLOYMENT = deployment.resolve(deployment.LOCAL)
+
+#: Served for anything not on the whitelist, in place of a bare JSON error.
+#: The same page the published build writes, so a missing route looks like
+#: Faradaem in both deployments rather than like the host.
+NOT_FOUND_PAGE = "404.html"
 
 #: Refuse absurd request bodies before reading them into memory.
 MAX_BODY_BYTES = 64 * 1024
@@ -729,7 +740,12 @@ class FaradaemHandler(BaseHTTPRequestHandler):
 
         route = resolve_route(path)
         if route is None:
-            self._send_json(404, {"error": "Not found: " + path})
+            # An /api path that got this far is a caller wanting JSON; a
+            # page path is a person, and a person gets the branded page.
+            if path.startswith("/api/"):
+                self._send_json(404, {"error": "Not found: " + path})
+            else:
+                self._send_file(NOT_FOUND_PAGE, HTML, status=404)
             return
         self._send_file(*route)
 
@@ -791,8 +807,15 @@ class FaradaemHandler(BaseHTTPRequestHandler):
 
     # ---- endpoints -----------------------------------------------------
 
-    def _send_file(self, relative_file, content_type):
-        """Serve one whitelisted project file. relative_file is always a literal."""
+    def _send_file(self, relative_file, content_type, status=200):
+        """Serve one whitelisted project file. relative_file is always a literal.
+
+        HTML is rendered for this deployment on the way out, the same call
+        the published build makes: the static-only blocks are deleted, the
+        shared facts are substituted, and <html> is stamped local. Done per
+        request rather than at import so editing a page and reloading shows
+        the edit, which is the whole reason to run the server locally.
+        """
         try:
             body = (PROJECT_ROOT / relative_file).read_bytes()
         except OSError as exc:
@@ -800,7 +823,17 @@ class FaradaemHandler(BaseHTTPRequestHandler):
                 500, {"error": "Could not read " + relative_file + ": " + str(exc)}
             )
             return
-        self._send_bytes(200, content_type, body)
+        if content_type == HTML:
+            try:
+                body = deployment.render(
+                    body.decode("utf-8"), DEPLOYMENT).encode("utf-8")
+            except (UnicodeDecodeError, ValueError) as exc:
+                self._send_json(
+                    500, {"error": "Could not render " + relative_file
+                          + " for the " + DEPLOYMENT + " deployment: "
+                          + str(exc)})
+                return
+        self._send_bytes(status, content_type, body)
 
     def _handle_api_simulate(self):
         """The one simulate endpoint. Every circuit in the catalogue runs here."""
@@ -1414,9 +1447,29 @@ class FaradaemServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+def _startup_warnings():
+    """Say at startup what would otherwise fail at the first click.
+
+    The server serves its pages perfectly well without a simulator, so a
+    machine that has not been set up looks fine until someone presses Run
+    and gets an error out of a panel. Said here instead, once, with the
+    command that fixes it.
+    """
+    try:
+        runner.find_ngspice()
+    except runner.NgspiceNotFoundError:
+        print("No simulator found, so nothing on the page can measure. "
+              "Run 'python install.py' to fetch one.", flush=True)
+    if not runner.sky130_available():
+        print("No SKY130 kit found, so the four SKY130 circuits and the "
+              "layout checks are unavailable. Run 'python install.py' to "
+              "fetch it.", flush=True)
+
+
 def main():
     httpd = FaradaemServer((HOST, PORT), FaradaemHandler)
     print("Faradaem running at http://" + HOST + ":" + str(PORT), flush=True)
+    _startup_warnings()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

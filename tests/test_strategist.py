@@ -397,11 +397,23 @@ def test_the_strategist_can_lay_a_design_out():
 
 def test_the_prompt_describes_all_three_topologies():
     """It described two for as long as there were two. A model cannot
-    choose a topology nobody told it about."""
+    choose a topology nobody told it about.
+
+    The count is asserted against the registry rather than against a
+    phrase: the prompt used to say "three SKY130 amplifiers", which was
+    the same miscount the home page made. Four circuits are built on
+    SKY130; three of them are the ones a strategist can size."""
+    from spice import siteinfo
+
     prompt = strategist.SYSTEM_PROMPT
     for name in ("opamp_two_stage", "ota_5t", "folded_cascode"):
         assert name in prompt, name
-    assert "three SKY130 amplifiers" in prompt
+
+    found = siteinfo.counts()
+    assert siteinfo.word(found["pdk_circuits"]) + " circuits" in prompt.lower()
+    assert siteinfo.word(found["topologies"]) + " of them" in prompt.lower()
+    # And it must never repeat the miscount.
+    assert "three SKY130 amplifiers" not in prompt
 
 
 def test_the_prompt_tells_it_to_lay_the_design_out():

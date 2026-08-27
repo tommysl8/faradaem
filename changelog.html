@@ -13,18 +13,21 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Changelog - Faradaem">
 <meta property="og:description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
-<meta property="og:image" content="/static/og.png">
+<meta property="og:url" content="{{site_origin}}/changelog">
+<meta property="og:image" content="{{site_origin}}/static/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="A white AE ligature on a black square, the Faradaem mark.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Changelog - Faradaem">
 <meta name="twitter:description" content="Release notes for Faradaem, an AI-assisted analog IC design tool built on ngspice.">
-<meta name="twitter:image" content="/static/og.png">
+<meta name="twitter:image" content="{{site_origin}}/static/og.png">
+<link rel="canonical" href="{{site_origin}}/changelog">
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to the main content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
@@ -44,7 +47,7 @@
   </div>
 </header>
 
-<main class="page">
+<main class="page" id="main" tabindex="-1">
   <div class="wrap">
 
     <div class="page-head">
@@ -57,7 +60,28 @@
 
                 <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.13.0</span>
+            <h2 class="entry-version">1.14.0</h2>
+            <span class="entry-date">2026-08-27</span>
+          </header>
+          <ul>
+            <li>Setting up a new machine became one command. <code>python install.py</code> fetches the two things Faradaem needs and is not, the console build of ngspice and the SKY130 process design kit, verifies every archive against a pinned checksum, and unpacks them into <code>~/.faradaem/tools</code>, which the resolvers now look in. Nothing goes on PATH, nothing needs an environment variable, and nothing is installed with pip: the archives are unpacked by the tar the operating system already ships, which on Windows reads both 7-Zip and zstd without help. The old route was an afternoon and five chances to be subtly wrong, and the failures arrived one at a time, each after a simulation that would not run.</li>
+            <li>The kit shrank from 2.2 GB to 21 MB, because Faradaem is an analog tool: it needs the technology files and the primitive devices, and none of the standard cells, IO pads or SRAM macros that the gigabytes are. Trimming it that far had one trap worth recording, since it is invisible until a transistor appears: the technology archive alone loads happily and then stops on the first device, because the corner files include the models by relative path out of their own directory. The installer now resolves those includes before it will accept a tree, so a release that moves them fails during the install, with something useful to say, rather than during someone's first simulation.</li>
+            <li>Nothing unverified is ever kept. Every archive is pinned by SHA-256, because a binary that is about to be executed is not taken on trust; a short read is reported as the server cutting off rather than as a substituted file; and a bad mirror costs a retry rather than the install, which the pin makes safe. <code>--list</code> prints every URL, size and checksum and fetches nothing, for anyone who would rather read before trusting. Builds you already have still win: <code>FARADAEM_NGSPICE</code> and <code>PDK_ROOT</code> outrank anything the installer wrote, and the installed copy in turn outranks whatever is on PATH, because it is the one Faradaem pinned. Where no official prebuilt binary exists, the step says "unavailable" and names your package manager instead of failing.</li>
+            <li>The pieces around it were told about it. The doctor's fixes are now one command rather than a paragraph of setup, and it is the doctor that reports the result, since it stays the single opinion on what a machine has. The ledger, the simulator and the kit share one home, so provenance can say which release measured a number: an installer-built kit has none of ciel's version directories, so the installer writes the release down where the ledger reads it. The container stopped needing a mounted volume and builds the kit in with the same script. The server now says at startup what is missing, because it serves its pages perfectly well without a simulator, so an unset-up machine looked fine right up until someone pressed Run. And the published site's note names the command, instead of linking to a repository and leaving the afternoon as an exercise.</li>
+            <li>The published site stopped pretending to be the tool. It used to work out that it had no simulator by asking for one: it fetched <code>/api/circuits</code>, got the host's 404, and only then took its own controls away, in front of the reader. So the demo painted "Ask for a design", a Notebook link and a Run button, then removed them; it made a request that could only fail, once per load; and what it removed was only <em>hidden</em>, so every server-only control was still in the document, still focusable, still read aloud. The deployment is now decided before the page is written. <code>spice/deployment.py</code> renders each page for its mode, deleting the other mode's markup outright, and stamps the mode on <code>&lt;html&gt;</code> where the first line of script reads it. Nothing flashes, nothing focusable lies, and the published build makes no <code>/api</code> request at all, which is enforced by shape rather than by promise: every server call goes through one function that refuses in the static deployment, so "no requests from the demo" is a property a test reads off the file instead of a claim about sixteen call sites.</li>
+            <li><code>/notebook</code> was linked from the header and the footer of every page and was never built, so it answered with the host's own unbranded 404. It is a page now, and in the published deployment it says the true thing: the notebook is a reading of the ledger on the machine that did the work, this demo has never run anything, and here is how to run it. A branded 404 replaced the host's for every other missing path, in both deployments, and it carries <code>noindex</code>. Alongside it: <code>robots.txt</code>, a <code>sitemap.xml</code> listing all five routes, a canonical URL and an <code>og:url</code> on every page, and share images made absolute, which is the difference between a link preview and a blank one.</li>
+            <li>Importing a design stopped trusting the file. The old path checked two things about the envelope and then moved the page: it switched circuits, overwrote every input it recognised, cleared the result and started a simulation, discovering only somewhere in there that a value was the string "oops", or a hundred times the legal maximum, or missing. A rejected file left the reader holding a circuit they had not chosen, half filled with a stranger's numbers, under a message claiming it was being measured, on a site that cannot measure. Validation is now one pure function in its own file, handed the catalogue and asked before anything moves: size, JSON, a plain object, a supported schema, no unknown fields, a known circuit, every declared parameter present, none extra, each a finite number inside its declared range, a real ISO date. Imported measurements are read and dropped with a note saying so, because a number on this page comes from the simulator in front of you. A rejected file changes nothing at all and says exactly what was wrong, in a live region that takes focus. Being pure, it is exercised by eighty-six cases under node rather than asserted about.</li>
+            <li>The page remembers. Editing six values, reloading, and finding the defaults back was a small cruelty a browser has had the means to avoid since 2009; the last valid sizing per circuit now survives a refresh, namespaced and versioned, alongside the circuit in the URL hash. Valid is the load-bearing word: half-typed text is not a design, so clearing a field to retype it leaves the last good numbers standing rather than saving an empty one. Corrupt or foreign stored data is ignored rather than coerced, every access is wrapped so a private window or blocked site data means "no memory" and never a broken page, and a Reset to defaults button clears one circuit without asking a question nobody needed.</li>
+            <li>The circuit strip became a real tab strip. Arrow keys used to move focus and select nothing, so a reader arrowing along ten circuits heard silence until they guessed that Enter was needed; selection now follows focus, Home and End reach the ends, both ends wrap, and Enter and Space still work for anyone who expects them. Tab reaches the strip once instead of ten times. Each tab declares the panel it controls and the panel names the selected tab, which nothing did before. Driving it by keyboard is also what found the bug underneath: <code>select()</code> wrote to a label that only exists in the local build, so on the published site pressing End threw, the URL stopped tracking the circuit, focus was lost, and every further arrow key did nothing. One null write killed the tab strip, and the shape that allowed it is now refused by a test.</li>
+            <li>The numbers on the pages are counted from the code that owns them. The fast rule checker knows thirty-six rules; the home page said thirty-two, the README said thirty-two in one place and thirty-five in another, and the manual said thirty-six. Three of the four were wrong and nothing could notice, because each was typed by hand into a different file. Counts now come from <code>spice/siteinfo.py</code> and the pages carry tokens, so a page cannot disagree with the code it describes. The same pass fixed a claim that was simply false: "10 circuits, 3 of them SKY130 amplifiers", when four circuits are built on SKY130 and three of those are the topologies the strategist chooses between. Both numbers are real and they are different numbers, so the page states them separately, and the strategist's own prompt stopped miscounting them too.</li>
+            <li>The manual keeps every section on the published site and marks the sixteen that need a simulator, because a manual that hid them would lie by omission about what the tool is. Its keyboard section was rewritten to match what the code does rather than what it used to do. And one repository URL is written once and substituted everywhere: the hero, the notice, the footer, the About page, the notebook's empty state and every install link, with a check that fetches it unauthenticated, because a "Run it locally" call to action that 404s is worse than none.</li>
+            <li>Accessibility and layout, from reading the rendered markup rather than the source. Two form controls had no accessible name; a heading level was skipped; thirty-six release entries sat under one h1 with no heading between them; there was no way past the header for a keyboard, so every page cost six presses to leave; every plot was an unlabelled shape; and reduced motion reset animation durations but not the delays holding the hero invisible. All fixed, and held by a hundred and twenty-one checks over both deployments. On a phone the schematic was ordered above the controls, which pushed the first input to 1726 pixels and the sentence explaining what the demo can do to 1493, so a visitor scrolled past a drawing to reach both: the same mistake the hero made at this breakpoint two releases ago, and the same fix. Content-Security-Policy, Permissions-Policy and an anti-framing rule joined the headers the host already sent, and the pages were checked to actually live under that policy rather than needing it relaxed.</li>
+          </ul>
+        </article>
+
+        <article class="entry">
+          <header class="entry-head">
+            <h2 class="entry-version">1.13.0</h2>
             <span class="entry-date">2026-08-26</span>
           </header>
           <ul>
@@ -78,7 +102,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.12.3</span>
+            <h2 class="entry-version">1.12.3</h2>
             <span class="entry-date">2026-08-26</span>
           </header>
           <ul>
@@ -91,7 +115,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.12.2</span>
+            <h2 class="entry-version">1.12.2</h2>
             <span class="entry-date">2026-08-26</span>
           </header>
           <ul>
@@ -107,7 +131,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.12.1</span>
+            <h2 class="entry-version">1.12.1</h2>
             <span class="entry-date">2026-08-26</span>
           </header>
           <ul>
@@ -122,7 +146,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.12.0</span>
+            <h2 class="entry-version">1.12.0</h2>
             <span class="entry-date">2026-08-26</span>
           </header>
           <ul>
@@ -140,7 +164,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.11.0</span>
+            <h2 class="entry-version">1.11.0</h2>
             <span class="entry-date">2026-08-26</span>
           </header>
           <ul>
@@ -160,7 +184,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.10.0</span>
+            <h2 class="entry-version">1.10.0</h2>
             <span class="entry-date">2026-08-26</span>
           </header>
           <ul>
@@ -176,7 +200,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.9.0</span>
+            <h2 class="entry-version">1.9.0</h2>
             <span class="entry-date">2026-08-25</span>
           </header>
           <ul>
@@ -205,7 +229,7 @@
 
 <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.8.0</span>
+            <h2 class="entry-version">1.8.0</h2>
             <span class="entry-date">2026-08-25</span>
           </header>
           <ul>
@@ -217,7 +241,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.7.0</span>
+            <h2 class="entry-version">1.7.0</h2>
             <span class="entry-date">2026-08-25</span>
           </header>
           <ul>
@@ -229,7 +253,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.6.0</span>
+            <h2 class="entry-version">1.6.0</h2>
             <span class="entry-date">2026-08-25</span>
           </header>
           <ul>
@@ -241,7 +265,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.5.0</span>
+            <h2 class="entry-version">1.5.0</h2>
             <span class="entry-date">2026-08-25</span>
           </header>
           <ul>
@@ -259,7 +283,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.4.0</span>
+            <h2 class="entry-version">1.4.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -273,7 +297,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.3.0</span>
+            <h2 class="entry-version">1.3.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -289,7 +313,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.2.0</span>
+            <h2 class="entry-version">1.2.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -305,7 +329,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.1.0</span>
+            <h2 class="entry-version">1.1.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -326,7 +350,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">1.0.0</span>
+            <h2 class="entry-version">1.0.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -340,7 +364,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.9.0</span>
+            <h2 class="entry-version">0.9.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -353,7 +377,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.8.0</span>
+            <h2 class="entry-version">0.8.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -366,7 +390,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.7.1</span>
+            <h2 class="entry-version">0.7.1</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -380,7 +404,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.7.0</span>
+            <h2 class="entry-version">0.7.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -394,7 +418,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.6.3</span>
+            <h2 class="entry-version">0.6.3</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -406,7 +430,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.6.2</span>
+            <h2 class="entry-version">0.6.2</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -418,7 +442,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.6.1</span>
+            <h2 class="entry-version">0.6.1</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -430,7 +454,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.6.0</span>
+            <h2 class="entry-version">0.6.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -443,7 +467,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.5.0</span>
+            <h2 class="entry-version">0.5.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -454,7 +478,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.4.0</span>
+            <h2 class="entry-version">0.4.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -468,7 +492,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.3.0</span>
+            <h2 class="entry-version">0.3.0</h2>
             <span class="entry-date">2026-08-24</span>
           </header>
           <ul>
@@ -484,7 +508,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.2.1</span>
+            <h2 class="entry-version">0.2.1</h2>
             <span class="entry-date">2026-08-23</span>
           </header>
           <ul>
@@ -499,7 +523,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.2.0</span>
+            <h2 class="entry-version">0.2.0</h2>
             <span class="entry-date">2026-08-23</span>
           </header>
           <ul>
@@ -513,7 +537,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.1.6</span>
+            <h2 class="entry-version">0.1.6</h2>
             <span class="entry-date">2026-08-22</span>
           </header>
           <ul>
@@ -527,7 +551,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.1.5</span>
+            <h2 class="entry-version">0.1.5</h2>
             <span class="entry-date">2026-08-22</span>
           </header>
           <ul>
@@ -540,7 +564,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.1.0</span>
+            <h2 class="entry-version">0.1.0</h2>
             <span class="entry-date">2026-08-22</span>
           </header>
           <ul>
@@ -553,7 +577,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.0.1</span>
+            <h2 class="entry-version">0.0.1</h2>
             <span class="entry-date">2026-08-22</span>
           </header>
           <ul>
@@ -566,7 +590,7 @@
 
         <article class="entry">
           <header class="entry-head">
-            <span class="entry-version">0.0.0</span>
+            <h2 class="entry-version">0.0.0</h2>
             <span class="entry-date">2026-08-22</span>
           </header>
           <ul>
@@ -591,7 +615,7 @@
         <a href="/manual">Manual</a>
         <a href="/about">About</a>
         <a href="/changelog">Changelog</a>
-        <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+        <a href="{{repo_url}}" rel="noreferrer">GitHub</a>
       </nav>
     </div>
   </div>

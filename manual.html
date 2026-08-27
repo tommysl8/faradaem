@@ -13,18 +13,21 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Manual - Faradaem">
 <meta property="og:description" content="How to run a simulation in Faradaem, how to read the result, what each circuit measures, and what to do when something goes wrong.">
-<meta property="og:image" content="/static/og.png">
+<meta property="og:url" content="{{site_origin}}/manual">
+<meta property="og:image" content="{{site_origin}}/static/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="A white AE ligature on a black square, the Faradaem mark.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Manual - Faradaem">
 <meta name="twitter:description" content="How to run a simulation in Faradaem, how to read the result, what each circuit measures, and what to do when something goes wrong.">
-<meta name="twitter:image" content="/static/og.png">
+<meta name="twitter:image" content="{{site_origin}}/static/og.png">
+<link rel="canonical" href="{{site_origin}}/manual">
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to the main content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
@@ -44,7 +47,7 @@
   </div>
 </header>
 
-<main class="page">
+<main class="page" id="main" tabindex="-1">
   <div class="wrap">
 
     <div class="page-head">
@@ -124,31 +127,54 @@
             does not ask a model for a number. Every value it reports came out of an
             ngspice process that ran while you waited.
           </p>
+<!--static-only-->          <p class="static-note">You are reading the published
+            manual. This whole document describes the local app; the demo on
+            this site redraws circuits and does not run ngspice, so every
+            section marked <span class="local-only-tag">Local app
+            required</span> below describes something that page cannot do.
+            Install as described here and all of it works.
+          </p>
+<!--/static-only--><!--local-only-->          <p>
+            You are reading this from a running server, so everything below
+            is available. The published copy of this manual on faradaem.com
+            marks the sections that need a simulator, because the demo there
+            draws circuits but cannot measure them.
+          </p>
+<!--/local-only-->
           <p>
-            If you are reading this on the published site, there is no simulator
-            behind it. The pages and the schematics are real and the drawings
-            redraw as you change values, but the panels that measure, ask, design
-            and check corners are put away, because measuring needs ngspice
-            running on your own machine. Install it as below and every panel comes
-            back.
+            On a new machine, run <code>python install.py</code> once. It fetches
+            the two things Faradaem needs and is not, the console build of
+            ngspice and the SKY130 technology files, and unpacks them into
+            <code>~/.faradaem/tools</code>, where the tool looks for them on its
+            own. Nothing goes on your PATH, nothing needs an environment
+            variable, and nothing is installed with pip. Run
+            <code>python install.py --list</code> first to see the exact URLs,
+            sizes and checksums without fetching anything.
           </p>
           <p>
-            You need ngspice 47 or later, console build. Put
-            <code>ngspice_con.exe</code> on your PATH, or set the environment variable
-            <code>FARADAEM_NGSPICE</code> to its full path. Faradaem never uses
-            <code>ngspice.exe</code>, because that build opens a window and never returns.
+            To use builds you already have instead, name them: set
+            <code>FARADAEM_NGSPICE</code> to the full path of your
+            <code>ngspice_con.exe</code>, and <code>PDK_ROOT</code> to the root
+            of your SKY130 install. Both outrank anything the installer wrote.
+            Faradaem never uses <code>ngspice.exe</code>, because that build
+            opens a window and never returns.
           </p>
           <p>
-            The four SKY130 circuits, the NFET amplifier, the op-amp, the OTA
-            and the folded cascode, also need the SKY130 process design kit.
-            Set <code>PDK_ROOT</code> to the folder you installed it in. Every
-            other circuit runs without it. If the kit is missing, only those
-            circuits stop working, and they tell you what to install.
+            The PDK is needed by the four SKY130 circuits, the NFET amplifier,
+            the op-amp, the OTA and the folded cascode, and by every layout
+            check. Every other circuit runs without it, and if the kit is
+            missing only those circuits stop working, and they say what to run.
+          </p>
+          <p>
+            To see what this machine has and what it lacks, run
+            <code>python doctor.py</code>. It checks everything at once,
+            through the same functions the tool itself uses, and prints the
+            exact fix for anything missing.
           </p>
         </section>
 
         <section class="section prose">
-          <h2 id="running-a-simulation">Running a simulation</h2>
+          <h2 id="running-a-simulation">Running a simulation <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             Pick a circuit from the tabs at the top of the form. Set the component values,
             or click one of the examples to load a worked set. Then press
@@ -196,9 +222,19 @@
             <dt>Shift + Up, Down</dt>
             <dd>Step by a full decade instead.</dd>
             <dt>Left, Right</dt>
-            <dd>Move between circuit tabs when a tab has focus.</dd>
+            <dd>Move along the circuit tabs when a tab has focus, selecting
+            each one as you reach it. Up and Down do the same. Both wrap:
+            right from the last circuit lands on the first.</dd>
             <dt>Home, End</dt>
-            <dd>Jump to the first or last circuit.</dd>
+            <dd>Jump to the first or last circuit, and select it.</dd>
+            <dt>Enter, Space</dt>
+            <dd>On a circuit tab, select the focused circuit. The arrows
+            already do this, so these are here for anyone who expects
+            them.</dd>
+            <dt>Tab</dt>
+            <dd>Reaches the circuit strip once rather than ten times: the
+            selected tab is the strip's single stop, and the arrows move
+            within it.</dd>
             <dt>Ctrl + Enter</dt>
             <dd>Run from anywhere on the page. In the strategist box it
             sends the message instead, because that is what it means
@@ -310,7 +346,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="the-bias-on-the-schematic">The bias on the schematic</h2>
+          <h2 id="the-bias-on-the-schematic">The bias on the schematic <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             The numbers analog engineers pencil beside every transistor,
             drawn by the tool instead. After a SKY130 circuit measures,
@@ -438,7 +474,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="asking-for-a-design-in-plain-language">Asking for a design in plain language</h2>
+          <h2 id="asking-for-a-design-in-plain-language">Asking for a design in plain language <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             The <strong>Ask for a design</strong> panel at the top of the simulator
             takes a sentence instead of numbers. Say what you want built and which
@@ -483,7 +519,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="designing-to-a-spec">Designing to a spec</h2>
+          <h2 id="designing-to-a-spec">Designing to a spec <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             Some circuits carry a <strong>Design to spec</strong> panel under their
             input form. On the op-amp it offers the full story in one button:
@@ -529,7 +565,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="step-response-how-fast-it-can-actually-move">Step response: how fast it can actually move</h2>
+          <h2 id="step-response-how-fast-it-can-actually-move">Step response: how fast it can actually move <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             A sweep measures an amplifier held to small signals, where it behaves
             like the linear model. A step asks a different question: how fast can it
@@ -570,7 +606,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="rejection-and-range-the-rest-of-the-datasheet">Rejection and range: the rest of the datasheet</h2>
+          <h2 id="rejection-and-range-the-rest-of-the-datasheet">Rejection and range: the rest of the datasheet <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             Gain, bandwidth and phase margin describe the path you want. Two
             numbers describe the paths you do not: <strong>CMRR</strong> is how
@@ -607,7 +643,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="floorplan-what-the-sizing-costs-in-silicon">Layout: what the sizing costs, and whether it is right</h2>
+          <h2 id="floorplan-what-the-sizing-costs-in-silicon">Layout: what the sizing costs, and whether it is right <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             A schematic pretends two things that are not true: that a transistor
             takes no room, and that a wire is free. The <strong>Floorplan</strong>
@@ -756,7 +792,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="robustness-corners-and-monte-carlo">Robustness: corners and Monte Carlo</h2>
+          <h2 id="robustness-corners-and-monte-carlo">Robustness: corners and Monte Carlo <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>
             One passing simulation shows a circuit works at the typical process, room
             temperature and a nominal supply. The <strong>Robustness</strong> panel on
@@ -794,7 +830,7 @@
 
 
         <section class="section prose">
-          <h2 id="the-datasheet-that-writes-itself">The datasheet that writes itself</h2>
+          <h2 id="the-datasheet-that-writes-itself">The datasheet that writes itself <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>Engineers lose days assembling characterization reports: the
           gain from one run, the corners from another, the layout verdicts
           from a third, pasted into a document that is stale before it is
@@ -831,7 +867,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="pinned-numbers">Pinned numbers</h2>
+          <h2 id="pinned-numbers">Pinned numbers <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>Software engineers pin behaviour in tests and a machine tells
           them when it drifts. Analog engineers diff waveforms by eye.
           The pin gives a circuit the same deal: after a successful run,
@@ -852,7 +888,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="comparing-two-runs">Comparing two runs</h2>
+          <h2 id="comparing-two-runs">Comparing two runs <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>A design review is two hours of "wait, which version is
           this?" The compare section in the Datasheet tab puts side A and
           side B in one table: every number both carry, with the
@@ -889,7 +925,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="asking-the-numbers">Diagnosing a sizing: triage, blame, the sweep</h2>
+          <h2 id="asking-the-numbers">Diagnosing a sizing: triage, blame, the sweep <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>Under the design goals live three questions, each answered by
           measurement and nothing else.</p>
           <p><strong>Is this spec possible here?</strong> is one simulation:
@@ -918,7 +954,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="the-corner-autopsy">The corner autopsy</h2>
+          <h2 id="the-corner-autopsy">The corner autopsy <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>A corner fails and the traditional next move is an afternoon
           in a waveform viewer. The autopsy asks the short question
           directly: which transistor gave up. After any corner suite run,
@@ -937,7 +973,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="the-tapeout-packet">The tapeout packet</h2>
+          <h2 id="the-tapeout-packet">The tapeout packet <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>A foundry, a collaborator or a shuttle wants the same short
           list: the GDS, the netlist it was verified against, the
           verdicts, and a README saying what everything is. Assembling
@@ -955,7 +991,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="the-notebook">The notebook</h2>
+          <h2 id="the-notebook">The notebook <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>Everything this machine measures is recorded as it happens:
           one ledger file per run, one line per event, the provenance
           stamped at the head. The notebook page renders that record as
@@ -971,7 +1007,7 @@
         </section>
 
         <section class="section prose">
-          <h2 id="the-doctor">The doctor</h2>
+          <h2 id="the-doctor">The doctor <span class="local-only-tag" title="This needs the local app; the published demo cannot do it">Local app required</span></h2>
           <p>Setting up ngspice, a PDK and KLayout on Windows is the worst
           afternoon of the project, and the errors arrive one at a time,
           each after a failed run. The doctor runs every check at once:</p>
@@ -991,9 +1027,9 @@
             <dt>Could not reach the Faradaem server</dt>
             <dd>The page loaded but the server is not answering. Start it with <code>python server.py</code> and run again.</dd>
             <dt>Could not locate ngspice</dt>
-            <dd>The message lists every place it looked. Install ngspice, put <code>ngspice_con.exe</code> on your PATH, or set <code>FARADAEM_NGSPICE</code> to its full path.</dd>
+            <dd>The message lists every place it looked. Run <code>python install.py</code> to fetch one, or set <code>FARADAEM_NGSPICE</code> to the full path of an <code>ngspice_con.exe</code> you already have.</dd>
             <dt>Could not find the SKY130 model library</dt>
-            <dd>Only the SKY130 circuits need this. Set <code>PDK_ROOT</code> to the folder holding the kit, then restart the server so it picks up the new value.</dd>
+            <dd>Only the SKY130 circuits and the layout checks need this. Run <code>python install.py</code> to fetch it, or set <code>PDK_ROOT</code> to the folder holding a kit you already have, then restart the server so it picks up the new value.</dd>
             <dt>A value is refused before the run</dt>
             <dd>Every parameter has a declared range, and the message names the limit it crossed. The form marks the field and says what to do.</dd>
             <dt>The first SKY130 run is slow</dt>
@@ -1018,7 +1054,7 @@
         <a href="/manual">Manual</a>
         <a href="/about">About</a>
         <a href="/changelog">Changelog</a>
-        <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+        <a href="{{repo_url}}" rel="noreferrer">GitHub</a>
       </nav>
     </div>
   </div>

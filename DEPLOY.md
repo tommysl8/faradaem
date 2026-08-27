@@ -6,28 +6,47 @@ stack somewhere, not just the web pages.
 
 ## Run it locally (the normal way)
 
+Once per machine:
+
+```powershell
+python install.py
+```
+
+That fetches ngspice and the SKY130 technology files into `~/.faradaem/tools`,
+where the tool looks for them without any environment variable being set. Then,
+every time:
+
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python server.py
 ```
 
-Then open http://127.0.0.1:8000.
+Then open http://127.0.0.1:8000. If anything is missing, `python doctor.py`
+says what and prints the exact fix.
 
 ## Run it in Docker
 
 ```
 docker build -t faradaem .
-docker run -p 8000:8000 -v /path/to/sky130/pdk:/pdk faradaem
+docker run -p 8000:8000 faradaem
 ```
 
-The image installs ngspice from apt and expects the SKY130 PDK mounted at
-`/pdk` (the directory that contains `sky130A/`). Without the mount, the three
-SKY130 circuits report what to install and every other circuit works.
+The image installs ngspice from apt and bakes the SKY130 technology files in
+at build time, using the same `install.py` that sets up a laptop, so no volume
+needs mounting. That is 21 MB compressed, not the 2.2 GB a full PDK install
+costs, because Faradaem needs only the technology files and the primitive
+devices.
+
+To use a PDK you already have on the host instead, mount it and name it:
+
+```
+docker run -p 8000:8000 -v /path/to/sky130/pdk:/pdk -e PDK_ROOT=/pdk faradaem
+```
 
 To enable the strategist inside the container, pass the keys:
 
 ```
-docker run -p 8000:8000 -v /path/to/pdk:/pdk \
+docker run -p 8000:8000 \
   -e FARADAEM_OPENAI_KEY=... -e FARADAEM_ANTHROPIC_KEY=... faradaem
 ```
 
@@ -39,8 +58,10 @@ The simulator cannot run on Vercel, and it is worth being exact about why
 rather than discovering it halfway through a deploy:
 
 - ngspice is a **native binary**. Vercel builds and runs your code; it does
-  not let you `apt-get install` a simulator into the runtime.
-- The SKY130 PDK is **2.1 GB**. A Vercel function bundle is capped at 250 MB.
+  not let you `apt-get install` a simulator into the runtime. This is the
+  reason that does not go away: the technology files Faradaem reads are 60 MB
+  unpacked and would fit a function bundle's 250 MB fine, but nothing is going
+  to run a simulation without a simulator.
 - A PVT suite takes **minutes**. A Vercel function is capped at 10 s on the
   Hobby plan, 300 s at most on Pro.
 - Design and robustness jobs live **in one process's memory**, polled over
@@ -90,10 +111,11 @@ automatically once it has.
 
 If you want the simulator itself reachable, not just the pages, it needs a
 host that runs a **container with a disk**, because it needs ngspice, the
-2.1 GB PDK, and a process that stays alive between requests. Fly.io, Render,
-Railway, or any VPS can do it; the `Dockerfile` here is the whole
-description. Mount the PDK as a volume at `/pdk`, give it at least 2 CPUs,
-and read the warning below first, because it applies with force to a public
+technology files, and a process that stays alive between requests. Fly.io,
+Render, Railway, or any VPS can do it; the `Dockerfile` here is the whole
+description, and it bakes the technology files in, so nothing needs mounting.
+Give it at least 2 CPUs, and read the warning below first, because it applies
+with force to a public
 host: with no authentication, anyone who finds the URL spends your API
 credits and your CPU.
 
@@ -105,8 +127,9 @@ stays free to serve and the expensive half stays yours.
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `FARADAEM_NGSPICE` | Full path to the ngspice binary | discovery: `ngspice_con.exe` on PATH, then `C:\ngspice\Spice64\bin\ngspice_con.exe` |
-| `PDK_ROOT` | SKY130 PDK install root | `C:\pdk` |
+| `FARADAEM_NGSPICE` | Full path to the ngspice binary | discovery: the copy under `~/.faradaem/tools`, then `ngspice_con.exe` on PATH, then `C:\ngspice\Spice64\bin\ngspice_con.exe` |
+| `PDK_ROOT` | SKY130 PDK install root | discovery: the copy under `~/.faradaem/tools`, then `C:\pdk` |
+| `FARADAEM_HOME` | Where installed tools and the ledger live | `~/.faradaem` |
 | `FARADAEM_HOST` | Bind address | `127.0.0.1` |
 | `FARADAEM_PORT` | Port | `8000` |
 | `FARADAEM_ANTHROPIC_KEY` | Anthropic API key for the strategist | unset |

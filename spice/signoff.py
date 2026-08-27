@@ -1,6 +1,6 @@
 """The foundry's own checks, run by the tool that owns them.
 
-``drc.py`` checks thirty-five rules read out of the technology file. That
+``drc.py`` checks thirty-six rules read out of the technology file. That
 is a fast loop, and it is useful for exactly that: it answers in
 milliseconds while geometry is being drawn. It is not the answer. The
 answer is the SKY130 runset, sixteen hundred lines of it, run by KLayout,
@@ -181,7 +181,7 @@ def run_drc(shapes, circuit_id, sections=DEFAULT_SECTIONS,
         "coverage": (
             "The SKY130 runset the PDK ships, run by KLayout over the "
             "sections named above. This is the foundry's own deck rather "
-            "than the thirty-five rules Faradaem checks while drawing. What "
+            "than the thirty-six rules Faradaem checks while drawing. What "
             "it does not cover is what those sections leave out, and it "
             "says nothing about whether the drawing is the right circuit, "
             "which is what layout versus schematic is for."

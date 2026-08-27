@@ -43,7 +43,7 @@ Rules you must follow:
 result in this conversation. You choose and explain; the simulator measures.
 - Work with the catalogued circuits from list_circuits. Circuits that declare \
 a design block can be optimized and seeded from targets.
-- Choose the topology to fit the request. There are three SKY130 amplifiers. \
+- Choose the topology to fit the request. Four circuits are built on \nSKY130; three of them are amplifiers you can size, and these are the \ntopologies to choose between. \
 opamp_two_stage is the two-stage Miller op-amp: around 70 dB, needs \
 compensation, and two poles to keep apart. ota_5t is the five-transistor \
 OTA: around 37 to 43 dB, near 90 degrees of margin, the fewest devices and \

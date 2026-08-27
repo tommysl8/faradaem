@@ -21,7 +21,8 @@ import pytest
 import server
 
 ROOT = Path(__file__).resolve().parent.parent
-PAGES = ["index.html", "manual.html", "about.html", "changelog.html"]
+PAGES = ["index.html", "manual.html", "about.html",
+         "changelog.html", "notebook.html", "404.html"]
 
 #: The one true logotype: ligature, accent span, trademark span, and
 #: critically no whitespace between the M and the symbol.
@@ -32,7 +33,13 @@ WORDMARK = (
 
 
 def page(name):
-    return (ROOT / name).read_text(encoding="utf-8")
+    """The page as the local tool serves it: mode blocks resolved and the
+    shared facts substituted. Reading the source would assert against
+    tokens rather than against anything a reader receives."""
+    from spice import deployment
+
+    return deployment.render((ROOT / name).read_text(encoding="utf-8"),
+                             deployment.LOCAL)
 
 
 @pytest.mark.parametrize("name", PAGES)
@@ -62,12 +69,31 @@ def test_page_metadata(name):
     title = re.search(r"<title>(.+?)</title>", body).group(1)
     if name == "index.html":
         assert title.startswith("Faradaem: ")
+    elif name == "404.html":
+        # A page nobody navigates to on purpose, and the only one that
+        # asks not to be indexed. It shares the shell and the mark; it
+        # carries no canonical or share card, because advertising the
+        # not-found page is how it gets indexed.
+        assert title == "Page not found - Faradaem"
+        assert re.search(r'<meta name="robots" content="[^"]*noindex', body)
+        assert "og:image" not in body
+        assert 'rel="canonical"' not in body
+        assert '<link rel="icon" href="/static/icon.svg"' in body
+        return
     else:
         assert re.fullmatch(r"[A-Z][a-z]+ - Faradaem", title)
     assert '<meta property="og:title" content="%s">' % title in body
     assert '<meta name="application-name" content="Faradaem">' in body
     assert '<meta name="twitter:card" content="summary_large_image">' in body
-    assert '<meta property="og:image" content="/static/og.png">' in body
+    # Absolute, not relative: a link preview resolves og:image against
+    # nothing, so "/static/og.png" is a blank card everywhere the page is
+    # shared. The origin is substituted at render time from siteinfo.
+    from spice import siteinfo
+    absolute = siteinfo.SITE_ORIGIN + "/static/og.png"
+    assert '<meta property="og:image" content="%s">' % absolute in body
+    assert '<meta name="twitter:image" content="%s">' % absolute in body
+    assert '<meta property="og:url" content="%s' % siteinfo.SITE_ORIGIN in body
+    assert '<link rel="canonical" href="%s' % siteinfo.SITE_ORIGIN in body
     assert '<link rel="icon" href="/static/icon.svg"' in body
     assert '<link rel="apple-touch-icon"' in body
 

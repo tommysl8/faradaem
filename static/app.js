@@ -83,17 +83,74 @@
     return;
   }
 
+  /* Which Faradaem this is, decided before the page was written and
+     stamped on <html> by spice/deployment.py. Read here on the first line
+     that runs, so nothing renders a capability this deployment lacks and
+     then takes it back. Never inferred from a failed request. */
+  var MODE = document.documentElement.getAttribute("data-deployment");
+  var isStatic = MODE === "static";
+
+  /* Every request to Faradaem's own server goes through here, and there
+     is no other way to make one. In the static deployment there is no
+     server: a request to /api could only 404, and a page that asks is a
+     page that does not know what it is. So this refuses.
+
+     One door rather than a guard at each of sixteen call sites, because
+     "no /api request from the published site" is then a property a test
+     can check by reading this file, instead of a claim about sixteen
+     code paths that someone has to re-audit every time one is added. */
+  function api(path, options) {
+    if (isStatic) {
+      return Promise.reject(new Error(
+        "The published demo has no simulator behind it, so " + path
+        + " was not requested."));
+    }
+    return fetch(path, options);
+  }
+
+  window.FaradaemApi = api;
+
   function id(name) {
     return document.getElementById(name);
   }
 
+  /* Bind a handler, or do nothing if the control is not in this
+     deployment's document. Same reasoning as show(): the server-only
+     controls are deleted at build time, so asking to listen to one is
+     asking about something that legitimately is not here. Returns whether
+     it bound, for the few callers that care. */
+  function on(target, event, handler) {
+    var node = typeof target === "string" ? id(target) : target;
+    if (node) {
+      node.addEventListener(event, handler);
+    }
+    return Boolean(node);
+  }
+
+  /* show/clear tolerate a missing element on purpose. The server-only
+     controls are not in the static document at all -- deleted at build
+     time, not hidden -- so code that arranges them is asking about
+     something that legitimately does not exist here. Doing nothing is the
+     right answer, and it is the only one that does not need every caller
+     to know which deployment it is in. */
   function show(element, visible) {
-    element.classList.toggle("hidden", !visible);
+    if (element) {
+      element.classList.toggle("hidden", !visible);
+    }
   }
 
   function clear(node) {
+    if (!node) {
+      return;
+    }
     while (node.firstChild) {
       node.removeChild(node.firstChild);
+    }
+  }
+
+  function text(element, value) {
+    if (element) {
+      element.textContent = value;
     }
   }
 
@@ -152,9 +209,6 @@
     return sign + present(Math.abs(change), spec);
   }
 
-  //: True when the pages are served with no simulator behind them.
-  var isStatic = false;
-
   /* ---- number presentation ------------------------------------------ */
 
   function present(value, spec) {
@@ -204,6 +258,138 @@
     node.classList.toggle("is-warn", !ok);
     show(node, true);
   }
+
+  /* ---- what the page remembers between visits ------------------------------
+   * Editing six values, reloading, and finding the defaults back is a small
+   * cruelty that a browser has had the means to avoid since 2009. So the
+   * last VALID sizing per circuit is kept, namespaced and versioned, and
+   * restored on arrival.
+   *
+   * Valid is the load-bearing word. Half-typed text is not a design: while
+   * someone clears a field to retype it the form holds "", and persisting
+   * that would mean a reload restoring an empty box instead of the numbers
+   * they had. Only a sizing where every value parses and sits inside its
+   * declared range replaces what is stored.
+   *
+   * Storage can fail for reasons that are none of the page's business --
+   * a private window, site data blocked, a full quota. Every access is
+   * wrapped, and every failure means "no memory", never a broken page.
+   */
+
+  //: Namespaced, and versioned in the key itself: a future format change
+  //: writes a new key rather than trying to understand an old one, and the
+  //: old key ages out with the browser's own storage.
+  var STORE_KEY = "faradaem.designs.v1";
+
+  function readStore() {
+    var raw;
+    try {
+      raw = window.localStorage.getItem(STORE_KEY);
+    } catch (blocked) {
+      return {};
+    }
+    if (!raw) {
+      return {};
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (corrupt) {
+      return {};
+    }
+    // Anything that is not the shape written here is treated as absent.
+    // Corrupt storage must never be able to break the page that reads it.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+        || parsed.version !== 1 || !parsed.circuits
+        || typeof parsed.circuits !== "object"
+        || Array.isArray(parsed.circuits)) {
+      return {};
+    }
+    return parsed.circuits;
+  }
+
+  function writeStore(circuits) {
+    try {
+      window.localStorage.setItem(STORE_KEY, JSON.stringify({
+        version: 1,
+        circuits: circuits
+      }));
+    } catch (blocked) {
+      // No memory this session. Everything else still works.
+    }
+  }
+
+  /* The stored sizing for a circuit, dropped entirely unless every key the
+     circuit declares is a finite number inside its range. A catalogue that
+     gained or retightened a parameter since the write invalidates it, which
+     is the migration: stale shapes are ignored, never coerced. */
+  function storedFor(circuit) {
+    var all = readStore();
+    var saved = all[circuit.id];
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) {
+      return null;
+    }
+    var out = {};
+    var ok = true;
+    circuit.params.forEach(function (spec) {
+      var value = saved[spec.key];
+      if (typeof value !== "number" || !isFinite(value)
+          || value < spec.min || value > spec.max) {
+        ok = false;
+        return;
+      }
+      out[spec.key] = value;
+    });
+    return ok ? out : null;
+  }
+
+  /* Persist the sizing on the page, if it is one. Called after every edit,
+     preset, import and reset; silently declines while the form is mid-typo. */
+  function remember() {
+    if (!current || !Object.keys(inputs).length) {
+      return false;
+    }
+    var sizing = {};
+    var ok = true;
+    current.params.forEach(function (spec) {
+      var input = inputs[spec.key];
+      if (!input) {
+        ok = false;
+        return;
+      }
+      var value = window.parseEngineering(input.value);
+      if (typeof value !== "number" || !isFinite(value)
+          || value < spec.min || value > spec.max) {
+        ok = false;
+        return;
+      }
+      sizing[spec.key] = value;
+    });
+    if (!ok) {
+      return false;
+    }
+    var all = readStore();
+    all[current.id] = sizing;
+    writeStore(all);
+    return true;
+  }
+
+  function forget(circuitId) {
+    var all = readStore();
+    if (all[circuitId] !== undefined) {
+      delete all[circuitId];
+      writeStore(all);
+    }
+  }
+
+  window.FaradaemStore = {
+    KEY: STORE_KEY,
+    read: readStore,
+    write: writeStore,
+    forCircuit: storedFor,
+    remember: remember,
+    forget: forget
+  };
 
   /* ---- reading and validating the form ------------------------------- */
 
@@ -284,6 +470,10 @@
     folded_cascode: "M2 4v8 M4 5v6 M4 6h4v-3h4 M4 10h4v3h4 M12 3v3 M12 10v3",
   };
 
+  //: The one panel the circuit tabs control. Stable, so aria-controls on
+  //: every tab and aria-labelledby on the panel can point at each other.
+  var CIRCUIT_PANEL_ID = "circuit-panel";
+
   function renderTabs() {
     clear(modesEl);
     tabs = catalogue.map(function (circuit) {
@@ -302,8 +492,14 @@
       tab.appendChild(document.createTextNode(circuit.name));
       var active = circuit.id === current.id;
       tab.type = "button";
+      tab.id = "mode-tab-" + circuit.id;
       tab.setAttribute("role", "tab");
       tab.setAttribute("aria-selected", active ? "true" : "false");
+      // Every tab controls the one panel below the strip, which is what
+      // makes this a tablist rather than ten unrelated buttons.
+      tab.setAttribute("aria-controls", CIRCUIT_PANEL_ID);
+      // Roving tabindex: Tab reaches the strip once, arrows move within
+      // it. Ten circuits should not cost ten presses to walk past.
       tab.tabIndex = active ? 0 : -1;
       tab.dataset.circuit = circuit.id;
       tab.addEventListener("click", function () {
@@ -314,9 +510,37 @@
       modesEl.appendChild(tab);
       return tab;
     });
+
+    var panel = id(CIRCUIT_PANEL_ID);
+    if (panel && current) {
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", "mode-tab-" + current.id);
+    }
   }
 
-  /* Arrows move focus between tabs; Enter or Space selects the focused one. */
+  /* Arrow keys move focus AND select, which is the behaviour the pattern
+     prescribes for a tablist whose panels are already loaded: a reader
+     arrowing along the strip hears each circuit as they reach it, rather
+     than hearing nothing until they guess that Enter is needed. Enter and
+     Space still work, for anyone who expects them to. Home and End go to
+     the ends, and the ends wrap. */
+  function focusTab(index) {
+    var next = (index + tabs.length) % tabs.length;
+    tabs.forEach(function (tab, i) {
+      tab.tabIndex = i === next ? 0 : -1;
+    });
+    var wanted = tabs[next].dataset.circuit;
+    if (wanted !== current.id) {
+      // select() re-renders the strip, so the element to focus is the one
+      // that exists afterwards, not the one captured before.
+      select(wanted);
+    }
+    var landed = tabs[next];
+    if (landed) {
+      landed.focus();
+    }
+  }
+
   modesEl.addEventListener("keydown", function (event) {
     var index = tabs.indexOf(document.activeElement);
     if (index < 0) {
@@ -325,33 +549,25 @@
 
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      select(tabs[index].dataset.circuit);
-      var moved = tabs[index];
-      if (moved) {
-        moved.focus();
-      }
+      focusTab(index);
       return;
     }
 
-    var delta = 0;
+    var target = null;
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      delta = 1;
+      target = index + 1;
     } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      delta = -1;
+      target = index - 1;
     } else if (event.key === "Home") {
-      delta = -index;
+      target = 0;
     } else if (event.key === "End") {
-      delta = tabs.length - 1 - index;
+      target = tabs.length - 1;
     } else {
       return;
     }
 
     event.preventDefault();
-    var next = (index + delta + tabs.length) % tabs.length;
-    tabs.forEach(function (tab, i) {
-      tab.tabIndex = i === next ? 0 : -1;
-    });
-    tabs[next].focus();
+    focusTab(target);
   });
 
   function renderPresets() {
@@ -366,6 +582,7 @@
           }
         });
         onEdit();
+        remember();
         run();
       });
       presetsEl.appendChild(chip);
@@ -462,7 +679,7 @@
 
     var isAc = current.analysis === "ac";
     show(bodePanel, isAc);
-    if (isAc) {
+    if (isAc && bodePanel) {
       lastBode = result ? bodeData(result, animate) : {};
       // The held design's response rides under the live curve.
       if (heldDesign && heldDesign.circuit === current.id
@@ -494,17 +711,20 @@
 
   function clearResult() {
     var headline = current.readout.headline;
-    id("headline-label").textContent = headline.label;
-    id("headline-value").textContent = "—";
-    id("headline-value").classList.add("placeholder");
+    text(id("headline-label"), headline.label);
+    var value = id("headline-value");
+    if (value) {
+      value.textContent = "—";
+      value.classList.add("placeholder");
+    }
     show(id("headline-check"), false);
     show(id("headline-badge"), false);
     show(id("note"), false);
     clear(statsEl);
     show(statsEl, false);
-    captionState.textContent = isStatic
+    text(captionState, isStatic
       ? "Measuring needs the local app."
-      : "Run to measure.";
+      : "Run to measure.");
   }
 
   function renderResult(result) {
@@ -512,8 +732,8 @@
     var headline = readout.headline;
     var analytic = result.analytic || {};
 
-    id("headline-label").textContent = headline.label;
-    id("headline-value").textContent = present(result[headline.key], headline);
+    text(id("headline-label"), headline.label);
+    text(id("headline-value"), present(result[headline.key], headline));
     id("headline-value").classList.remove("placeholder");
     captionState.textContent = "";
 
@@ -526,8 +746,8 @@
     if (check && typeof analytic[check.key] === "number") {
       var expected = analytic[check.key];
       var measured = result[headline.key];
-      id("headline-check-label").textContent = check.label;
-      id("headline-check-value").textContent = present(expected, headline);
+      text(id("headline-check-label"), check.label);
+      text(id("headline-check-value"), present(expected, headline));
       show(id("headline-check"), true);
 
       var ok = agrees(check, measured, expected);
@@ -546,7 +766,7 @@
     if (!noteText && typeof result.note === "string") {
       noteText = result.note;
     }
-    id("note").textContent = noteText;
+    text(id("note"), noteText);
     show(id("note"), Boolean(noteText));
 
     var previous = lastMeasured[current.id] || {};
@@ -594,7 +814,7 @@
 
     // A number worth keeping can be pinned where it landed.
     show(id("pin-row"), true);
-    id("pin-note").textContent = "";
+    text(id("pin-note"), "");
   }
 
   /* ---- errors ------------------------------------------------------------ */
@@ -616,7 +836,7 @@
     show(errorEl, false);
   }
 
-  id("error-dismiss").addEventListener("click", dismissError);
+  on("error-dismiss", "click", dismissError);
 
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && !errorEl.classList.contains("hidden")) {
@@ -635,14 +855,14 @@
     netlistShown = false;
     show(netlistView, false);
     show(netlistCopy, false);
-    netlistToggle.textContent = "View netlist";
+    text(netlistToggle, "View netlist");
   }
 
   function refreshNetlist() {
     if (!validate()) {
       return;
     }
-    fetch("/api/netlist", {
+    api("/api/netlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ circuit: current.id, params: values() })
@@ -670,19 +890,25 @@
       });
   }
 
-  netlistToggle.addEventListener("click", function () {
-    if (netlistShown) {
-      hideNetlist();
-    } else {
-      refreshNetlist();
-    }
-  });
+  if (netlistToggle) {
+    on(netlistToggle, "click", function () {
+      if (netlistShown) {
+        hideNetlist();
+      } else {
+        refreshNetlist();
+      }
+    });
+  }
 
   /* ---- running ----------------------------------------------------------- */
 
   function setPending(pending) {
+    // Nothing here exists in the static build, where nothing can pend.
+    if (!runButton) {
+      return;
+    }
     runButton.disabled = pending;
-    runLabel.textContent = pending ? "Running" : "Run simulation";
+    text(runLabel, pending ? "Running" : "Run simulation");
 
     var dots = runButton.querySelector(".run-dots");
     if (pending && !dots) {
@@ -697,7 +923,9 @@
 
     // Dim the stale reading rather than blanking it.
     [bodePanel, resultEl].forEach(function (node) {
-      node.classList.toggle("is-loading", pending);
+      if (node) {
+        node.classList.toggle("is-loading", pending);
+      }
     });
   }
 
@@ -707,6 +935,9 @@
     dismissError();
     redraw(null, false);
     memory[current.id] = values();
+    // Only a complete, in-range sizing is written; a half-typed field
+    // leaves the last good one standing.
+    remember();
     if (netlistShown) {
       refreshNetlist();
     }
@@ -746,7 +977,7 @@
     tickStart(captionState);
     benchSet("sim", "run");
     try {
-      var response = await fetch("/api/simulate", {
+      var response = await api("/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ circuit: ranCircuit, params: ranParams })
@@ -829,8 +1060,7 @@
       show(block, false);
       return;
     }
-    id("ab-head").textContent =
-      "Against design A, held at " + heldDesign.headline;
+    text(id("ab-head"), "Against design A, held at " + heldDesign.headline);
     var host = id("ab-table");
     clear(host);
     var table = el("table", "sheet-table");
@@ -873,14 +1103,14 @@
         table.appendChild(row);
       });
     host.appendChild(table);
-    id("ab-note").textContent = current.analysis === "ac"
+    text(id("ab-note"), current.analysis === "ac"
       ? "A's frequency response is the faint trace on the plot. Both "
         + "columns were measured on this machine."
-      : "Both columns were measured on this machine.";
+      : "Both columns were measured on this machine.");
     show(block, true);
   }
 
-  id("ab-hold").addEventListener("click", function () {
+  on("ab-hold", "click", function () {
     if (!lastResult) {
       return;
     }
@@ -904,7 +1134,7 @@
     abRender();
   });
 
-  id("ab-release").addEventListener("click", function () {
+  on("ab-release", "click", function () {
     heldDesign = null;
     abRender();
     if (lastResult) {
@@ -964,44 +1194,127 @@
     show(note, Boolean(text));
   }
 
-  function importDesign(file) {
-    file.text().then(function (text) {
-      var payload;
-      try {
-        payload = JSON.parse(text);
-      } catch (parseError) {
-        shareNote("That file is not a Faradaem design: it did not parse "
-          + "as JSON.");
-        return;
-      }
-      if (!payload || payload.faradaem_design !== 1
-          || !known(payload.circuit) || !payload.params) {
-        shareNote("That file is not a Faradaem design, or names a circuit "
-          + "this catalogue does not have.");
-        return;
-      }
-      if (payload.circuit !== current.id) {
-        select(payload.circuit);
-      }
-      Object.keys(payload.params).forEach(function (key) {
-        if (inputs[key]) {
-          inputs[key].value = String(payload.params[key]);
-        }
-      });
-      onEdit();
-      shareNote("Imported " + (payload.name || payload.circuit)
-        + (payload.exported_utc
-           ? ", exported " + payload.exported_utc.slice(0, 10) : "")
-        + ". Measuring it here now.");
-      run();
+  /* ---- import validation --------------------------------------------------
+   * The deciding is in static/import-validate.js, which knows nothing about
+   * the DOM and can therefore be exercised by a test without a browser.
+   * What is here is the wiring: hand it the catalogue and this build's
+   * version, and mutate nothing until it says yes.
+   */
+
+  var IMPORT = window.FaradaemImport;
+  var IMPORT_MAX_BYTES = IMPORT ? IMPORT.MAX_BYTES : 256 * 1024;
+
+  function validateImportedDesign(text, options) {
+    if (!IMPORT) {
+      return { ok: false, error: "The import validator did not load. "
+        + "Reload the page." };
+    }
+    var settings = options || {};
+    return IMPORT.validate(text, {
+      bytes: settings.bytes,
+      catalogue: catalogue,
+      appVersion: getComputedStyle(document.documentElement)
+        .getPropertyValue("--app-version").replace(/"/g, "").trim()
     });
   }
 
-  id("design-export").addEventListener("click", exportDesign);
-  id("design-import").addEventListener("click", function () {
+  function importError(message) {
+    var box = id("import-error");
+    if (!box) {
+      return;
+    }
+    box.textContent = message;
+    show(box, true);
+    // role="alert" announces it; focus makes it findable by keyboard,
+    // which matters because the file dialog took focus away.
+    if (box.focus) {
+      box.focus();
+    }
+  }
+
+  function clearImportError() {
+    show(id("import-error"), false);
+    text(id("import-error"), "");
+  }
+
+  function applyImportedDesign(result) {
+    var design = result.design;
+    clearImportError();
+
+    if (design.circuit !== current.id) {
+      select(design.circuit);
+    }
+    Object.keys(design.params).forEach(function (key) {
+      if (inputs[key]) {
+        inputs[key].value = String(design.params[key]);
+      }
+    });
+    onEdit();
+    remember();
+
+    var what = design.name || design.circuit;
+    var when = design.exported_utc
+      ? ", exported " + design.exported_utc.slice(0, 10) : "";
+    var extra = result.warnings.length ? " " + result.warnings.join(" ") : "";
+
+    if (isStatic) {
+      shareNote("Imported " + what + when + ". This static demo cannot "
+        + "measure it; run locally to simulate." + extra);
+      return;
+    }
+    shareNote("Imported " + what + when + ". Measuring it here, because a "
+      + "design's numbers must come from the simulator in front of you."
+      + extra);
+    run();
+  }
+
+  function importDesign(file) {
+    // Size is refused off the file handle, before a byte is read.
+    if (file.size > IMPORT_MAX_BYTES) {
+      importError("That file is " + Math.round(file.size / 1024) + " kB. A "
+        + "Faradaem design is under "
+        + Math.round(IMPORT_MAX_BYTES / 1024) + " kB, so this is not one.");
+      return Promise.resolve(false);
+    }
+    return file.text().then(function (text) {
+      var result = validateImportedDesign(text, { bytes: file.size });
+      if (!result.ok) {
+        importError(result.error);
+        return false;
+      }
+      applyImportedDesign(result);
+      return true;
+    }).catch(function (readError) {
+      importError("That file could not be read: "
+        + String(readError && readError.message ? readError.message
+                 : readError));
+      return false;
+    });
+  }
+
+  on("design-export", "click", exportDesign);
+
+  /* Reset asks nothing. It affects one circuit, the values are visible
+     before and after, and the registry defaults it restores are one click
+     away in the examples anyway; a confirmation would be ceremony over a
+     reversible change. */
+  on("design-reset", "click", function () {
+    delete memory[current.id];
+    clearImportError();
+    renderInputs(null);
+    onEdit();
+    // After onEdit, which would otherwise persist the defaults straight
+    // back. Forgetting last leaves nothing stored for this circuit, which
+    // is what "reset" means.
+    forget(current.id);
+    shareNote(current.name + " is back to its catalogue defaults.");
+  });
+
+  on("design-import", "click", function () {
+    clearImportError();
     id("design-import-file").click();
   });
-  id("design-import-file").addEventListener("change", function () {
+  on("design-import-file", "change", function () {
     var file = this.files && this.files[0];
     if (file) {
       importDesign(file);
@@ -1050,6 +1363,10 @@
   }
 
   function historyRender() {
+    // Session history needs measurements, which this deployment cannot make.
+    if (!id("history-row")) {
+      return;
+    }
     var list = historyList();
     var at = runHistoryAt[current.id];
     if (typeof at !== "number" || at >= list.length) {
@@ -1061,8 +1378,8 @@
       return;
     }
     var entry = list[at];
-    id("history-pos").textContent = (at + 1) + " of " + list.length
-      + (entry && entry.headline ? " · " + entry.headline : "");
+    text(id("history-pos"), (at + 1) + " of " + list.length
+      + (entry && entry.headline ? " · " + entry.headline : ""));
     id("history-prev").disabled = at <= 0;
     id("history-next").disabled = at >= list.length - 1;
   }
@@ -1102,8 +1419,8 @@
     historyRender();
   }
 
-  id("history-prev").addEventListener("click", function () { historyGo(-1); });
-  id("history-next").addEventListener("click", function () { historyGo(1); });
+  on("history-prev", "click", function () { historyGo(-1); });
+  on("history-next", "click", function () { historyGo(1); });
 
   /* ---- bias annotations --------------------------------------------------
    * What an engineer pencils onto a printed schematic: Id, gm, Vgs, Vds,
@@ -1120,6 +1437,10 @@
   var biasSeq = 0;
 
   function biasReset() {
+    // The bias chip is a local-only control; nothing to reset without it.
+    if (!biasChip) {
+      return;
+    }
     biasSeq += 1;
     biasData = null;
     tickStop(biasChip, null);
@@ -1190,7 +1511,7 @@
     biasChip.disabled = true;
     biasChip.textContent = "Measuring bias";
     tickStart(biasChip);
-    fetch("/api/bias", {
+    api("/api/bias", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ circuit: current.id, params: values() })
@@ -1231,14 +1552,14 @@
       });
   }
 
-  biasChip.addEventListener("click", biasFetch);
-  id("schematic").addEventListener("mouseover", function (event) {
+  on(biasChip, "click", biasFetch);
+  on("schematic", "mouseover", function (event) {
     var group = event.target.closest && event.target.closest("g[data-device]");
     if (group) {
       biasShow(group);
     }
   });
-  id("schematic").addEventListener("mouseout", function (event) {
+  on("schematic", "mouseout", function (event) {
     if (biasTip && event.target.closest
         && event.target.closest("g[data-device]")) {
       show(biasTip, false);
@@ -1294,6 +1615,10 @@
   }
 
   function renderDesignPanel() {
+    // The design panel is absent from the static document.
+    if (!designGenerate) {
+      return;
+    }
     // Visibility belongs to the tab controller; this only fills the panel.
     designIdle();
     clear(designGoalsEl);
@@ -1369,7 +1694,7 @@
     if (!designJob) {
       return;
     }
-    fetch("/api/design/status?job=" + encodeURIComponent(designJob))
+    api("/api/design/status?job=" + encodeURIComponent(designJob))
       .then(function (response) {
         return response.json().then(function (snapshot) {
           return { ok: response.ok, snapshot: snapshot };
@@ -1434,9 +1759,9 @@
           return;
         }
         if (snapshot.status === "done") {
-          id("design-state").textContent = snapshot.feasible
+          text(id("design-state"), snapshot.feasible
             ? "Finished: every target holds"
-            : "Finished: the spec was not met";
+            : "Finished: the spec was not met");
         }
         if (snapshot.reason) {
           designReason.textContent = snapshot.reason;
@@ -1526,7 +1851,7 @@
     designStarted = Date.now();
     window.FaradaemNotify.ask();
 
-    fetch("/api/design", {
+    api("/api/design", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1556,7 +1881,7 @@
     if (!designJob) {
       return;
     }
-    fetch("/api/design/stop", {
+    api("/api/design/stop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ job: designJob })
@@ -1663,7 +1988,7 @@
     designStart.disabled = true;
     designGenerateLabel.textContent = "Generating";
 
-    fetch("/api/design/seed", {
+    api("/api/design/seed", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1732,10 +2057,10 @@
       });
   }
 
-  designGenerate.addEventListener("click", generateDesign);
-  designStart.addEventListener("click", function () { startDesign("manual"); });
-  designStop.addEventListener("click", stopDesign);
-  designApply.addEventListener("click", applyDesign);
+  on(designGenerate, "click", generateDesign);
+  on(designStart, "click", function () { startDesign("manual"); });
+  on(designStop, "click", stopDesign);
+  on(designApply, "click", applyDesign);
 
 
   /* ---- ask for a design --------------------------------------------------- */
@@ -1999,7 +2324,7 @@
     if (!adviseJob) {
       return;
     }
-    fetch("/api/advise/status?job=" + encodeURIComponent(adviseJob))
+    api("/api/advise/status?job=" + encodeURIComponent(adviseJob))
       .then(function (response) {
         return response.json().then(function (snapshot) {
           return { ok: response.ok, snapshot: snapshot };
@@ -2101,7 +2426,7 @@
   }
 
   function startAdvisePanel() {
-    fetch("/api/advise/providers")
+    api("/api/advise/providers")
       .then(function (response) { return response.json(); })
       .then(function (payload) {
         adviseProviders = payload.providers || [];
@@ -2128,30 +2453,36 @@
       });
   }
 
-  adviseForm.addEventListener("submit", sendAdvise);
-  adviseReset.addEventListener("click", resetAdvise);
-  adviseStop.addEventListener("click", function () {
-    if (!adviseJob) {
-      return;
-    }
-    adviseStop.disabled = true;
-    adviseStop.textContent = "Stopping";
-    fetch("/api/advise/stop", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ job: adviseJob })
-    }).catch(function () {
-      adviseStop.disabled = false;
-      adviseStop.textContent = "Stop";
+  /* The whole panel is absent from the static document. Binding to it
+     would throw on the first null, and startAdvisePanel() would ask a
+     server that is not there -- which is exactly what the published site
+     used to do, once per load, before the mode was known. */
+  if (adviseForm) {
+    adviseForm.addEventListener("submit", sendAdvise);
+    adviseReset.addEventListener("click", resetAdvise);
+    adviseStop.addEventListener("click", function () {
+      if (!adviseJob) {
+        return;
+      }
+      adviseStop.disabled = true;
+      adviseStop.textContent = "Stopping";
+      api("/api/advise/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job: adviseJob })
+      }).catch(function () {
+        adviseStop.disabled = false;
+        adviseStop.textContent = "Stop";
+      });
     });
-  });
-  adviseInput.addEventListener("keydown", function (event) {
-    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      sendAdvise();
-    }
-  });
-  startAdvisePanel();
+    adviseInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        sendAdvise();
+      }
+    });
+    startAdvisePanel();
+  }
 
 
 
@@ -2209,7 +2540,7 @@
         panel.refit();
       }
     });
-    if (lastBode && !bodePanel.classList.contains("hidden")) {
+    if (lastBode && bodePanel && !bodePanel.classList.contains("hidden")) {
       window.drawBode(id("bode"), lastBode);
     }
   }
@@ -2250,6 +2581,10 @@
   }
 
   function benchReset() {
+    // The verification strip reports checks only the local tool can run.
+    if (!id("bench")) {
+      return;
+    }
     benchSet("sim", "idle", "not run");
     var laid = Boolean(current && current.floorplan);
     ["drc", "signoff", "lvs"].forEach(function (slot) {
@@ -2351,19 +2686,21 @@
   /* The circuit chips already rove with the arrow keys; the analysis
      strip carries the same role="tab" markup, so it keeps the same
      promise. */
-  analysisTabs.addEventListener("keydown", function (event) {
-    var delta = event.key === "ArrowRight" ? 1
-      : event.key === "ArrowLeft" ? -1 : 0;
-    if (!delta) { return; }
-    var buttons = Array.prototype.slice.call(
-      analysisTabs.querySelectorAll(".analysis-tab"));
-    var index = buttons.indexOf(document.activeElement);
-    if (index < 0) { return; }
-    event.preventDefault();
-    var next = (index + delta + buttons.length) % buttons.length;
-    buttons[next].focus();
-    buttons[next].click();
-  });
+  if (analysisTabs) {
+    analysisTabs.addEventListener("keydown", function (event) {
+      var delta = event.key === "ArrowRight" ? 1
+        : event.key === "ArrowLeft" ? -1 : 0;
+      if (!delta) { return; }
+      var buttons = Array.prototype.slice.call(
+        analysisTabs.querySelectorAll(".analysis-tab"));
+      var index = buttons.indexOf(document.activeElement);
+      if (index < 0) { return; }
+      event.preventDefault();
+      var next = (index + delta + buttons.length) % buttons.length;
+      buttons[next].focus();
+      buttons[next].click();
+    });
+  }
   var openAnalysis = null;
 
   function showAnalysis(key) {
@@ -2371,13 +2708,15 @@
     ANALYSES.forEach(function (item) {
       show(id("pane-" + item.key), item.key === key);
     });
-    Array.prototype.forEach.call(
-      analysisTabs.querySelectorAll(".analysis-tab"),
-      function (button) {
-        button.setAttribute("aria-selected",
-          button.getAttribute("data-analysis") === key ? "true" : "false");
-      }
-    );
+    if (analysisTabs) {
+      Array.prototype.forEach.call(
+        analysisTabs.querySelectorAll(".analysis-tab"),
+        function (button) {
+          button.setAttribute("aria-selected",
+            button.getAttribute("data-analysis") === key ? "true" : "false");
+        }
+      );
+    }
     // A plot drawn while its pane was hidden measured zero width, so it is
     // redrawn on the way in, when the element finally has a size.
     panels.forEach(function (panel) {
@@ -2388,8 +2727,13 @@
   }
 
   function renderAnalysis() {
+    // The whole analysis section is absent from the static document; there
+    // is nothing to render and nothing to put away.
+    if (!analysisTabs) {
+      return;
+    }
     clear(analysisTabs);
-    var offered = isStatic ? [] : ANALYSES.filter(function (item) {
+    var offered = ANALYSES.filter(function (item) {
       return item.available();
     });
 
@@ -2428,14 +2772,15 @@
       }
     }
 
-    id("panel-title").textContent =
-      current.analysis === "dc" ? "DC operating point" : "AC sweep";
-    id("caption").textContent = current.caption;
+    text(id("panel-title"), current.analysis === "dc" ? "DC operating point" : "AC sweep");
+    text(id("caption"), current.caption);
 
     renderTabs();
     benchReset();
     renderPresets();
-    renderInputs(memory[current.id]);
+    // This session's edits first, then what a previous visit left, then
+    // the registry defaults renderInputs falls back to.
+    renderInputs(memory[current.id] || storedFor(current));
     renderDesignPanel();
     // A run still measuring the previous circuit owns the caption's
     // ticker; the new circuit starts from "Run to measure."
@@ -2446,7 +2791,7 @@
     // circuit's one-job lock and burn simulations nobody reads.
     biasReset();
     if (blameJob) {
-      fetch("/api/workbench/stop", {
+      api("/api/workbench/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ job: blameJob })
@@ -2471,8 +2816,8 @@
     show(id("mentor-state"), false);
     show(id("mentor"), Boolean(current.design));
     if (current.design && current.design.tunable) {
-      id("blame-label").textContent = "Explain the margins (" +
-        (1 + 2 * current.design.tunable.length) + " simulations)";
+      text(id("blame-label"), "Explain the margins (" +
+        (1 + 2 * current.design.tunable.length) + " simulations)");
     }
     show(id("sweep-run"),
          Boolean(current.design && current.design.sweep));
@@ -2507,76 +2852,53 @@
 
   form.addEventListener("submit", run);
 
-  /* The catalogue comes from the running server. Where there is no server,
-     a published copy stands in and the page drops to static mode: drawings
-     still work, and everything that would need a measured number is put
-     away rather than left to fail. */
+  /* Where the catalogue comes from is a property of the deployment, not
+     something to discover by trying. The published site reads the copy the
+     build wrote beside it and never touches /api, which would be a request
+     that can only 404; the local page asks its own server. */
   async function loadCatalogue() {
-    try {
-      var live = await fetch("/api/circuits");
-      if (live.ok) {
-        return (await live.json()).circuits;
+    if (isStatic) {
+      var published = await fetch("catalogue.json");
+      if (!published.ok) {
+        throw new Error("no catalogue");
       }
-    } catch (noServer) {
-      // Fall through to the published catalogue.
+      return (await published.json()).circuits;
     }
-    var published = await fetch("catalogue.json");
-    if (!published.ok) {
+    var live = await api("/api/circuits");
+    if (!live.ok) {
       throw new Error("no catalogue");
     }
-    isStatic = true;
-    return (await published.json()).circuits;
-  }
-
-  function applyStaticMode() {
-    show(id("static-note"), true);
-    // The notebook is the server's ledger; the published site has none.
-    var notebook = id("nav-notebook");
-    if (notebook && notebook.parentNode) {
-      notebook.parentNode.removeChild(notebook);
-    }
-    // The headline action points at a panel that is about to be put away.
-    var cta = document.querySelector(".hero-cta");
-    if (cta) {
-      cta.href = "https://github.com/tommysl8/faradaem";
-      cta.rel = "noreferrer";
-      cta.textContent = "Run it locally";
-    }
-    runButton.disabled = true;
-    runLabel.textContent = "Simulation runs on your machine";
-    show(netlistToggle, false);
-    show(id("advise"), false);
-    renderAnalysis();
+    return (await live.json()).circuits;
   }
 
   async function start() {
     try {
       catalogue = await loadCatalogue();
     } catch (networkError) {
-      id("panel-title").textContent = "Unavailable";
-      showError("Could not load the circuit catalogue. Start the server with " +
-                "python server.py and reload.");
+      text(id("panel-title"), "Unavailable");
+      showError(isStatic
+        ? "Could not load the published circuit catalogue. Reload the page; "
+          + "if it keeps failing the site is mid-deploy."
+        : "Could not load the circuit catalogue. Start the server with "
+          + "python server.py and reload.");
       return;
     }
 
     var wanted = window.location.hash.replace("#", "");
     select(known(wanted) ? wanted : catalogue[0].id);
-    if (isStatic) {
-      applyStaticMode();
-    }
   }
 
   /* ---- the pin chip ------------------------------------------------------
      A pin is the server's own measurement of this sizing, frozen. The
      chip re-measures rather than trusting the page, so what is pinned is
      what ngspice said, not what the DOM held. */
-  id("pin-set").addEventListener("click", function () {
+  on("pin-set", "click", function () {
     var chip = id("pin-set");
     var note = id("pin-note");
     chip.disabled = true;
     note.textContent = "measuring";
     tickStart(note);
-    fetch("/api/pin", {
+    api("/api/pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ circuit: current.id, params: values() })
@@ -2638,14 +2960,14 @@
     });
   }
 
-  id("triage-run").addEventListener("click", function () {
+  on("triage-run", "click", function () {
     var asked = current.id;
     show(mentorError, false);
     mentorButtons(true);
     mentorState.textContent = "Measuring once";
     show(mentorState, true);
     tickStart(mentorState);
-    fetch("/api/triage", {
+    api("/api/triage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ circuit: asked, params: values(),
@@ -2687,7 +3009,7 @@
       if (job !== blameJob) {
         return;
       }
-      fetch("/api/workbench/status?job=" + job)
+      api("/api/workbench/status?job=" + job)
         .then(function (r) {
           return r.json().then(function (snap) {
             return { ok: r.ok, snap: snap };
@@ -2753,7 +3075,7 @@
     mentorButtons(true);
     mentorState.textContent = "Starting";
     show(mentorState, true);
-    fetch("/api/workbench", {
+    api("/api/workbench", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ circuit: current.id, params: values(),
@@ -2774,7 +3096,7 @@
       });
   }
 
-  id("blame-run").addEventListener("click", function () {
+  on("blame-run", "click", function () {
     startMentorJob("blame", renderBlame);
   });
 
@@ -2855,7 +3177,7 @@
     return { key: key };
   }
 
-  id("sweep-run").addEventListener("click", function () {
+  on("sweep-run", "click", function () {
     startMentorJob("sweep", renderSweep);
   });
 
@@ -2926,13 +3248,13 @@
       caption += " " + broken.length + " point" +
         (broken.length > 1 ? "s" : "") + " did not bias.";
     }
-    id("sweep-caption").textContent = caption;
+    text(id("sweep-caption"), caption);
     show(id("sweep-panel"), true);
   }
 
   /* The netlist is exactly what a user pastes into their own ngspice or
      a bug report, so it copies in one click. */
-  netlistCopy.addEventListener("click", function () {
+  on(netlistCopy, "click", function () {
     var text = id("netlist-view").textContent;
     if (!text) {
       return;

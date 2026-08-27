@@ -1,6 +1,6 @@
 """The foundry's own deck, and what it is for.
 
-These tests exist to hold one line: the thirty-five rules Faradaem checks
+These tests exist to hold one line: the thirty-six rules Faradaem checks
 while drawing are a fast loop, and the SKY130 runset is the answer. The
 most important test here is the one that runs both and requires them to
 agree, because the moment they stop agreeing the fast loop has become a
@@ -169,7 +169,7 @@ def test_the_directional_rules_are_checked_now():
 
 @requires_tech
 def test_a_via_with_only_all_round_enclosure_is_caught():
-    """The exact shape that passed thirty-two rules and failed the deck:
+    """The exact shape that passed the fast rules and failed the deck:
     metal that clears the via on every side by the all-round rule, and by
     no more than that on either axis."""
     tech = layout.tech_constants()

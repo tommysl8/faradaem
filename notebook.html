@@ -9,10 +9,25 @@
 <link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <meta name="application-name" content="Faradaem">
+<meta property="og:site_name" content="Faradaem">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Notebook - Faradaem">
+<meta property="og:description" content="The lab notebook that writes itself: every run, every simulation, every verdict, with the provenance that makes a number evidence.">
+<meta property="og:url" content="{{site_origin}}/notebook">
+<meta property="og:image" content="{{site_origin}}/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A white AE ligature on a black square, the Faradaem mark.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Notebook - Faradaem">
+<meta name="twitter:description" content="The lab notebook that writes itself: every run, every simulation, every verdict, with the provenance that makes a number evidence.">
+<meta name="twitter:image" content="{{site_origin}}/static/og.png">
+<link rel="canonical" href="{{site_origin}}/notebook">
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to the main content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
@@ -32,17 +47,21 @@
   </div>
 </header>
 
-<main class="page">
+<main class="page" id="main" tabindex="-1">
   <div class="wrap">
 
     <div class="page-head">
       <h1 class="page-title">Notebook</h1>
-      <p class="page-sub">Every run this machine has made, written down as it
+<!--local-only-->      <p class="page-sub">Every run this machine has made, written down as it
       happened. Engineers keep lab notebooks badly; this one is a side
       effect of the provenance rule, so it cannot be forgotten.</p>
-    </div>
+<!--/local-only--><!--static-only-->      <p class="page-sub">The notebook is written by the local
+      simulator as it runs. It is a reading of the ledger on the machine
+      doing the work, and this published demo has no ledger, because it
+      has never run anything.</p>
+<!--/static-only-->    </div>
 
-    <div class="panel">
+<!--local-only-->    <div class="panel">
       <div class="panel-body">
         <h2 class="panel-head">Stored datasheets</h2>
         <div id="notebook-sheets">
@@ -70,24 +89,47 @@
         <p class="field-error hidden" id="notebook-error"></p>
       </div>
     </div>
-
+<!--/local-only--><!--static-only-->    <div class="panel">
+      <div class="panel-body">
+        <h2 class="panel-head">There is no ledger here</h2>
+        <p class="design-intro">Every Faradaem run appends to a ledger: what
+        was tried, what was measured, what was decided, and the provenance
+        that makes a number evidence rather than an assertion. The ledger
+        lives beside the simulator, on the machine that ran it, never on a
+        server. So there is nothing for this page to read, and nothing it
+        could honestly show you.</p>
+        <p class="design-intro">Run Faradaem locally and this page fills
+        itself: every run newest first, its simulation count taken at the
+        subprocess boundary, its stored datasheets, and any damaged lines a
+        crash left behind, shown rather than hidden.</p>
+        <div class="design-actions">
+          <a class="run" href="{{repo_url}}" rel="noreferrer">Run Faradaem
+          locally</a>
+          <a class="chip" href="/manual#the-notebook">Read what the notebook
+          records</a>
+        </div>
+      </div>
+    </div>
+<!--/static-only-->
   </div>
 </main>
 
 <footer class="foot">
   <div class="wrap">
     <div class="foot-inner">
-      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
-      <nav class="foot-links" aria-label="Footer">
+<!--local-only-->      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
+<!--/local-only--><!--static-only-->      <span>Faradaem reports measurements only from ngspice. This published demo does not run simulations.</span>
+<!--/static-only-->      <nav class="foot-links" aria-label="Footer">
         <a href="/notebook">Notebook</a>
         <a href="/manual">Manual</a>
         <a href="/about">About</a>
         <a href="/changelog">Changelog</a>
+        <a href="{{repo_url}}" rel="noreferrer">GitHub</a>
       </nav>
     </div>
   </div>
 </footer>
 
-<script src="/static/notebook.js"></script>
+<!--local-only--><script src="/static/notebook.js"></script><!--/local-only-->
 </body>
 </html>

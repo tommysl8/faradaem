@@ -23,6 +23,8 @@ import tempfile
 import threading
 import time
 
+from . import toolchain
+
 #: Environment variable that overrides ngspice discovery.
 NGSPICE_ENV_VAR = "FARADAEM_NGSPICE"
 
@@ -89,10 +91,16 @@ def find_ngspice() -> str:
 
     Resolution order:
       1. the FARADAEM_NGSPICE environment variable,
-      2. ngspice_con.exe on PATH,
-      3. the literal C:\ngspice\Spice64\bin\ngspice_con.exe fallback.
+      2. the copy `python install.py` unpacked under ~/.faradaem/tools,
+      3. ngspice_con.exe on PATH,
+      4. the literal C:\ngspice\Spice64\bin\ngspice_con.exe fallback.
 
-    Raises NgspiceNotFoundError naming all three attempts if none resolve.
+    The managed copy sits above PATH deliberately: it is the one Faradaem
+    installed and pinned, so it is the one Faradaem believes.  A reader who
+    wants a different build says so with the environment variable, which
+    outranks everything.
+
+    Raises NgspiceNotFoundError naming all four attempts if none resolve.
     """
     attempts: list[str] = []
 
@@ -109,20 +117,25 @@ def find_ngspice() -> str:
     else:
         attempts.append("1. $" + NGSPICE_ENV_VAR + " (not set)")
 
+    managed = toolchain.managed_ngspice()
+    if managed:
+        return managed
+    attempts.append("2. " + toolchain.ngspice_exe() + " (not installed)")
+
     on_path = shutil.which(NGSPICE_EXE_NAME)
     if on_path:
         return on_path
-    attempts.append("2. " + NGSPICE_EXE_NAME + " on PATH (not found)")
+    attempts.append("3. " + NGSPICE_EXE_NAME + " on PATH (not found)")
 
     if os.path.isfile(NGSPICE_FALLBACK_PATH):
         return NGSPICE_FALLBACK_PATH
-    attempts.append("3. " + NGSPICE_FALLBACK_PATH + " (does not exist)")
+    attempts.append("4. " + NGSPICE_FALLBACK_PATH + " (does not exist)")
 
     raise NgspiceNotFoundError(
         "Could not locate the console ngspice executable. Tried:\n  "
         + "\n  ".join(attempts)
-        + "\nInstall ngspice, put " + NGSPICE_EXE_NAME + " on PATH, or set $"
-        + NGSPICE_ENV_VAR + " to its full path."
+        + "\nRun 'python install.py' to install one, or set $"
+        + NGSPICE_ENV_VAR + " to the full path of a build you already have."
     )
 
 
@@ -1131,12 +1144,25 @@ def measure_follower_range(points, error_v=FOLLOW_ERROR_V,
 
 
 def pdk_root():
-    r"""Return the PDK install root: $PDK_ROOT, or C:\pdk if it is unset.
+    r"""Return the PDK install root.
+
+    Resolution order:
+      1. the PDK_ROOT environment variable,
+      2. the copy `python install.py` unpacked under ~/.faradaem/tools,
+      3. the literal C:\pdk fallback.
+
+    Step 2 is the only one that checks for the model library before
+    answering; the other two are taken at their word, so a reader who points
+    PDK_ROOT at the wrong place gets an error naming that place rather than
+    a silent redirect to somewhere else.
 
     Resolved on every call rather than at import, so a shell that gains the
     variable does not need the server restarted to be believed.
     """
-    return os.environ.get(PDK_ROOT_ENV_VAR, "").strip() or PDK_ROOT_FALLBACK
+    chosen = os.environ.get(PDK_ROOT_ENV_VAR, "").strip()
+    if chosen:
+        return chosen
+    return toolchain.managed_pdk(SKY130_LIB_PARTS) or PDK_ROOT_FALLBACK
 
 
 def sky130_lib_path():
@@ -1172,14 +1198,15 @@ def find_sky130_lib(corner=SKY130_DEFAULT_CORNER):
         source = (
             "$" + PDK_ROOT_ENV_VAR + " = " + repr(env_value)
             if env_value
-            else "$" + PDK_ROOT_ENV_VAR + " is not set in this process, so the "
-            + repr(PDK_ROOT_FALLBACK) + " fallback was used"
+            else "$" + PDK_ROOT_ENV_VAR + " is not set in this process, and "
+            "nothing is installed under " + toolchain.pdk_root()
         )
         raise PdkNotFoundError(
             "Could not find the SKY130 model library at " + path + ".\n"
             + source + ".\n"
-            "Install the SKY130 PDK, then set " + PDK_ROOT_ENV_VAR + " to its "
-            "root and restart the server so the new value is picked up."
+            "Run 'python install.py' to install the PDK, or set "
+            + PDK_ROOT_ENV_VAR + " to the root of one you already have and "
+            "restart the server so the new value is picked up."
         )
 
     return path.replace("\\", "/")

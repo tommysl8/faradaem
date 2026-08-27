@@ -16,8 +16,10 @@ not evidence.
 
 Where it goes. Not the project folder: that lives in OneDrive, and an
 append-heavy log inside a syncing folder is a bad idea twice over. The
-default is ~/.faradaem/ledger, overridable with FARADAEM_LEDGER, so the
-records are durable, discoverable, and outside anything that syncs on write.
+default is ~/.faradaem/ledger -- under toolchain.home(), the same root the
+installed simulator and PDK live in -- overridable with FARADAEM_LEDGER, so
+the records are durable, discoverable, and outside anything that syncs on
+write.
 
 What it does not do: judge. Nothing here decides whether a run was good.
 It records what happened and leaves the reading to whoever compares.
@@ -31,6 +33,8 @@ import re
 import subprocess
 import sys
 import time
+
+from . import toolchain
 
 #: Where runs are written, unless the environment says otherwise.
 LEDGER_ENV_VAR = "FARADAEM_LEDGER"
@@ -68,7 +72,7 @@ def root():
     chosen = os.environ.get(LEDGER_ENV_VAR)
     if chosen:
         return chosen
-    return os.path.join(os.path.expanduser("~"), ".faradaem", "ledger")
+    return os.path.join(toolchain.home(), "ledger")
 
 
 # ---------------------------------------------------------------------------
@@ -123,13 +127,17 @@ def _pdk():
         return None
 
     # ciel pins the PDK by hash, and the directory it unpacks under is that
-    # hash. It is the only version number the PDK actually carries.
+    # hash. It is the only version number the PDK actually carries. An
+    # install.py tree has no such directory, so the installer writes the same
+    # identifier down where this can read it.
     version = None
     versions = os.path.join(root_path, "ciel", "sky130", "versions")
     if os.path.isdir(versions):
         names = sorted(os.listdir(versions))
         if names:
             version = names[0]
+    if version is None:
+        version = toolchain.recorded_version(root_path)
 
     return {
         "root": root_path,

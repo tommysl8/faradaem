@@ -1,11 +1,14 @@
 """faradaem doctor: what this machine has, what it lacks, how to fix it.
 
-Setting up ngspice, a PDK and KLayout on Windows is the worst afternoon
-of the whole project, and the errors arrive one at a time, each after a
-failed run. This runs every check at once and says, per check, exactly
-what to do. It resolves everything through the same functions the tool
-itself uses, so a green check here is the tool's own opinion, not a
+Setting up ngspice, a PDK and KLayout on Windows used to be the worst
+afternoon of the whole project, and the errors arrived one at a time, each
+after a failed run. This runs every check at once and says, per check,
+exactly what to do. It resolves everything through the same functions the
+tool itself uses, so a green check here is the tool's own opinion, not a
 parallel guess.
+
+Most of the fixes are now one command: install.py fetches the simulator and
+the technology files and puts them where these checks look.
 
 Three states, because two would lie:
 
@@ -57,21 +60,22 @@ def checks():
         add("ngspice", OK, exe + " (" + version_line + ")")
     except Exception as exc:  # noqa: BLE001 - each attempt is in the message
         add("ngspice", MISSING, str(exc).splitlines()[0],
-            "Install ngspice and either put ngspice_con.exe on PATH or "
-            "set FARADAEM_NGSPICE to its full path. The console binary, "
-            "never ngspice.exe.")
+            "Run 'python install.py', which fetches the console build and "
+            "unpacks it where the tool looks. To use one you already have, "
+            "set FARADAEM_NGSPICE to its full path instead. The console "
+            "binary, never ngspice.exe.")
 
     # ---- the PDK --------------------------------------------------------
-    pdk_root = os.environ.get(runner.PDK_ROOT_ENV_VAR,
-                              runner.PDK_ROOT_FALLBACK)
-    lib = os.path.join(pdk_root, *runner.SKY130_LIB_PARTS)
+    lib = runner.sky130_lib_path()
     if os.path.isfile(lib):
         add("SKY130 PDK", OK, lib)
     else:
         add("SKY130 PDK", MISSING, "no model library at " + lib,
-            "Install the PDK with ciel (pip install ciel; "
-            "ciel enable --pdk-family sky130 <version>) and set PDK_ROOT "
-            "to the install directory, outside any synced folder.")
+            "Run 'python install.py', which fetches the technology files and "
+            "device models (21 MB, not the 2.2 GB a full install costs) and "
+            "unpacks them where the tool looks. To use a PDK you already "
+            "have, set "
+            "PDK_ROOT to its root instead, outside any synced folder.")
 
     # ---- the technology data -------------------------------------------
     if layout_module.tech_available():

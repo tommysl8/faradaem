@@ -13,18 +13,21 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Faradaem: AI-assisted analog IC design">
 <meta property="og:description" content="Describe the analog circuit you need. Faradaem designs it against real ngspice simulation, iterates to your spec, and verifies the result across corners.">
-<meta property="og:image" content="/static/og.png">
+<meta property="og:url" content="{{site_origin}}/">
+<meta property="og:image" content="{{site_origin}}/static/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="A white AE ligature on a black square, the Faradaem mark.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Faradaem: AI-assisted analog IC design">
 <meta name="twitter:description" content="Describe the analog circuit you need. Faradaem designs it against real ngspice simulation, iterates to your spec, and verifies the result across corners.">
-<meta name="twitter:image" content="/static/og.png">
+<meta name="twitter:image" content="{{site_origin}}/static/og.png">
+<link rel="canonical" href="{{site_origin}}/">
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to the main content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
@@ -44,7 +47,7 @@
   </div>
 </header>
 
-<main class="page">
+<main class="page" id="main" tabindex="-1">
   <div class="wrap">
 
     <section class="hero">
@@ -58,12 +61,13 @@
           own deck check the result. No value on this page was ever
           estimated.</p>
           <div class="hero-actions">
-            <a class="hero-cta" href="#advise">Ask for a design</a>
-            <a class="hero-alt" href="/manual">Read the manual</a>
+<!--local-only-->            <a class="hero-cta" href="#advise">Ask for a design</a>
+<!--/local-only--><!--static-only-->            <a class="hero-cta" href="{{repo_url}}" rel="noreferrer">Run it locally</a>
+<!--/static-only-->            <a class="hero-alt" href="/manual">Read the manual</a>
           </div>
           <ul class="hero-facts">
-            <li><a href="/manual#the-circuits"><b>10</b><span>circuits, 3 of them SKY130 amplifiers</span></a></li>
-            <li><a href="/manual#robustness-corners-and-monte-carlo"><b>11</b><span>PVT corners per suite</span></a></li>
+            <li><a href="/manual#the-circuits"><b>{{circuits}}</b><span>circuits, {{pdk_circuits}} using SKY130</span></a></li>
+            <li><a href="/manual#robustness-corners-and-monte-carlo"><b>{{pvt_corners}}</b><span>PVT corners per suite</span></a></li>
             <li><a href="/manual#floorplan-what-the-sizing-costs-in-silicon"><b>0</b><span>foundry-deck violations</span></a></li>
             <li><a href="/changelog"><b>1008</b><span>tests green</span></a></li>
           </ul>
@@ -88,21 +92,29 @@
 
       <div class="sim-left">
 
-      <p class="static-note hidden" id="static-note">You are reading the
-      published site, which has no simulator behind it. The schematics below
-      are live and redraw as you change values. Measuring one needs ngspice on
-      your own machine: <a href="https://github.com/tommysl8/faradaem"
-      rel="noreferrer">run it locally</a> and every panel comes back.</p>
-
-      <section class="panel advise-panel" id="advise" aria-label="Ask for a design">
+<!--static-only-->      <p class="static-note" id="static-note">This published demo
+      redraws circuits but does not run ngspice. Run the local app to measure
+      them. Everything below that does not need a measured number is real:
+      pick a circuit, load an example, edit any value, and the schematic
+      redraws as you type. To measure one,
+      <a href="{{repo_url}}" rel="noreferrer">clone the repository</a> and run
+      <code>python install.py</code> once, which fetches the simulator and the
+      process kit; then <code>python server.py</code> and every panel is
+      here.</p>
+<!--/static-only-->
+<!--local-only-->      <section class="panel advise-panel" id="advise" aria-label="Ask for a design">
         <h2 class="panel-head">Ask for a design</h2>
         <div class="panel-body">
           <p class="design-intro">Say what you want built and which numbers matter.
-          A strategist drives the real simulator; every number it reports was measured.</p>
+          A strategist drives the real simulator; every number it reports was
+          measured. It chooses between {{topologies_word}} SKY130 amplifier
+          topologies it can size: the two-stage Miller op-amp, the
+          five-transistor OTA, and the folded cascode.</p>
           <div class="advise-log hidden" id="advise-log"></div>
           <p class="hint hidden" id="advise-now"></p>
           <form id="advise-form">
             <textarea id="advise-input" rows="3" class="advise-input"
+              aria-label="What you want built, and which numbers matter"
               placeholder="An op-amp driving 5 pF: at least 60 dB and 60 degrees of margin, under 150 microwatts."></textarea>
             <p class="hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends.</p>
             <div class="advise-actions">
@@ -116,16 +128,19 @@
           <p class="field-error hidden" id="advise-error"></p>
         </div>
       </section>
-
+<!--/local-only-->
       <form class="panel sim-controls" id="sim-form" novalidate>
         <div class="modes" role="tablist" aria-label="Circuit" id="modes"></div>
         <h2 class="panel-head" id="panel-title">Loading</h2>
-        <div class="panel-body">
+        <!-- role="tabpanel" and aria-labelledby are completed by app.js
+             once the tabs exist: the label has to name the selected tab,
+             and the tabs are rendered from the catalogue. -->
+        <div class="panel-body" id="circuit-panel">
           <div class="presets-row">
             <span class="presets-label" id="presets-label">Examples</span>
             <div class="presets" id="presets" role="group" aria-labelledby="presets-label"></div>
           </div>
-          <div class="presets-row hidden" id="history-row">
+<!--local-only-->          <div class="presets-row hidden" id="history-row">
             <span class="presets-label">History</span>
             <div class="presets">
               <button class="chip" id="history-prev" type="button">&lsaquo; Earlier</button>
@@ -133,20 +148,28 @@
               <button class="chip" id="history-next" type="button">Later &rsaquo;</button>
             </div>
           </div>
-          <div id="inputs"></div>
-          <button class="run" id="run" type="submit"><span id="run-label">Run simulation</span></button>
+<!--/local-only-->          <div id="inputs"></div>
+<!--local-only-->          <button class="run" id="run" type="submit"><span id="run-label">Run simulation</span></button>
           <p class="hint"><kbd>Enter</kbd> runs &middot;
           <kbd>&uarr;</kbd><kbd>&darr;</kbd> step a digit &middot;
           <kbd>Shift</kbd> steps a decade &middot;
           <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs from anywhere</p>
           <button class="chip netlist-toggle" id="netlist-toggle" type="button">View netlist</button>
           <button class="chip netlist-toggle hidden" id="netlist-copy" type="button">Copy netlist</button>
-          <button class="chip netlist-toggle" id="design-export" type="button">Export design</button>
+<!--/local-only--><!--static-only-->          <a class="run run-locally" id="run-locally" href="{{repo_url}}"
+             rel="noreferrer">Run locally to simulate</a>
+          <p class="hint">Editing a value redraws the schematic here. Measuring
+          it needs the local app.</p>
+<!--/static-only-->          <button class="chip netlist-toggle" id="design-export" type="button">Export design</button>
           <button class="chip netlist-toggle" id="design-import" type="button">Import design</button>
-          <input type="file" id="design-import-file" accept=".json,application/json" class="hidden">
-          <p class="hint hidden" id="share-note"></p>
-          <pre class="netlist-pre hidden" id="netlist-view"></pre>
-        </div>
+          <button class="chip netlist-toggle" id="design-reset" type="button">Reset to defaults</button>
+          <input type="file" id="design-import-file"
+                 accept=".json,application/json" class="hidden"
+                 aria-label="Choose a Faradaem design file" tabindex="-1">
+          <p class="hint hidden" id="share-note" role="status"></p>
+          <p class="field-error hidden" id="import-error" role="alert" tabindex="-1"></p>
+<!--local-only-->          <pre class="netlist-pre hidden" id="netlist-view"></pre>
+<!--/local-only-->        </div>
       </form>
       </div>
 
@@ -156,17 +179,17 @@
 
         <figure class="figure">
           <div class="figure-scroll">
-            <svg id="schematic" viewBox="0 0 420 300"></svg>
+            <svg id="schematic" role="img" aria-label="Circuit schematic, redrawn as values change" viewBox="0 0 420 300"></svg>
           </div>
           <figcaption>
             <span id="caption"></span>
             <span class="caption-state" id="caption-state">Run to measure.</span>
-            <button class="chip hidden" id="bias-chip" type="button">Annotate bias (1 simulation)</button>
-          </figcaption>
+<!--local-only-->            <button class="chip hidden" id="bias-chip" type="button">Annotate bias (1 simulation)</button>
+<!--/local-only-->          </figcaption>
         </figure>
 
-        <figure class="figure hidden" id="bode-panel">
-          <svg id="bode" viewBox="0 0 520 360"></svg>
+<!--local-only-->        <figure class="figure hidden" id="bode-panel">
+          <svg id="bode" role="img" aria-label="Bode plot: magnitude and phase against frequency" viewBox="0 0 520 360"></svg>
         </figure>
 
 
@@ -219,7 +242,7 @@
             <button class="chip" id="ab-release" type="button">Release design A</button>
           </div>
         </div>
-
+<!--/local-only-->
         <div class="error-panel hidden" id="error" role="alert">
           <h2 class="error-head">
             <span>Error</span>
@@ -232,7 +255,7 @@
 
     </div>
 
-    <section class="analysis hidden" id="analysis" aria-label="Analysis">
+<!--local-only-->    <section class="analysis hidden" id="analysis" aria-label="Analysis">
       <h2 class="section-label">Analysis</h2>
       <div class="analysis-tabs" role="tablist" aria-label="Analysis"
            id="analysis-tabs"></div>
@@ -281,7 +304,7 @@
                 <p class="design-statusline hidden" id="mentor-state"></p>
                 <div class="blame-out hidden" id="blame-out"></div>
                 <figure class="figure hidden" id="sweep-panel">
-                  <svg id="sweep-plot" viewBox="0 0 520 300"></svg>
+                  <svg id="sweep-plot" role="img" aria-label="Bias sweep: the measured trade against bias current" viewBox="0 0 520 300"></svg>
                   <figcaption id="sweep-caption"></figcaption>
                 </figure>
                 <p class="field-error hidden" id="mentor-error"></p>
@@ -311,7 +334,7 @@
             </div>
           </section>
           <figure class="figure hidden" id="step-panel">
-            <svg id="step-plot" viewBox="0 0 520 260"></svg>
+            <svg id="step-plot" role="img" aria-label="Step response over time" viewBox="0 0 520 260"></svg>
             <figcaption>
               <span id="step-caption"></span>
             </figcaption>
@@ -339,7 +362,7 @@
             </div>
           </section>
           <figure class="figure hidden" id="sheet-panel">
-            <svg id="sheet-plot" viewBox="0 0 520 260"></svg>
+            <svg id="sheet-plot" role="img" aria-label="Rejection and range over frequency" viewBox="0 0 520 260"></svg>
             <figcaption>
               <span id="sheet-caption"></span>
             </figcaption>
@@ -360,7 +383,7 @@
               about half a minute; the foundry's own deck is one more
               button below.</p>
               <p class="static-note">Two questions get answered. The geometry
-              is checked against thirty-two rules read from the PDK, and the
+              is checked against {{drc_rules_word}} rules read from the PDK, and the
               drawing is compared against the netlist that was simulated, so a
               wire on the wrong pin is caught rather than admired. Neither is
               sign-off: the real rule deck runs to thousands and a real layout
@@ -378,7 +401,7 @@
                 </div>
                 <div class="metric-pairs" id="layout-metrics"></div>
                 <div class="verify hidden" id="layout-verify">
-                  <h4 class="verify-title">Verification</h4>
+                  <h3 class="verify-title">Verification</h3>
                   <ul class="verify-list" id="layout-verify-list"></ul>
                   <p class="verify-note" id="layout-verify-note"></p>
                 </div>
@@ -389,7 +412,7 @@
 
           <figure class="figure hidden" id="layout-figure">
             <div class="figure-scroll">
-              <svg id="layout-plot" viewBox="0 0 520 300"></svg>
+              <svg id="layout-plot" role="img" aria-label="The drawn layout, to scale in microns" viewBox="0 0 520 300"></svg>
             </div>
             <figcaption>
               <span id="layout-caption"></span>
@@ -507,26 +530,28 @@
 
       </div>
     </section>
-  </div>
+<!--/local-only-->  </div>
 </main>
 
 <footer class="foot">
   <div class="wrap">
     <div class="foot-inner">
-      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
-      <nav class="foot-links" aria-label="Footer">
+<!--local-only-->      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
+<!--/local-only--><!--static-only-->      <span>Faradaem reports measurements only from ngspice. This published demo does not run simulations.</span>
+<!--/static-only-->      <nav class="foot-links" aria-label="Footer">
         <a href="/notebook">Notebook</a>
         <a href="/manual">Manual</a>
         <a href="/about">About</a>
         <a href="/changelog">Changelog</a>
-        <a href="https://github.com/tommysl8/faradaem" rel="noreferrer">GitHub</a>
+        <a href="{{repo_url}}" rel="noreferrer">GitHub</a>
       </nav>
     </div>
   </div>
 </footer>
 
+<script src="/static/import-validate.js"></script>
 <script src="/static/schematic.js"></script>
-<script src="/static/bodeplot.js"></script>
+<!--local-only--><script src="/static/bodeplot.js"></script>
 <script src="/static/stepplot.js"></script>
 <script src="/static/layoutplot.js"></script>
 <script src="/static/panel-step.js"></script>
@@ -534,6 +559,6 @@
 <script src="/static/panel-robust.js"></script>
 <script src="/static/panel-datasheet.js"></script>
 <script src="/static/panel-layout.js"></script>
-<script src="/static/app.js"></script>
+<!--/local-only--><script src="/static/app.js"></script>
 </body>
 </html>

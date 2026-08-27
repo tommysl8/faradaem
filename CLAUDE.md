@@ -54,10 +54,30 @@
 - PDK installed at C:\pdk via ciel, pinned version 7b70722e33c03fcb5dabcf4d479fb0822d9251c9
 - PDK_ROOT environment variable is set to C:\pdk (User scope)
 - Model library: C:/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice, corners tt ss ff sf fs
-- Resolve the PDK path from the PDK_ROOT env var with C:\pdk as fallback. Never hard-code the path anywhere else.
+- Resolve the PDK path through runner.pdk_root() only: PDK_ROOT, then the install.py copy, then C:\pdk. Never hard-code the path anywhere else.
 - SKY130 devices are subcircuits. Instantiate with an X prefix: XM1 d g s b sky130_fd_pr__nfet_01v8 W=1 L=0.15. A plain M line will fail.
 - Use forward slashes in .lib paths inside netlists.
 - The first simulation that loads the library takes 10 to 30 seconds. Subprocess timeouts for PDK circuits must allow at least 60 seconds.
 - Integration tests that need the PDK must skip cleanly when PDK_ROOT or the library file is absent, same pattern as the existing ngspice skip.
-- ciel is machine tooling. Never add it to requirements.txt. pytest stays the only dependency.
+- ciel is machine tooling and is no longer needed: install.py fetches the same release's archives directly. Never add either to requirements.txt. pytest stays the only dependency.
 - The PDK must never live inside OneDrive.
+
+## The two deployments (added for 1.14.0)
+- There are exactly two: local and static, named in `spice/deployment.py`. The mode is decided before a page is written and stamped on `<html>` as `data-deployment`. Never infer it at runtime, and never from a failed request.
+- A page marks mode-specific markup with `<!--local-only-->` / `<!--static-only-->` comment pairs. `render()` DELETES the other mode's blocks. Never hide a server-only control with a class: hidden is still focusable, still announced, still a lie.
+- The static build makes no `/api` request. Every server call in app.js goes through `api()`, which refuses when `isStatic`. Adding a bare `fetch("/api/...")` is refused by `tests/test_frontend_invariants.py`, and that is the enforcement, not a convention.
+- app.js runs against a document missing whole panels. Reach elements through `id()` and act on them through `show()`, `text()`, `clear()` and `on()`, which no-op on null. A bare `id("x").textContent =` or `.addEventListener` is a null-write waiting for the other deployment; both shapes are refused by test.
+- Numbers the pages state come from `spice/siteinfo.py`, counted from the code, and pages carry `{{tokens}}`. Never type a count into HTML. The one exception is the tests-green tile, hand-maintained on purpose and marked as such by its own test.
+- One repository URL, `siteinfo.REPO_URL`, substituted everywhere. `tests/test_link_integrity.py` fetches it unauthenticated.
+- `pytest -m deployed` checks the live site; the default run deselects it, because the source is ahead of production by one deploy by definition.
+- Every route the header or footer links must be in `build_static.PAGES`. `/notebook` shipping as the host's 404 is what that rule is for.
+
+## The installer (added for 1.13.0)
+- `install.py` is the only supported way to set up a new machine, and `spice/toolchain.py` is the only place that says where installed tools go. The installer writes and the resolvers read through that one module; neither may name a path the other does not.
+- Everything Faradaem keeps between runs lives under `toolchain.home()` (~/.faradaem, or FARADAEM_HOME): the tools and the ledger. Never the project folder.
+- Every download is pinned by SHA-256 and refused on mismatch, because a binary that is about to be executed is not taken on trust. A truncated read is reported as truncation, not as a substituted file. Retries are allowed; accepting an unverified file is not.
+- Unpacking uses the tar the OS already ships (Windows' bsdtar reads 7-Zip and zstd built in). Never add an archive library, and never pip install anything from the installer.
+- The PDK needs both `common.tar.zst` and `sky130_fd_pr.tar.zst`. common alone loads and then stops at the first transistor, because the corner files include the models by relative path out of libs.tech. `install._check_pdk_tree` resolves those includes before accepting a tree; keep it, and never replace it with a file-exists check on the library alone.
+- The installer records the PDK release in `toolchain.VERSION_FILE` so `ledger._pdk()` can stamp provenance. A run whose PDK version is unknown is worth less as evidence.
+- Step verdicts are a closed set: installed / present / unavailable / failed. A platform with no official binary is "unavailable" and names the package manager; it is never dressed up as either a success or a failure.
+- doctor.py stays the single source of truth for what this machine has. The installer ends by running it rather than printing its own opinion.

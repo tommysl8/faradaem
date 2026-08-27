@@ -11,9 +11,17 @@ import re
 
 import pytest
 
-from spice import circuits, runner
+from spice import circuits, deployment, runner, siteinfo
 
-MANUAL = io.open("manual.html", encoding="utf-8").read()
+#: The manual as the local tool serves it: mode blocks resolved and the
+#: shared facts substituted. Reading the source instead would assert
+#: against tokens rather than against what anybody sees.
+MANUAL = deployment.render(
+    io.open("manual.html", encoding="utf-8").read(), deployment.LOCAL)
+
+#: And as the published site serves it, for the claims that differ.
+MANUAL_STATIC = deployment.render(
+    io.open("manual.html", encoding="utf-8").read(), deployment.STATIC)
 
 
 def text_of(html):
@@ -59,7 +67,11 @@ def test_manual_loads_nothing_from_the_network():
     assert "cdn." not in MANUAL
     assert "@import" not in MANUAL
     assert 'src="http' not in MANUAL
-    remaining = MANUAL.replace("https://github.com/tommysl8/faradaem", "")
+    # The repository link is a navigation the reader chooses; the
+    # site's own origin appears in canonical and og: metadata, which
+    # must be absolute to be usable and is fetched by nobody.
+    remaining = MANUAL.replace(siteinfo.REPO_URL, "")
+    remaining = remaining.replace(siteinfo.SITE_ORIGIN, "")
     assert "https://" not in remaining
 
 
@@ -165,6 +177,69 @@ def test_the_manual_explains_both_verifications_as_different_questions():
     assert counts.get(checked, str(checked)) + " rules" in MANUAL_LOWER, checked
     for said in ("by topology", "the fast loop"):
         assert said in MANUAL_LOWER, said
+
+
+# ---------------------------------------------------------------------------
+# the published manual says which half of itself the reader can use
+# ---------------------------------------------------------------------------
+
+#: Sections describing something only a running simulator can do. The
+#: published manual keeps them and marks them, because a manual that hid
+#: them would lie by omission about what the tool is.
+LOCAL_ONLY_SECTIONS = (
+    "running-a-simulation", "the-bias-on-the-schematic",
+    "asking-for-a-design-in-plain-language", "designing-to-a-spec",
+    "step-response-how-fast-it-can-actually-move",
+    "rejection-and-range-the-rest-of-the-datasheet",
+    "floorplan-what-the-sizing-costs-in-silicon",
+    "robustness-corners-and-monte-carlo",
+    "the-datasheet-that-writes-itself", "pinned-numbers",
+    "comparing-two-runs", "asking-the-numbers", "the-corner-autopsy",
+    "the-tapeout-packet", "the-notebook", "the-doctor",
+)
+
+
+@pytest.mark.parametrize("anchor", LOCAL_ONLY_SECTIONS)
+def test_every_local_only_section_is_marked(anchor):
+    at = MANUAL.index('<h2 id="' + anchor + '">')
+    heading = MANUAL[at:MANUAL.index("</h2>", at)]
+    assert "local-only-tag" in heading, anchor
+    assert "Local app required" in heading, anchor
+
+
+def test_the_manual_keeps_every_section_in_both_deployments():
+    """Marked, never removed: the published manual documents the whole
+    tool, including the parts that page cannot run."""
+    local = set(re.findall(r'<h2 id="([^"]+)">', MANUAL))
+    published = set(re.findall(r'<h2 id="([^"]+)">', MANUAL_STATIC))
+    assert local == published
+    assert len(local) > 20
+
+
+def test_the_published_manual_says_which_manual_it_is():
+    text = text_of(MANUAL_STATIC)
+    assert "You are reading the published" in text
+    assert "does not run ngspice" in text
+    # And the local one does not carry that notice.
+    assert "You are reading the published" not in MANUAL_TEXT
+
+
+def test_the_keyboard_section_describes_what_the_code_does():
+    """The manual said arrows only moved focus. They select as they move."""
+    app = io.open("static/app.js", encoding="utf-8").read()
+    strip = app.split('modesEl.addEventListener("keydown"')[1][:900]
+    for key in ("ArrowRight", "ArrowLeft", "Home", "End", "Enter"):
+        assert key in strip, key
+    # Activation follows focus, via one helper that selects.
+    assert "focusTab(" in strip
+    focus = app.split("function focusTab(")[1][:700]
+    assert "select(wanted)" in focus
+    assert "tabs.length" in focus  # it wraps
+
+    text = MANUAL_TEXT.lower()
+    assert "selecting" in text and "wrap" in text
+    assert "home, end" in text
+    assert "enter, space" in text
 
 
 def test_the_manual_never_claims_sign_off():

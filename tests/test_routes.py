@@ -98,6 +98,7 @@ def test_the_pages_and_their_assets_are_served():
         "/changelog",
         "/static/style.css",
         "/static/app.js",
+        "/static/import-validate.js",
         "/static/schematic.js",
         "/static/bodeplot.js",
         "/static/stepplot.js",
@@ -188,7 +189,19 @@ def test_whitelisted_route_returns_200_with_expected_content_type(address, path)
     assert body.strip()
 
 
-@pytest.mark.parametrize("path", ["/", "/manual", "/about", "/changelog"])
+@pytest.mark.parametrize(
+    "path", ["/", "/manual", "/about", "/changelog", "/notebook"])
+def test_every_published_route_answers_200(address, path):
+    """/notebook was linked from every page's header and footer and served
+    the host's raw 404 in the published deployment."""
+    status, content_type, body = fetch(address, path)
+    assert status == 200, path
+    assert content_type.startswith("text/html"), path
+    assert len(body) > 500, path
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/manual", "/about", "/changelog", "/notebook"])
 def test_pages_share_the_shell(address, path):
     _, _, body = fetch(address, path)
     assert 'FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span>' in body
@@ -196,6 +209,7 @@ def test_pages_share_the_shell(address, path):
     assert 'href="/manual"' in body
     assert 'href="/about"' in body
     assert 'href="/changelog"' in body
+    assert 'href="/notebook"' in body
     assert "github.com/tommysl8/faradaem" in body
 
 
@@ -234,10 +248,16 @@ def test_stylesheet_defines_the_design_tokens(address):
 #: Outbound links the author put on the page. These are navigations the reader
 #: chooses, not resources the page fetches, so they do not make the frontend
 #: depend on anything. Every other https:// is a bug.
+#:
+#: The site's own origin is here for a different reason: canonical URLs,
+#: og:url and og:image must be absolute to be usable by a crawler or a link
+#: preview, and an absolute self-reference is not a network dependency --
+#: nothing fetches it while the page is being read.
 OUTBOUND_LINKS = (
     "https://github.com/tommysl8/faradaem",
     "https://www.linkedin.com/in/tommysliu/",
     "https://x.com/tommysliu",
+    "https://www.faradaem.com",
 )
 
 
@@ -262,18 +282,32 @@ def test_frontend_pulls_nothing_from_the_network(address):
 # ---- 404s ---------------------------------------------------------------
 
 
-def test_unknown_path_returns_404_json(address):
+def test_unknown_page_path_returns_the_branded_404(address):
+    """A person who mistypes a URL gets Faradaem's own page, not a bare
+    JSON error and not the host's unbranded one."""
     status, content_type, body = fetch(address, "/nope")
+    assert status == 404
+    assert content_type.startswith("text/html")
+    assert "Page not found" in body
+    assert 'href="/manual"' in body
+    # And it asks not to be indexed, wherever it is served from.
+    assert "noindex" in body
+
+
+def test_unknown_api_path_still_returns_json(address):
+    """A caller of /api wants JSON even when the path is wrong."""
+    status, content_type, body = fetch(address, "/api/nope")
     assert status == 404
     assert content_type == JSON
     assert json.loads(body)["error"].startswith("Not found")
 
 
 def test_traversal_attempt_returns_404(address):
-    status, content_type, body = fetch(address, "/static/../server.py")
+    status, _, body = fetch(address, "/static/../server.py")
     assert status == 404
-    assert content_type == JSON
+    # The only thing that matters here: the file is not served.
     assert "def main" not in body
+    assert "PROJECT_ROOT" not in body
 
 
 @pytest.mark.parametrize(

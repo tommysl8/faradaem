@@ -19,6 +19,16 @@
       "env": {
         "FARADAEM_PORT": "8010"
       }
+    },
+    {
+      "name": "faradaem-static",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "tools\\serve_static.py",
+        "--port",
+        "8020"
+      ],
+      "port": 8020
     }
   ]
 }

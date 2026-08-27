@@ -25,9 +25,21 @@ def test_every_page_and_asset_is_published(site):
     out, written = site
     for page in build_static.PAGES:
         assert (out / page).is_file(), page
+    assert (out / build_static.NOT_FOUND).is_file()
     for asset in build_static.ASSETS:
         assert (out / "static" / asset).is_file(), asset
-    assert len(written) == len(build_static.PAGES) + len(build_static.ASSETS) + 1
+    # Pages, the not-found page, the assets, and three generated files:
+    # the catalogue, robots.txt and the sitemap.
+    assert len(written) == (len(build_static.PAGES) + 1
+                            + len(build_static.ASSETS) + 3)
+
+
+def test_no_local_only_asset_reaches_the_published_build(site):
+    """Code whose only controls the build deletes is dead weight."""
+    out, written = site
+    for asset in build_static.LOCAL_ONLY_ASSETS:
+        assert not (out / "static" / asset).exists(), asset
+        assert "static/" + asset not in written, asset
 
 
 def test_the_pages_reference_nothing_that_was_left_out(site):
@@ -66,23 +78,27 @@ def test_rebuilding_replaces_the_previous_output(tmp_path):
     assert not stale.exists()
 
 
-def test_the_page_falls_back_to_the_published_catalogue():
-    """Without this the static site would show only an error."""
+def test_the_page_reads_the_published_catalogue_without_asking_a_server():
+    """This test used to pin the opposite behaviour, and was right to at
+    the time: the page discovered it was static by requesting /api/circuits,
+    being refused, and falling back. That discovery is what produced a
+    request that could only fail and a visible flash of controls being
+    taken away, so the mechanism was replaced rather than patched. What is
+    pinned now is that the published site reads the file beside it, and
+    that the decision is read from the document rather than asked for."""
     app = (build_static.__file__.rsplit("tools", 1)[0] + "static/app.js")
     text = open(app, encoding="utf-8").read()
-    assert 'fetch("catalogue.json")' in text
-    assert "applyStaticMode" in text
-    # Static mode must put away everything that needs a measured number:
-    # the strategist, the netlist reader, and every analysis. The four
-    # analyses live behind one section now, so hiding them is one call.
-    body = text.split("function applyStaticMode")[1][:800]
-    for element in ('id("advise")', "netlistToggle", "renderAnalysis()"):
-        assert element in body, element
 
-    # And that call must actually be able to hide them all.
-    strip = text.split("function renderAnalysis")[1][:600]
-    assert "isStatic ? []" in strip
-    assert "show(analysisSection" in strip
+    assert 'fetch("catalogue.json")' in text
+    assert 'getAttribute("data-deployment")' in text
+    # The mechanism that caused the flash must be gone, not merely unused.
+    assert "applyStaticMode" not in text
+
+    body = text.split("async function loadCatalogue")[1][:600]
+    assert "if (isStatic)" in body
+    assert 'fetch("catalogue.json")' in body
+    # The /api call must sit on the far side of that branch.
+    assert body.index("if (isStatic)") < body.index('api("/api/circuits")')
 
 
 def test_the_host_configuration_builds_the_same_directory():

@@ -32,6 +32,7 @@ schematic, with the verification done by the simulator rather than asserted by a
 - [x] **V1.11** matched pairs drawn common centroid, the loop closed on the drawn circuit, and the four-way comparison
 - [x] **V1.12** the workbench: the self-writing datasheet, pins, blame, the corner autopsy, the tapeout packet, the notebook, and the doctor
 - [x] **V1.13** the studies: the capability atlas, signoff as a budgeted attack, forensics, warm starts priced against cold, and the arena
+- [x] **V1.14** the toolchain installs itself in one command, and the published site stops pretending to be the tool: explicit deployments, a real notebook and 404, validated imports, remembered designs, and every number counted from the code
 - [ ] **V2.0** a real parasitic extraction in place of the priced wires, a second circuit family, and silicon through Tiny Tapeout
 
 0.1.5 expanded the circuit library to five circuits behind a data-driven registry
@@ -81,7 +82,7 @@ tools, with every number measured by ngspice.
 
 1.10.0 closed the other one. The devices are drawn as a real stack, the nets are
 routed on two metal layers joined by vias, the wells and substrate have their
-taps, and the geometry is checked twice: against thirty-two rules read from the
+taps, and the geometry is checked twice: against thirty-six rules read from the
 PDK, and against the netlist ngspice actually ran. That second check is the one
 that matters, because geometry can satisfy every spacing rule in the deck while
 connecting a gate to the wrong net, and nothing about the picture would look
@@ -103,12 +104,35 @@ specifications, and the software finds a schematic design that meets them.
 
 ## How to run
 
+On a machine that has never seen Faradaem, once:
+
+```powershell
+python install.py
+```
+
+That fetches the two things Faradaem needs and is not: the console build of
+ngspice, and the SKY130 technology files. Both land in `~/.faradaem/tools`,
+where the tool looks for them on its own, so nothing goes on `PATH` and no
+environment variable needs setting. Both downloads are pinned by SHA-256;
+`python install.py --list` prints the URLs, sizes and hashes and fetches
+nothing, if you would rather read before trusting. Nothing is installed with
+pip: the archives are unpacked with the `tar` the operating system already
+ships, and the server stays standard-library-only.
+
+The PDK download is 21 MB rather than the 2.2 GB a full install costs, because
+Faradaem is an analog tool: it needs the technology files (the ngspice model
+library, the magic dimensions, the KLayout sign-off decks) and the primitive
+devices, and none of the standard cells, IO pads or SRAM macros that the
+gigabytes are.
+
+Then, every time:
+
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python server.py
 ```
 
-Then open <http://127.0.0.1:8000>. Four pages are served:
+Then open <http://127.0.0.1:8000>. Five pages are served:
 
 | Page | Path | What it is |
 | --- | --- | --- |
@@ -148,7 +172,7 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `spice/pvt.py` | PVT corners and Monte Carlo mismatch, done by editing the finished netlist text. |
 | `spice/layout.py` | Placement, the device stack, the taps and the router: every dimension read from the PDK's own technology file. |
 | `spice/gds.py` | A GDSII writer in the standard library, so the geometry can be opened in a layout tool. |
-| `spice/drc.py` | Thirty-five design rules read from the PDK, checked while the geometry is drawn. The fast loop, not the answer. |
+| `spice/drc.py` | Thirty-six design rules read from the PDK, checked while the geometry is drawn. The fast loop, not the answer. |
 | `spice/signoff.py` | The answer: the SKY130 runset the PDK ships, run by KLayout over the same GDS. Reimplements nothing. |
 | `spice/klvs.py` | Layout versus schematic by KLayout's engine: devices recognised from geometry, values measured from it, matched by topology. Plus the wires priced in ohms. |
 | `spice/closeloop.py` | When the drawn wiring breaks a target, size against the wiring and draw again. |
@@ -162,6 +186,8 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `spice/packet.py` | The tapeout zip that verifies as it builds and refuses over a failing verdict. |
 | `workbench.py` | One background job per circuit, counts observed at the simulator boundary. |
 | `doctor.py` | Every dependency checked at once, with the exact fix for anything missing. |
+| `install.py` | The one command a new machine needs: the simulator and the technology files, pinned, unpacked by the OS's own tar, into the one place the tool looks. |
+| `spice/toolchain.py` | Where installed tools live. One definition, shared by the installer that writes and the resolvers that read. |
 | `spice/lvs.py` | Layout versus schematic: what the drawing connects, worked out from the geometry, compared against the netlist that was simulated. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
 | `spice/atlas.py` | The capability atlas: a grid over two spec axes, the shipped search at every cell, and the measured frontier of what was met within budget. |
@@ -181,12 +207,27 @@ serve: the four pages, their assets, and the circuit catalogue. The pages ask
 for the simulator, do not find one, and drop into a static mode that keeps the
 live schematics and puts away everything that would need a measured number.
 The simulator itself needs a host that runs a container with a disk, since it
-needs ngspice and a 2.1 GB process design kit. `DEPLOY.md` covers both.
+needs ngspice and the technology files. `DEPLOY.md` covers both.
 
 ## Requirements
 
-- Python 3.12
-- The SKY130 PDK, for the NFET circuit only. `PDK_ROOT` should point at the install
-  root; `C:\pdk` is used as a fallback. Every other circuit runs without it.
-- ngspice-47, console build (`ngspice_con.exe`) on `PATH`, or `FARADAEM_NGSPICE` set to its
-  full path. `C:\ngspice\Spice64\bin\ngspice_con.exe` is used as a last-resort fallback.
+Python 3.12 and nothing else you have to arrange yourself: `python install.py`
+supplies the rest, and `python doctor.py` says what this machine has, what it
+lacks, and the exact fix for anything missing.
+
+The two pieces, and where each is looked for, in order:
+
+- **ngspice-47, console build** (`ngspice_con.exe`, never `ngspice.exe`).
+  `FARADAEM_NGSPICE`, then `~/.faradaem/tools/ngspice`, then `PATH`, then
+  `C:\ngspice\Spice64\bin\ngspice_con.exe`. The installed copy outranks `PATH`
+  because it is the one Faradaem pinned; name your own with the environment
+  variable, which outranks everything. Only Windows has an official prebuilt
+  binary, so elsewhere the installer says so and points at your package
+  manager.
+- **The SKY130 PDK**, for the four SKY130 circuits and every layout check.
+  `PDK_ROOT`, then `~/.faradaem/tools/pdk`, then `C:\pdk`. The other six
+  circuits run without it.
+
+Optional, and reported as absent rather than missing when it is not there:
+KLayout 0.30.11, for the foundry sign-off deck and layout-versus-schematic,
+and an `FARADAEM_ANTHROPIC_KEY` or `FARADAEM_OPENAI_KEY` for the strategist.

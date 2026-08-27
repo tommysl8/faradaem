@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from spice import circuits
+from spice import circuits, runner
 from spice.runner import (
     NgspiceParseError,
     PdkNotFoundError,
@@ -32,19 +32,55 @@ CIRCUIT_ID = "nfet_cs_amp"
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def no_managed_install(tmp_path, monkeypatch):
+    """Point Faradaem's home at an empty directory.
+
+    Resolution consults the copy install.py unpacks before the C:\\pdk
+    fallback, so these tests would otherwise pass or fail depending on
+    whether whoever is running them has ever run the installer.
+    """
+    monkeypatch.setenv("FARADAEM_HOME", str(tmp_path))
+
+
 def test_pdk_root_prefers_the_environment(monkeypatch):
     monkeypatch.setenv("PDK_ROOT", r"D:\somewhere\else")
     assert pdk_root() == r"D:\somewhere\else"
 
 
-def test_pdk_root_falls_back_when_unset(monkeypatch):
+def test_pdk_root_falls_back_when_unset(no_managed_install, monkeypatch):
     monkeypatch.delenv("PDK_ROOT", raising=False)
     assert pdk_root() == r"C:\pdk"
 
 
-def test_pdk_root_ignores_a_blank_environment_value(monkeypatch):
+def test_pdk_root_ignores_a_blank_environment_value(no_managed_install,
+                                                    monkeypatch):
     monkeypatch.setenv("PDK_ROOT", "   ")
     assert pdk_root() == r"C:\pdk"
+
+
+def test_pdk_root_prefers_an_installed_copy_over_the_fallback(tmp_path,
+                                                              monkeypatch):
+    """What install.py unpacks is found without any variable being set."""
+    monkeypatch.delenv("PDK_ROOT", raising=False)
+    monkeypatch.setenv("FARADAEM_HOME", str(tmp_path))
+    installed = tmp_path / "tools" / "pdk"
+    library = installed.joinpath(*runner.SKY130_LIB_PARTS)
+    library.parent.mkdir(parents=True)
+    library.write_text("* a stand-in library\n", encoding="ascii")
+
+    assert pdk_root() == str(installed)
+
+
+def test_an_explicit_root_outranks_an_installed_copy(tmp_path, monkeypatch):
+    """A reader who names a PDK gets that one, installed copy or not."""
+    monkeypatch.setenv("FARADAEM_HOME", str(tmp_path))
+    library = tmp_path.joinpath("tools", "pdk", *runner.SKY130_LIB_PARTS)
+    library.parent.mkdir(parents=True)
+    library.write_text("* a stand-in library\n", encoding="ascii")
+    monkeypatch.setenv("PDK_ROOT", r"D:\somewhere\else")
+
+    assert pdk_root() == r"D:\somewhere\else"
 
 
 def test_library_path_sits_under_the_root(monkeypatch):
@@ -64,10 +100,11 @@ def test_missing_library_names_both_the_variable_and_the_path(monkeypatch):
     assert "PDK_ROOT" in message
     assert "sky130.lib.spice" in message
     # The copy has to say what to do, not only what went wrong.
-    assert "Install the SKY130 PDK" in message
+    assert "install.py" in message
 
 
-def test_missing_library_says_the_fallback_was_used(monkeypatch):
+def test_missing_library_says_the_fallback_was_used(no_managed_install,
+                                                    monkeypatch):
     monkeypatch.delenv("PDK_ROOT", raising=False)
     monkeypatch.setattr("spice.runner.PDK_ROOT_FALLBACK", r"D:\not\here")
     with pytest.raises(PdkNotFoundError) as excinfo:

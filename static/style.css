@@ -1,4 +1,4 @@
-/* Faradaem 1.13.0 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.14.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -115,7 +115,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.13.0";
+  --app-version: "v1.14.0";
 }
 
 *,
@@ -486,6 +486,49 @@ input {
   color: var(--muted);
   font-size: var(--t-small);
   line-height: var(--lh-small);
+}
+
+/* The first thing in the tab order, and invisible until it is reached.
+   Without it, every keyboard visitor pays six presses through the header
+   on every page before they arrive anywhere. Moved off-screen rather than
+   display:none, because a hidden element is not focusable at all. */
+.skip-link {
+  position: absolute;
+  left: var(--s3);
+  top: calc(var(--s6) * -1);
+  z-index: 10;
+  padding: var(--s2) var(--s3);
+  background: var(--panel);
+  border: var(--hairline);
+  color: var(--text);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  text-decoration: none;
+  transition: top var(--step) ease;
+}
+
+.skip-link:focus {
+  top: var(--s3);
+}
+
+/* The published manual keeps every section and marks the ones the demo
+   cannot perform. Hiding them would let the document lie by omission about
+   what Faradaem is; a chip beside the heading says it in three words. */
+.local-only-tag {
+  display: inline-block;
+  margin-left: var(--s2);
+  padding: 0 var(--s2);
+  border: var(--hairline);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  font-weight: 400;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 /* ---- panels -------------------------------------------------------- */
@@ -1849,7 +1892,12 @@ input {
   margin-bottom: var(--s2);
 }
 
+/* An h2 rather than a span: thirty-six releases under one h1 gave a
+   screen reader no way to move between them, and a version number is
+   exactly what each entry is called. Its own margins are reset because a
+   heading brings them and this sits inside a flex header. */
 .entry-version {
+  margin: 0;
   font-family: var(--mono);
   font-size: var(--t-body);
   line-height: var(--lh-body);
@@ -1936,10 +1984,14 @@ input {
     position: static;
   }
 
-  /* Schematic first on a phone: the picture explains the form. */
-  .sim-figure {
-    order: -1;
-  }
+  /* The schematic used to be ordered above the controls here, on the
+     reasoning that the picture explains the form. On a phone it did the
+     opposite: it pushed the static-mode notice to 1493 px and the first
+     input to 1726 px, so a visitor scrolled past a drawing to reach both
+     the controls and the sentence explaining what this page can do. The
+     source order is notice, then controls, then drawing, and that is the
+     order a narrow screen gets. Same mistake the hero made at this
+     breakpoint, and the same fix. */
 }
 
 @media (max-width: 560px) {
@@ -1990,6 +2042,10 @@ input {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    /* Duration alone is not enough: a 0.01ms animation held behind a
+       0.24s delay is still a quarter second of the page sitting invisible
+       under `backwards`, which is the flash this was meant to remove. */
+    animation-delay: 0s !important;
   }
 
   .run-dots i {

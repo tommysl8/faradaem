@@ -203,7 +203,7 @@ def test_every_shape_goes_through_one_mapping():
 
 
 def test_the_panel_is_no_longer_called_a_floorplan():
-    """It routes, checks thirty-two rules and compares against the netlist.
+    """It routes, checks thirty-six rules and compares against the netlist.
     Calling that a floorplan undersells it and misleads."""
     page = read("index.html")
     app = read("static/app.js")

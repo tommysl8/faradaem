@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found - Faradaem</title>
+<meta name="description" content="That page is not here. The simulator, the manual, the about page and the changelog are.">
+<meta name="robots" content="noindex, follow">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="application-name" content="Faradaem">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to the main content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/">
+      <span class="wordmark-name">FARAD<span class="wordmark-ae">&AElig;</span>M<span class="wordmark-tm">&trade;</span></span>
+      <span class="wordmark-version"></span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="/notebook">Notebook</a></li>
+        <li><a href="/manual">Manual</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/changelog">Changelog</a></li>
+      </ul>
+      <button class="theme-toggle" id="theme-toggle" type="button">Light mode</button>
+    </nav>
+  </div>
+</header>
+
+<main class="page" id="main" tabindex="-1">
+  <div class="wrap">
+
+    <div class="page-head">
+      <h1 class="page-title">Page not found</h1>
+      <p class="page-sub">Nothing is served at that address. Nothing was
+      measured to say so; this is just a missing page.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-body">
+        <h2 class="panel-head">Where to go instead</h2>
+        <p class="design-intro">Four pages are published, and every one of
+        them is reachable from the navigation above.</p>
+        <div class="design-actions">
+          <a class="run" href="/">Back to the simulator</a>
+          <a class="chip" href="/manual">Read the manual</a>
+          <a class="chip" href="/about">About Faradaem</a>
+          <a class="chip" href="/changelog">Changelog</a>
+        </div>
+        <p class="hint">If you followed a link here from inside the site,
+        that is a broken link rather than a bad address, and it is worth
+        reporting on <a href="{{repo_url}}" rel="noreferrer">the
+        repository</a>.</p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+<!--local-only-->      <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
+<!--/local-only--><!--static-only-->      <span>Faradaem reports measurements only from ngspice. This published demo does not run simulations.</span>
+<!--/static-only-->      <nav class="foot-links" aria-label="Footer">
+        <a href="/notebook">Notebook</a>
+        <a href="/manual">Manual</a>
+        <a href="/about">About</a>
+        <a href="/changelog">Changelog</a>
+        <a href="{{repo_url}}" rel="noreferrer">GitHub</a>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
