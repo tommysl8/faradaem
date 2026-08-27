@@ -131,6 +131,8 @@
         current = circuit;
         renderStepPanel();
       },
+      // An edited sizing outdates the measured step.
+      onValuesEdited: renderStepPanel,
       refit: function () {
         if (lastStep && !stepFigure.classList.contains("hidden")) {
           var last = lastStep;

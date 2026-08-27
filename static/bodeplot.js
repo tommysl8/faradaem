@@ -287,6 +287,34 @@
       x: left, y: phaseTop, width: right - left, height: phaseBottom - phaseTop
     });
 
+    // ---- the held design's ghost, drawn first so the live traces sit
+    // on top of it ----
+    if (data.ghost && Array.isArray(data.ghost.freq)
+        && data.ghost.freq.length > 1) {
+      var ghostMag = [];
+      var ghostPhase = [];
+      for (var g = 0; g < data.ghost.freq.length; g++) {
+        var gx = xFreq(data.ghost.freq[g]);
+        if (gx < left || gx > right) {
+          continue;
+        }
+        if (g < (data.ghost.mag_db || []).length) {
+          ghostMag.push([gx,
+            clamp(yMag(data.ghost.mag_db[g]), magTop, magBottom)]);
+        }
+        if (g < (data.ghost.phase_deg || []).length) {
+          ghostPhase.push([gx,
+            clamp(yPhase(data.ghost.phase_deg[g]), phaseTop, phaseBottom)]);
+        }
+      }
+      if (ghostMag.length > 1) {
+        trace(svg, ghostMag, "bode-ghost");
+      }
+      if (ghostPhase.length > 1) {
+        trace(svg, ghostPhase, "bode-ghost");
+      }
+    }
+
     // ---- traces ----
     var magPoints = [];
     var phasePoints = [];

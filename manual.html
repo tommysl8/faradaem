@@ -73,6 +73,7 @@
                 <li><a href="#when-a-badge-says-off-by-some-percent">When a badge says off by some percent</a></li>
                 <li><a href="#phase-margin-and-why-it-needs-the-loop-opened">Phase margin, and why it needs the loop opened</a></li>
                 <li><a href="#bias-warnings-on-the-sky130-amplifier">Bias warnings on the SKY130 amplifier</a></li>
+                <li><a href="#the-bias-on-the-schematic">The bias on the schematic</a></li>
               </ol>
             </div>
             <div class="toc-group">
@@ -101,6 +102,7 @@
                 <li><a href="#the-datasheet-that-writes-itself">The datasheet that writes itself</a></li>
                 <li><a href="#pinned-numbers">Pinned numbers</a></li>
                 <li><a href="#comparing-two-runs">Comparing two runs</a></li>
+                <li><a href="#a-design-as-one-file">A design as one file</a></li>
                 <li><a href="#asking-the-numbers">Diagnosing a sizing: triage, blame, the sweep</a></li>
                 <li><a href="#the-corner-autopsy">The corner autopsy</a></li>
                 <li><a href="#the-tapeout-packet">The tapeout packet</a></li>
@@ -151,6 +153,22 @@
             Pick a circuit from the tabs at the top of the form. Set the component values,
             or click one of the examples to load a worked set. Then press
             <strong>Run simulation</strong>, or just press Enter.
+          </p>
+          <p>
+            Every value field reads numbers the way engineers write them:
+            <code>10k</code>, <code>2.2u</code>, <code>5meg</code>,
+            <code>4.7 pF</code> and plain <code>1e-12</code> all work, with
+            the usual case rule that <code>M</code> is mega and
+            <code>m</code> is milli. The echo beside each label shows what
+            your entry was read as, so a wrong prefix is caught before a
+            simulation is spent on it.
+          </p>
+          <p>
+            Every measured sizing this session joins a small
+            <strong>History</strong> row above the form. The arrow chips
+            walk back and forth through them and restore the values into
+            the form; measuring again is your click, because a restore
+            never spends a simulation on its own.
           </p>
           <p>
             <strong>View netlist</strong> under the run button shows the exact SPICE deck
@@ -292,6 +310,27 @@
         </section>
 
         <section class="section prose">
+          <h2 id="the-bias-on-the-schematic">The bias on the schematic</h2>
+          <p>
+            The numbers analog engineers pencil beside every transistor,
+            drawn by the tool instead. After a SKY130 circuit measures,
+            <strong>Annotate bias (1 simulation)</strong> appears under the
+            schematic. One operating-point run reads every device's drain
+            current, transconductance, gate and drain voltages, the
+            saturation voltage the model computed, and the headroom between
+            them, at the exact bias the bench measured. Then hover any
+            transistor: its numbers appear beside it, with the headroom
+            coloured by how much room is left.
+          </p>
+          <p>
+            The numbers come from the model card through ngspice, never
+            derived. A vector the model does not expose reads "not
+            exposed", and an edited sizing clears the annotations, because
+            they described the old one.
+          </p>
+        </section>
+
+        <section class="section prose">
           <h2 id="the-folded-cascode">The folded cascode, and why a third topology</h2>
           <p>
             The <strong>Folded cascode</strong> is the third SKY130
@@ -375,7 +414,7 @@
             <dt>Op-amp (SKY130)</dt>
             <dd>A two-stage Miller op-amp built from eight SKY130 transistors: an input pair under a mirror load, then a common-source second stage, compensated by Cc and its zero-nulling resistor Rz. Measures open-loop gain, unity-gain bandwidth, phase margin and power from one sweep. Needs the PDK. This is also the circuit the design iterator sizes for you.</dd>
             <dt>Folded cascode (SKY130)</dt>
-            <dd>Fourteen SKY130 transistors: the input pair folds its current into two p-channel sources instead of into a load, and what is left flows through cascodes that build the output resistance. One stage, and around 51 dB of it, because the cascodes make the gain rather than a second stage making it. Against the OTA that is about fourteen decibels more gain and better than twice the bandwidth, at about three times the power. The cascode gate references are ideal sources here, where a finished design would generate them on chip, and it is the one amplifier <strong>Design to spec</strong> cannot yet size for you.</dd>
+            <dd>Fourteen SKY130 transistors: the input pair folds its current into two p-channel sources instead of into a load, and what is left flows through cascodes that build the output resistance. One stage, and around 51 dB of it, because the cascodes make the gain rather than a second stage making it. Against the OTA that is about fourteen decibels more gain and better than twice the bandwidth, at about three times the power. The cascode gate references are ideal sources here, where a finished design would generate them on chip. <strong>Design to spec</strong> sizes it like the others; the one bench it does not carry is rejection and range.</dd>
           </dl>
         </section>
 
@@ -391,7 +430,8 @@
           </p>
           <p>
             Only the tabs a circuit can answer appear. A resistor divider has
-            none of them; the SKY130 amplifiers have all six. One tab is
+            none of them; the op-amp and the OTA carry all six, the folded
+            cascode all but rejection and range. One tab is
             open at a time, and each one that draws something keeps its plot
             beside its own numbers rather than a column away from them.
           </p>
@@ -415,8 +455,23 @@
             form and reruns it so you can verify it yourself.
           </p>
           <p>
+            The page follows the conversation. The first sizing the strategist
+            works on switches the schematic to the circuit under design, and a
+            status line under the log ticks with the simulation count and the
+            worst margin while the search iterates. When the strategist finishes
+            its turn, the last design that met every target is loaded into the
+            form on its own: the schematic redraws from it and the bench measures
+            it again. Candidates in between never touch your form, so a
+            conversation that tried forty of them moves the schematic twice,
+            start and finish. A turn that never met the spec loads nothing, and
+            the cards keep their buttons if you want an intermediate anyway.
+          </p>
+          <p>
             If the strategist thinks a target should be relaxed, it does not decide
-            alone. It asks, and the session waits for your reply.
+            alone. It asks, and the session waits for your reply. And a
+            turn you no longer want can be stopped: the <strong>Stop</strong>
+            chip ends the search mid-simulation, the conversation survives,
+            and you can redirect it with your next message.
           </p>
           <p>
             This needs an API key for a model provider. Set
@@ -447,9 +502,9 @@
             as a result; every number on the page still comes from a simulation.
           </p>
           <p>
-            <strong>Optimize from current values</strong> is the second path: it
-            keeps whatever is in the form as the starting point, so you can refine
-            a preset or your own sizing instead.
+            <strong>Optimize from the values on the page</strong> is the second
+            path: it keeps whatever is in the form as the starting point, so you
+            can refine a preset or your own sizing instead.
           </p>
           <p>
             Every step of that search is a real ngspice simulation. Nothing is
@@ -482,7 +537,7 @@
             arrives. Neither answer is visible in a Bode plot.
           </p>
           <p>
-            <strong>Run step response</strong> on either SKY130 amplifier rewires the
+            <strong>Run step response</strong> on any of the three SKY130 amplifiers rewires the
             same circuit as a unity-gain buffer, a real closed loop with no servo,
             and hits it with a 0.3 V step, up and then back down. One transient run,
             about twenty seconds.
@@ -580,7 +635,7 @@
           <p>
             The panel then answers two questions, and they are different
             questions. <strong>Design rules</strong> asks whether the geometry
-            could be manufactured: thirty-two rules, each read from the PDK's
+            could be manufactured: thirty-six rules, each read from the PDK's
             own technology file and each carrying the tag the foundry writes in
             its own error message. <strong>Layout versus schematic</strong>
             asks something no rule check can: whether the drawing is the
@@ -727,6 +782,14 @@
             The strategist uses the same corner suite: once a design meets its targets
             at the typical corner, it verifies across PVT and reports the worst case.
           </p>
+          <p>
+            Long runs report back. The progress line carries a time
+            estimate from the run's own measured pace, both suites can be
+            stopped mid-run, the corner autopsy included, and the first
+            time a long job starts the browser asks once whether it may
+            notify you; after that, a job that finishes while you are in
+            another tab says so from the notification tray.
+          </p>
         </section>
 
 
@@ -738,6 +801,12 @@
           finished. Everything in that document is something this tool
           already measures, so the Datasheet tab measures it all in one
           pass and writes the document itself.</p>
+          <p>The printable page reads as a design review, not a data dump:
+          the verdict sentence first, then the schematic drawn from the
+          stored sizing with its measured tag, then the sizing with units,
+          the targets with the binding one marked, the characteristics
+          with the worst observed corner, and the drawn circuit's
+          verdicts. One button, one page, ready for the meeting.</p>
           <p>The button states its cost before you press it, and after the
           run it reports the count that was actually observed at the
           simulator boundary, which is the only place simulations are ever
@@ -791,6 +860,14 @@
           sizing measured fresh, one simulation; side B is any stored
           characterization. When both sides carry corner data the table
           extends corner by corner.</p>
+          <p>For the faster loop there is <strong>Hold as design
+          A</strong>, next to the pin button after any measurement. Hold
+          the design, keep turning knobs, and every later measurement
+          renders the delta table right under the result: each knob and
+          each measured number, A against B, with the change in percent.
+          On the frequency plot, A's response stays under the live curve
+          as a faint trace, so the move you just made is visible as two
+          lines rather than remembered as two numbers.</p>
           <p>Rows only one side measured show a dash, and a bench-only
           side says so in as many words. If the two runs were measured by
           different simulator versions, PDKs or commits, a warning says to
@@ -799,11 +876,24 @@
         </section>
 
         <section class="section prose">
+          <h2 id="a-design-as-one-file">A design as one file</h2>
+          <p>"Send me your setup" answered with a file.
+          <strong>Export design</strong>, under the run button, writes one
+          JSON file carrying the circuit, the sizing, what it measured
+          here, and which app version wrote it.
+          <strong>Import design</strong> reads one back on any machine
+          running Faradaem: the right circuit is selected, the sizing
+          lands in the form, and one simulation measures it again on the
+          spot, because the numbers a design shows must come from the
+          simulator in front of you, never from the sender's.</p>
+        </section>
+
+        <section class="section prose">
           <h2 id="asking-the-numbers">Diagnosing a sizing: triage, blame, the sweep</h2>
           <p>Under the design goals live three questions, each answered by
           measurement and nothing else.</p>
-          <p><strong>Check feasibility</strong> is one simulation: every
-          goal gets its margin at the current sizing, and the sentence
+          <p><strong>Is this spec possible here?</strong> is one simulation:
+          every goal gets its margin at the current sizing, and the sentence
           names the one that binds. It says "at this sizing" and means it;
           one point at the typical corner proves nothing about the rest of
           the design space, and the sentence never claims otherwise.</p>
@@ -924,6 +1014,7 @@
     <div class="foot-inner">
       <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
       <nav class="foot-links" aria-label="Footer">
+        <a href="/notebook">Notebook</a>
         <a href="/manual">Manual</a>
         <a href="/about">About</a>
         <a href="/changelog">Changelog</a>

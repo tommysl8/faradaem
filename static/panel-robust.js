@@ -54,8 +54,20 @@
         clearTimeout(slot.timer);
         slot.timer = null;
       }
+      if (slot.job) {
+        // Walking away from a live suite stops it server-side too;
+        // otherwise it keeps simulating a sizing nobody is looking at.
+        fetch("/api/robust/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ job: slot.job })
+        }).catch(function () {});
+      }
       slot.job = null;
+      slot.lastFailed = false;
       slot.button.disabled = false;
+      slot.stop.disabled = false;
+      slot.stop.textContent = "Stop";
       show(slot.progress, false);
       clear(slot.table);
     }
@@ -156,38 +168,82 @@
       host.appendChild(table);
     }
 
+    var SUITE_NAMES = { pvt: "The corner suite", mc: "Monte Carlo" };
+
     function pollSlot(mode) {
       var slot = slots[mode];
       if (!slot.job) {
         return;
       }
       fetch("/api/robust/status?job=" + encodeURIComponent(slot.job))
-        .then(function (response) { return response.json(); })
-        .then(function (snapshot) {
+        .then(function (response) {
+          return response.json().then(function (snapshot) {
+            return { ok: response.ok, snapshot: snapshot };
+          });
+        })
+        .then(function (got) {
           if (!slot.job) {
             return;
           }
-          slot.count.textContent =
+          if (!got.ok) {
+            // The job is gone: the server restarted or evicted it.
+            slot.job = null;
+            slotIdle(slot);
+            robustError.textContent = SUITE_NAMES[mode] + ": "
+              + ((got.snapshot && got.snapshot.error)
+                 || "the job is gone. Start it again.");
+            show(robustError, true);
+            return;
+          }
+          var snapshot = got.snapshot;
+          var countText =
             snapshot.done + " / " + snapshot.total + " simulations";
+          // The suite's own measured pace makes the estimate honest.
+          if (snapshot.status === "running" && slot.started
+              && snapshot.done >= 2) {
+            var pace = (Date.now() - slot.started) / snapshot.done;
+            var left = Math.round(
+              pace * (snapshot.total - snapshot.done) / 1000);
+            if (left >= 2) {
+              countText += " · about " + (left >= 90
+                ? Math.round(left / 60) + " min" : left + " s") + " left";
+            }
+          }
+          slot.count.textContent = countText;
           renderRobustTable(snapshot, slot.table);
           if (snapshot.status === "running") {
             slot.state.textContent = "Running";
             slot.timer = setTimeout(function () { pollSlot(mode); }, 1500);
             return;
           }
-          slot.state.textContent =
+          var outcome =
             snapshot.status === "done" ? "Finished"
             : snapshot.status === "stopped" ? "Stopped" : "Failed";
-          markTab("robust", snapshot.status === "failed");
+          slot.state.textContent = outcome
+            + (slot.editedDuringRun
+               ? " · at the sizing before your edits" : "");
+          if (window.FaradaemNotify) {
+            window.FaradaemNotify.done(SUITE_NAMES[mode] + " "
+              + outcome.toLowerCase() + ".");
+          }
+          slot.lastFailed = snapshot.status === "failed";
+          // The tab dot answers for both suites: red while either's
+          // latest outcome failed, never green because the other one
+          // finished later.
+          markTab("robust",
+            Boolean(slots.pvt.lastFailed || slots.mc.lastFailed));
           if (snapshot.status === "done" && snapshot.mode === "pvt") {
             show(id("autopsy-run"), true);
           }
           slot.job = null;
           slot.button.disabled = false;
+          slot.stop.disabled = false;
+          slot.stop.textContent = "Stop";
           show(slot.stop, false);
           if (snapshot.status === "failed") {
-            robustError.textContent = snapshot.error ||
-              "The run failed. Check the console running server.py.";
+            robustError.textContent = SUITE_NAMES[mode] + ": "
+              + (snapshot.error
+                 || "the run failed. Check the console running server.py.");
             show(robustError, true);
           }
         })
@@ -208,8 +264,13 @@
       slot.button.disabled = true;
       slot.state.textContent = "Starting";
       slot.count.textContent = "";
+      slot.started = Date.now();
+      slot.editedDuringRun = false;
       show(slot.progress, true);
       show(slot.stop, true);
+      if (window.FaradaemNotify) {
+        window.FaradaemNotify.ask();
+      }
 
       fetch("/api/robust", {
         method: "POST",
@@ -235,22 +296,37 @@
 
     robustPvt.addEventListener("click", function () { startRobust("pvt"); });
     robustMc.addEventListener("click", function () { startRobust("mc"); });
+
+    /* A stop says it is stopping, and a stop that could not be sent says
+       that too, instead of looking pressed and doing nothing. The pvt
+       slot's chip also serves the autopsy, which runs in its progress
+       block. */
+    function requestStop(slot, url, job) {
+      slot.stop.disabled = true;
+      slot.stop.textContent = "Stopping";
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job: job })
+      }).catch(function () {
+        slot.stop.disabled = false;
+        slot.stop.textContent = "Stop";
+        robustError.textContent =
+          "The stop request did not reach the server. Try again.";
+        show(robustError, true);
+      });
+    }
+
     slots.pvt.stop.addEventListener("click", function () {
       if (slots.pvt.job) {
-        fetch("/api/robust/stop", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ job: slots.pvt.job })
-        }).catch(function () {});
+        requestStop(slots.pvt, "/api/robust/stop", slots.pvt.job);
+      } else if (autopsyJob) {
+        requestStop(slots.pvt, "/api/workbench/stop", autopsyJob);
       }
     });
     slots.mc.stop.addEventListener("click", function () {
       if (slots.mc.job) {
-        fetch("/api/robust/stop", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ job: slots.mc.job })
-        }).catch(function () {});
+        requestStop(slots.mc, "/api/robust/stop", slots.mc.job);
       }
     });
 
@@ -261,28 +337,83 @@
        named even when everything holds. */
 
     var autopsyJob = null;
+    var autopsyTimer = null;
+    var autopsyEdited = false;
+
+    function autopsyDone() {
+      autopsyJob = null;
+      id("autopsy-run").disabled = false;
+      slots.pvt.stop.disabled = false;
+      slots.pvt.stop.textContent = "Stop";
+      show(slots.pvt.stop, false);
+    }
 
     function pollAutopsy() {
-      fetch("/api/workbench/status?job=" + autopsyJob)
-        .then(function (response) { return response.json(); })
-        .then(function (snap) {
-          if (snap.status === "running") {
-            slots.pvt.state.textContent = "Autopsy: " + snap.stage +
-              " · " + Math.round(snap.seconds) + " s";
-            setTimeout(pollAutopsy, 1200);
-            return;
-          }
-          id("autopsy-run").disabled = false;
-          if (snap.status === "failed") {
-            robustError.textContent = snap.error || "The autopsy failed.";
-            show(robustError, true);
-            slots.pvt.state.textContent = "Finished";
-            return;
-          }
-          slots.pvt.state.textContent = "Finished";
-          renderAutopsy(snap.result);
-        })
-        .catch(function () { setTimeout(pollAutopsy, 2500); });
+      var job = autopsyJob;
+      var misses = 0;
+
+      function tick() {
+        if (job !== autopsyJob) {
+          return;
+        }
+        fetch("/api/workbench/status?job=" + job)
+          .then(function (response) {
+            return response.json().then(function (snap) {
+              return { ok: response.ok, snap: snap };
+            });
+          })
+          .then(function (got) {
+            if (job !== autopsyJob) {
+              return;
+            }
+            if (!got.ok) {
+              autopsyDone();
+              slots.pvt.state.textContent = "Autopsy failed";
+              robustError.textContent = (got.snap && got.snap.error)
+                || "The autopsy's job is gone. Start it again.";
+              show(robustError, true);
+              return;
+            }
+            var snap = got.snap;
+            misses = 0;
+            if (snap.status === "running") {
+              slots.pvt.state.textContent = "Autopsy: " + snap.stage +
+                " · " + Math.round(snap.seconds) + " s";
+              autopsyTimer = setTimeout(tick, 1200);
+              return;
+            }
+            autopsyDone();
+            if (snap.status === "failed") {
+              robustError.textContent = snap.error || "The autopsy failed.";
+              show(robustError, true);
+              slots.pvt.state.textContent = "Autopsy failed";
+              return;
+            }
+            if (snap.status === "stopped") {
+              slots.pvt.state.textContent = "Autopsy stopped";
+              return;
+            }
+            slots.pvt.state.textContent = "Finished"
+              + (autopsyEdited ? " · at the sizing before your edits" : "");
+            renderAutopsy(snap.result);
+          })
+          .catch(function () {
+            if (job !== autopsyJob) {
+              return;
+            }
+            misses += 1;
+            if (misses >= 4) {
+              autopsyDone();
+              slots.pvt.state.textContent = "Autopsy failed";
+              robustError.textContent = "Could not reach the Faradaem server.";
+              show(robustError, true);
+              return;
+            }
+            autopsyTimer = setTimeout(tick, 2500);
+          });
+      }
+
+      tick();
     }
 
     function renderAutopsy(found) {
@@ -349,9 +480,11 @@
 
     id("autopsy-run").addEventListener("click", function () {
       show(robustError, false);
+      autopsyEdited = false;
       id("autopsy-run").disabled = true;
       slots.pvt.state.textContent = "Autopsy: starting";
       show(slots.pvt.progress, true);
+      show(slots.pvt.stop, true);
       fetch("/api/workbench", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -368,21 +501,62 @@
           });
         })
         .catch(function (error) {
-          slots.pvt.state.textContent = "Finished";
-          id("autopsy-run").disabled = false;
+          autopsyDone();
+          slots.pvt.state.textContent = "Autopsy failed";
           robustError.textContent = String(error.message || error);
           show(robustError, true);
         });
     });
 
+    function resetPanel() {
+      if (autopsyJob) {
+        // Leaving the circuit stops its autopsy server-side too.
+        fetch("/api/workbench/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ job: autopsyJob })
+        }).catch(function () {});
+      }
+      autopsyJob = null;
+      if (autopsyTimer) {
+        clearTimeout(autopsyTimer);
+        autopsyTimer = null;
+      }
+      id("autopsy-run").disabled = false;
+      show(id("autopsy-run"), false);
+      show(id("autopsy-out"), false);
+      renderRobustPanel();
+    }
+
+    /* An edit outdates what is finished, but must not kill a suite ten
+       minutes into its run over one keystroke. Finished tables clear;
+       running suites finish, and their state line then says which
+       sizing they measured. */
+    function softStale() {
+      ["pvt", "mc"].forEach(function (mode) {
+        var slot = slots[mode];
+        if (slot.job) {
+          slot.editedDuringRun = true;
+        } else {
+          clear(slot.table);
+          show(slot.progress, false);
+        }
+      });
+      if (autopsyJob) {
+        autopsyEdited = true;
+      } else {
+        show(id("autopsy-out"), false);
+        show(id("autopsy-run"), false);
+      }
+    }
+
     return {
       key: "'robust'".replace(/'/g, ""),
       render: function (circuit) {
         current = circuit;
-        show(id("autopsy-run"), false);
-        show(id("autopsy-out"), false);
-        renderRobustPanel();
-      }
+        resetPanel();
+      },
+      onValuesEdited: softStale
     };
   });
 })(window, document);

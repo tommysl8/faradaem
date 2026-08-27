@@ -62,13 +62,17 @@
             <a class="hero-alt" href="/manual">Read the manual</a>
           </div>
           <ul class="hero-facts">
-            <li>Real ngspice runs</li>
-            <li>Foundry deck: 0 violations</li>
-            <li>LVS by KLayout's engine</li>
-            <li>11 PVT corners</li>
+            <li><a href="/manual#the-circuits"><b>10</b><span>circuits, 3 of them SKY130 amplifiers</span></a></li>
+            <li><a href="/manual#robustness-corners-and-monte-carlo"><b>11</b><span>PVT corners per suite</span></a></li>
+            <li><a href="/manual#floorplan-what-the-sizing-costs-in-silicon"><b>0</b><span>foundry-deck violations</span></a></li>
+            <li><a href="/changelog"><b>1008</b><span>tests green</span></a></li>
           </ul>
         </div>
         <figure class="hero-figure">
+          <div class="hero-figure-head">
+            <span>folded_cascode.gds</span>
+            <span>34 devices &middot; 2 metals</span>
+          </div>
           <img src="/static/hero-layout.svg" alt="The folded cascode as
           Faradaem drew it: thirty-four placed devices, five common-centroid
           arrays, guard rings and two metal layers of routing."
@@ -96,6 +100,7 @@
           <p class="design-intro">Say what you want built and which numbers matter.
           A strategist drives the real simulator; every number it reports was measured.</p>
           <div class="advise-log hidden" id="advise-log"></div>
+          <p class="hint hidden" id="advise-now"></p>
           <form id="advise-form">
             <textarea id="advise-input" rows="3" class="advise-input"
               placeholder="An op-amp driving 5 pF: at least 60 dB and 60 degrees of margin, under 150 microwatts."></textarea>
@@ -103,6 +108,7 @@
             <div class="advise-actions">
               <select id="advise-provider" class="advise-provider hidden" aria-label="Model provider"></select>
               <button class="chip hidden" id="advise-reset" type="button">Start over</button>
+              <button class="chip hidden" id="advise-stop" type="button">Stop</button>
               <button class="run advise-send" id="advise-send" type="submit"><span id="advise-send-label">Send</span></button>
             </div>
           </form>
@@ -119,6 +125,14 @@
             <span class="presets-label" id="presets-label">Examples</span>
             <div class="presets" id="presets" role="group" aria-labelledby="presets-label"></div>
           </div>
+          <div class="presets-row hidden" id="history-row">
+            <span class="presets-label">History</span>
+            <div class="presets">
+              <button class="chip" id="history-prev" type="button">&lsaquo; Earlier</button>
+              <span class="hint" id="history-pos"></span>
+              <button class="chip" id="history-next" type="button">Later &rsaquo;</button>
+            </div>
+          </div>
           <div id="inputs"></div>
           <button class="run" id="run" type="submit"><span id="run-label">Run simulation</span></button>
           <p class="hint"><kbd>Enter</kbd> runs &middot;
@@ -127,6 +141,10 @@
           <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs from anywhere</p>
           <button class="chip netlist-toggle" id="netlist-toggle" type="button">View netlist</button>
           <button class="chip netlist-toggle hidden" id="netlist-copy" type="button">Copy netlist</button>
+          <button class="chip netlist-toggle" id="design-export" type="button">Export design</button>
+          <button class="chip netlist-toggle" id="design-import" type="button">Import design</button>
+          <input type="file" id="design-import-file" accept=".json,application/json" class="hidden">
+          <p class="hint hidden" id="share-note"></p>
           <pre class="netlist-pre hidden" id="netlist-view"></pre>
         </div>
       </form>
@@ -143,6 +161,7 @@
           <figcaption>
             <span id="caption"></span>
             <span class="caption-state" id="caption-state">Run to measure.</span>
+            <button class="chip hidden" id="bias-chip" type="button">Annotate bias (1 simulation)</button>
           </figcaption>
         </figure>
 
@@ -190,14 +209,21 @@
           <div class="pin-row hidden" id="pin-row">
             <button class="chip" id="pin-set" type="button">Pin these
             numbers (re-measures once)</button>
+            <button class="chip" id="ab-hold" type="button">Hold as design A</button>
             <span class="pin-note" id="pin-note"></span>
+          </div>
+          <div class="ab-block hidden" id="ab-block">
+            <p class="mentor-head" id="ab-head"></p>
+            <div class="sheet-table-wrap" id="ab-table"></div>
+            <p class="sheet-note" id="ab-note"></p>
+            <button class="chip" id="ab-release" type="button">Release design A</button>
           </div>
         </div>
 
         <div class="error-panel hidden" id="error" role="alert">
           <h2 class="error-head">
             <span>Error</span>
-            <span class="error-dismiss">Esc to dismiss</span>
+            <button class="error-dismiss" id="error-dismiss" type="button">Dismiss (Esc)</button>
           </h2>
           <p id="error-text"></p>
         </div>
@@ -245,8 +271,8 @@
                 <h3 class="mentor-head">Diagnose this sizing</h3>
                 <p class="triage-line hidden" id="triage-line"></p>
                 <div class="design-actions">
-                  <button class="chip" id="triage-run" type="button">Check
-                  feasibility (1 simulation)</button>
+                  <button class="chip" id="triage-run" type="button">Is this
+                  spec possible here? (1 simulation)</button>
                   <button class="chip" id="blame-run" type="button"><span
                   id="blame-label">Explain the margins</span></button>
                   <button class="chip hidden" id="sweep-run" type="button">
@@ -489,6 +515,7 @@
     <div class="foot-inner">
       <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
       <nav class="foot-links" aria-label="Footer">
+        <a href="/notebook">Notebook</a>
         <a href="/manual">Manual</a>
         <a href="/about">About</a>
         <a href="/changelog">Changelog</a>

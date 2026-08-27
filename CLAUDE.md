@@ -14,6 +14,14 @@
 - UI copy is sentence case and directive: say what to do, not just what went wrong.
 - Presets live in the registry alongside the circuit they demonstrate.
 
+## The studies (added for 1.13.0)
+- The studies (`spice/atlas.py`, `spice/adversary.py`, `spice/forensics.py`, `spice/priors.py`, `spice/arena.py`, run by `study.py`) exist to measure folklore, so their copy makes only the claims the evidence supports. The atlas says "met" with a stored sizing or "not found within budget"; it never says impossible. The adversary's "survived" always carries its simulation count. Forensics names the hypothesis space it searched with every answer.
+- Verdict sets are closed on purpose: atlas cells are met/not_found/not_run, attacks are broken/survived/unmeasurable, explanations are explained/unexplained. Add to them deliberately, never ad hoc.
+- Every study's cost is counted by `runner.SimObserver` at the subprocess, like everything else. Atlas charts store beside the ledger at `<ledger-root>/atlas/`, same pattern as charact.
+- A warm start from `spice/priors.py` is a measured past point chosen by re-scoring stored measurements; nothing is fitted, nothing interpolates, and the search that follows still measures everything fresh. In the learning curve the warm arm at spec N may only use experience from specs before N.
+- Mismatch hypotheses and attacks run at the typical corner only, because the PDK carries no mismatch statistics at skewed corners (same limit as pvt.py). Forensics treats the die as a joint coordinate with the environment, because a mismatched typical die reads as a mildly skewed corner if you let it.
+- The arena scores the design a contestant declares, re-simulated by the referee, never the best point it touched. The registry defaults are withheld from contestants: they are a designer's answer.
+
 ## The workbench (added for 1.12.0)
 - `spice/charact.py` runs the whole bench in one pass; its store lives at `<ledger-root>/charact/`, beside the ledger, never in the project. `charact.describes()` is the exact staleness check.
 - Pins (`spice/pins.py`) freeze sizing AND numbers; a check re-simulates the pinned sizing, never the form's. History never crosses a re-pin. Pins and history live beside the ledger.

@@ -62,6 +62,58 @@
     return (found && found.ran) ? found.data : null;
   }
 
+  /* The same circuit-to-drawer map the workbench uses (app.js is the
+     source of truth); a change there belongs here too. The schematic on
+     a design review is the first thing a reviewer looks for. */
+  var DRAWERS = {
+    divider: "drawDivider",
+    rc_lowpass: "drawRCLowpass",
+    rc_highpass: "drawRCHighpass",
+    rlc_bandpass: "drawRLCBandpass",
+    inverting_amp: "drawInvertingAmp",
+    twopole_amp: "drawTwopoleAmp",
+    nfet_cs_amp: "drawNfetCsAmp",
+    opamp_two_stage: "drawOpampTwoStage",
+    ota_5t: "drawOta5t",
+    folded_cascode: "drawFoldedCascode"
+  };
+  var SCHEMATIC_TAG = {
+    divider: "vout", rc_lowpass: "f3db", rc_highpass: "f3db",
+    rlc_bandpass: "f0_measured", inverting_amp: "midband_db",
+    twopole_amp: "phase_margin", nfet_cs_amp: "midband_db",
+    opamp_two_stage: "phase_margin", ota_5t: "phase_margin",
+    folded_cascode: "phase_margin"
+  };
+  var TAG_ARG = {
+    divider: "vout", rc_lowpass: "f3db", rc_highpass: "f3db",
+    rlc_bandpass: "f0", inverting_amp: "gain_db",
+    twopole_amp: "phase_margin", nfet_cs_amp: "gain_db",
+    opamp_two_stage: "phase_margin", ota_5t: "phase_margin",
+    folded_cascode: "phase_margin"
+  };
+
+  function drawSchematic(doc, bench) {
+    var drawer = window[DRAWERS[doc.circuit]];
+    if (typeof drawer !== "function") {
+      return null;
+    }
+    var figure = el("figure", "printsheet-figure");
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    figure.appendChild(svg);
+    var args = {};
+    Object.keys(doc.sizing || {}).forEach(function (key) {
+      args[key] = doc.sizing[key];
+    });
+    args[TAG_ARG[doc.circuit]] = bench && bench.measured
+      ? bench.measured[SCHEMATIC_TAG[doc.circuit]] : null;
+    try {
+      drawer(svg, args);
+    } catch (drawError) {
+      return null;
+    }
+    return figure;
+  }
+
   function table(headers, rows) {
     var wrap = el("div", "sheet-table-wrap");
     var node = el("table", "sheet-table");
@@ -102,13 +154,48 @@
       ". Every value below came out of a simulation; nothing was " +
       "estimated."));
 
-    // Sizing
+    // The verdict, in one sentence, before any table: the reviewer's
+    // first question answered first.
+    var benchData = section(doc, "bench");
+    if (benchData && benchData.margins && benchData.margins.length) {
+      var missed = benchData.margins.filter(function (m) { return !m.met; });
+      var bindingMargin = benchData.margins.filter(function (m) {
+        return m.binding;
+      })[0];
+      var verdictText;
+      if (!missed.length) {
+        verdictText = "Every target holds as measured."
+          + (bindingMargin
+             ? " The tightest is " + bindingMargin.label + " at "
+               + (bindingMargin.margin >= 0 ? "+" : "")
+               + (bindingMargin.margin * 100).toFixed(1) + "% margin."
+             : "");
+      } else {
+        verdictText = missed.length + " of " + benchData.margins.length
+          + " targets missed: " + missed.map(function (m) {
+            return m.label;
+          }).join(", ") + ".";
+      }
+      sheet.appendChild(el("p", "printsheet-verdict "
+        + (missed.length ? "is-missed" : "is-met"), verdictText));
+    }
+
+    // The schematic, drawn from the stored sizing with the measured tag
+    // on its output node, exactly as the workbench draws it.
+    var figure = drawSchematic(doc, benchData);
+    if (figure) {
+      sheet.appendChild(figure);
+    }
+
+    // Sizing, with each parameter's own unit when the document carries
+    // them (older stored documents may not).
     var sizing = doc.sizing || {};
+    var sizingUnits = doc.sizing_units || {};
     sheet.appendChild(el("h2", null, "Sizing"));
     sheet.appendChild(table(["parameter", "value"],
       Object.keys(sizing).sort().map(function (key) {
         return [el("td", null, key), el("td", "num",
-          fmtEng(sizing[key], ""))];
+          fmtEng(sizing[key], sizingUnits[key] || ""))];
       })));
 
     // Targets
@@ -194,8 +281,10 @@
       var rows = [];
       if (lay) {
         rows.push([el("td", null, "area"),
-                   el("td", "num", (lay.area_um2 || 0).toFixed(0) +
-                     " µm²")]);
+                   el("td", "num",
+                     typeof lay.area_um2 === "number"
+                       ? lay.area_um2.toFixed(0) + " µm²"
+                       : "not measured")]);
         if (typeof lay.interconnect_f === "number") {
           rows.push([el("td", null, "drawn interconnect"),
                      el("td", "num", fmtEng(lay.interconnect_f, "F"))]);
@@ -238,19 +327,29 @@
     document.title = (doc.name || doc.circuit) + " datasheet - Faradaem";
   }
 
-  fetch("/api/charact/get?id=" + encodeURIComponent(ident))
-    .then(function (r) {
-      return r.json().then(function (payload) {
-        if (!r.ok) {
-          throw new Error(payload.error || "Not found.");
-        }
-        render(payload);
+  function sheetMessage(text) {
+    while (sheet.firstChild) { sheet.removeChild(sheet.firstChild); }
+    sheet.appendChild(el("p", "field-error", text));
+  }
+
+  if (!ident) {
+    // Arriving without an id is a navigation mistake, not a server
+    // error: say where the documents live instead of fetching nothing.
+    sheetMessage("No datasheet id in the URL. Open a stored datasheet "
+      + "from the notebook.");
+  } else {
+    fetch("/api/charact/get?id=" + encodeURIComponent(ident))
+      .then(function (r) {
+        return r.json().then(function (payload) {
+          if (!r.ok) {
+            throw new Error(payload.error || "Not found.");
+          }
+          render(payload);
+        });
+      })
+      .catch(function (error) {
+        sheetMessage(String(error.message || error)
+          + " Open a stored datasheet from the notebook.");
       });
-    })
-    .catch(function (error) {
-      while (sheet.firstChild) { sheet.removeChild(sheet.firstChild); }
-      sheet.appendChild(el("p", "field-error",
-        String(error.message || error) +
-        " Open a stored datasheet from the notebook."));
-    });
+  }
 })(window, document);

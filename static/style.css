@@ -1,4 +1,4 @@
-/* Faradaem 1.12.2 -- a dark bench instrument, schematics drawn on the night.
+/* Faradaem 1.13.0 -- a dark bench instrument, schematics drawn on the night.
  *
  * One cool dark surface everywhere: ink, panel, hairlines, one cyan accent,
  * square corners, no shadows. Figures are drawn directly on the dark ground:
@@ -115,7 +115,7 @@
   --step: 140ms;
 
   /* The version is written once, here, and rendered wherever it is needed. */
-  --app-version: "v1.12.3";
+  --app-version: "v1.13.0";
 }
 
 *,
@@ -396,13 +396,48 @@ input {
   border-color: var(--line-hover);
 }
 
+/* The facts are the page's evidence, so they are read as instrument
+   readouts: the number at the numeral step, its meaning under it, each
+   tile a cell in one hairline grid. The gap is the hairline itself,
+   shown through the grid's own background. */
 .hero-facts {
-  display: flex;
-  flex-wrap: wrap;
-  row-gap: var(--s2);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--hairline-w);
   margin: var(--s5) 0 0;
   padding: 0;
   list-style: none;
+  background: var(--line);
+  border: var(--hairline);
+}
+
+.hero-facts li {
+  background: var(--panel);
+}
+
+/* Each fact walks to its proof. Quiet until asked. */
+.hero-facts a {
+  display: block;
+  padding: var(--s3) var(--s4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.hero-facts b {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--t-numeral);
+  line-height: var(--lh-numeral);
+  letter-spacing: var(--ls-numeral);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+  transition: color var(--step) ease;
+}
+
+.hero-facts span {
+  display: block;
+  margin-top: var(--s1);
   font-family: var(--mono);
   font-size: var(--t-label);
   line-height: var(--lh-label);
@@ -411,14 +446,34 @@ input {
   color: var(--muted);
 }
 
-.hero-facts li {
-  padding: 0 var(--s3);
-  border-left: var(--hairline-strong);
+.hero-facts a:hover b,
+.hero-facts a:focus-visible b {
+  color: var(--accent);
 }
 
-.hero-facts li:first-child {
-  padding-left: 0;
-  border-left: 0;
+/* The hero arrives like a measurement settling: in order, once, and not
+   at all for a reader who asked their machine for no motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-kicker, .hero-title, .hero-sub, .hero-actions, .hero-facts,
+  .hero-figure {
+    animation: hero-settle 0.45s ease-out backwards;
+  }
+  .hero-title { animation-delay: 0.06s; }
+  .hero-sub { animation-delay: 0.12s; }
+  .hero-actions { animation-delay: 0.18s; }
+  .hero-facts { animation-delay: 0.24s; }
+  .hero-figure { animation-delay: 0.12s; }
+}
+
+@keyframes hero-settle {
+  from {
+    opacity: 0;
+    transform: translateY(var(--s2));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* A published page with no simulator behind it says so once, here. */
@@ -1218,10 +1273,61 @@ input {
 
 /* Complex schematics scroll sideways instead of shrinking away. */
 .figure-scroll {
+  position: relative;
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
+
+/* ---- bias annotations: hover a device, read its operating point ------- */
+
+#schematic.bias-armed g[data-device] {
+  cursor: help;
+}
+
+#schematic.bias-armed g[data-device]:hover .sch-stroke {
+  stroke: var(--accent);
+}
+
+.bias-tip {
+  position: absolute;
+  z-index: 4;
+  min-width: 148px;
+  padding: var(--s2) var(--s3);
+  background: var(--panel);
+  border: var(--hairline-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  pointer-events: none;
+}
+
+.bias-tip strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bias-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s1) var(--s2);
+  margin-top: var(--s1);
+}
+
+.bias-grid .k {
+  color: var(--muted);
+}
+
+.bias-grid .v {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bias-grid .v.is-ok { color: var(--ok); }
+.bias-grid .v.is-thin { color: var(--accent); }
+.bias-grid .v.is-bad { color: var(--err); }
 
 .figure-scroll svg {
   display: block;
@@ -1339,6 +1445,24 @@ input {
   stroke-width: 1.5;
   stroke-dasharray: 5 3;
   fill: none;
+}
+
+/* The held design's response: present, quiet, unmistakably not live. */
+.figure svg .bode-ghost {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  opacity: 0.45;
+  fill: none;
+}
+
+.ab-block {
+  margin-top: var(--s4);
+  border-top: var(--hairline);
+  padding-top: var(--s3);
+}
+
+.ab-block .chip {
+  margin-top: var(--s2);
 }
 
 /* Traces draw themselves in once, on arrival. */
@@ -1565,6 +1689,15 @@ input {
   letter-spacing: var(--ls-small);
   text-transform: none;
   font-weight: 400;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.error-dismiss:hover {
+  color: var(--text);
 }
 
 /* Raw ngspice stderr lands here. Mono is functional: the columns align. */
@@ -2055,11 +2188,31 @@ input {
   align-items: center;
 }
 
+/* The drawing is presented as what it is: a file, in a frame with its
+   name on it, the way a layout tool shows a cell. */
 .hero-figure {
   margin: 0;
   border: var(--hairline);
   background: var(--panel);
-  padding: var(--s4);
+}
+
+.hero-figure-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-bottom: var(--hairline);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  line-height: var(--lh-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero-figure-head span:first-child {
+  color: var(--accent);
 }
 
 .hero-figure img {
@@ -2068,10 +2221,11 @@ input {
   height: auto;
   max-height: 420px;
   object-fit: contain;
+  padding: var(--s4);
 }
 
 .hero-figure figcaption {
-  margin-top: var(--s3);
+  padding: 0 var(--s4) var(--s4);
   font-size: var(--t-label);
   line-height: var(--lh-label);
   color: var(--muted);
@@ -2081,9 +2235,8 @@ input {
   .hero-grid {
     grid-template-columns: 1fr;
   }
-  .hero-figure {
-    order: -1;
-  }
+  /* The copy leads at every width. A visitor who lands on a picture
+     with no words has to work out what the tool is from a picture. */
   .hero-figure img {
     max-height: 300px;
   }
@@ -2550,6 +2703,52 @@ kbd {
 .printsheet .sheet-note { color: #55677F; }
 .printsheet .sheet-at { color: #55677F; }
 .printsheet tr.is-missed td { color: #B42318; }
+/* The loading hint and any error land inside the white sheet, so they
+   take paper colours like their neighbours, not the theme's. */
+.printsheet .hint { color: #55677F; }
+.printsheet .field-error { color: #B42318; }
+
+/* The review's verdict sentence: the reviewer's first question, first. */
+.printsheet-verdict {
+  font-weight: 600;
+  margin-top: var(--s3);
+}
+.printsheet-verdict.is-met { color: #047857; }
+.printsheet-verdict.is-missed { color: #B42318; }
+
+/* The schematic on the sheet draws in paper ink whatever the screen
+   theme is: this figure prints. */
+.printsheet-figure {
+  margin: var(--s4) 0 var(--s2);
+}
+.printsheet-figure svg {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  margin: 0 auto;
+}
+.printsheet-figure svg .sch-stroke {
+  fill: none;
+  stroke: #45526B;
+  stroke-width: 1.75;
+}
+.printsheet-figure svg .sch-fill {
+  fill: #0E7490;
+  stroke: none;
+}
+.printsheet-figure svg .sch-text {
+  fill: #55677F;
+  stroke: none;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.printsheet-figure svg .sch-tag-text {
+  fill: #0E7490;
+  stroke: none;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
 
 .printsheet-foot {
   font-size: var(--t-label);
@@ -2566,6 +2765,35 @@ kbd {
   .page { padding: 0; }
   .sheet-wrap { max-width: none; }
   .printsheet { border: none; padding: 0; }
+
+  /* Every page prints as paper: the light palette's tokens, dark ink on
+     white, whatever the screen theme was. These values mirror the
+     :root[data-theme="light"] block below; a change there belongs here
+     too. Paper gets a white ground rather than the light theme's grey. */
+  :root {
+    --ink: #FFFFFF;
+    --panel: #FFFFFF;
+    --line: #D9DFE8;
+    --line-strong: #74809A;
+    --line-hover: #45526B;
+    --text: #14181F;
+    --muted: #55677F;
+    --accent: #0E7490;
+    --accent-hover: #155E75;
+    --accent-underline: rgba(14, 116, 144, 0.4);
+    --wire: #45526B;
+    --fig-grid: rgba(20, 24, 31, 0.07);
+    --fig-axis: rgba(20, 24, 31, 0.4);
+    --ok: #047857;
+    --err: #B91C1C;
+    --err-wash: rgba(185, 28, 28, 0.06);
+    --fp-well: rgba(69, 82, 107, 0.12);
+    --fp-device: rgba(14, 116, 144, 0.18);
+    --fp-device-p: rgba(14, 116, 144, 0.32);
+    --fp-tap: rgba(69, 82, 107, 0.3);
+    --fp-track: rgba(14, 116, 144, 0.6);
+    --fp-stub: rgba(14, 116, 144, 0.3);
+  }
 }
 
 /* ---- small shared bits --------------------------------------------------- */

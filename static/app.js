@@ -135,6 +135,10 @@
      A neutral fact in the accent colour: whether a bigger number is better
      depends on which number it is, and the page does not pretend to know. */
   var lastMeasured = {};
+  // Which circuit and which values lastResult was measured on: the pair
+  // that keeps a measurement from being attributed to newer form text.
+  var lastResultCircuit = null;
+  var lastResultParams = null;
 
   function deltaText(before, now, spec) {
     if (typeof before !== "number" || typeof now !== "number"
@@ -206,14 +210,15 @@
   function values() {
     var out = {};
     Object.keys(inputs).forEach(function (key) {
-      out[key] = Number(inputs[key].value);
+      out[key] = window.parseEngineering(inputs[key].value);
     });
     return out;
   }
 
   function complain(spec, value) {
     if (inputs[spec.key].value.trim() === "" || !isFinite(value)) {
-      return spec.label + " needs a number.";
+      return spec.label + " needs a number. Engineering suffixes work: "
+        + "10k, 2.2u, 5meg.";
     }
     if (value < spec.min) {
       return spec.label + " must be at least " +
@@ -231,7 +236,7 @@
     var ok = true;
     Object.keys(inputs).forEach(function (key) {
       var input = inputs[key];
-      var problem = complain(input.spec, Number(input.value));
+      var problem = complain(input.spec, window.parseEngineering(input.value));
       input.field.classList.toggle("is-invalid", Boolean(problem));
       input.error.textContent = problem || "";
       show(input.error, Boolean(problem));
@@ -252,7 +257,7 @@
     event.preventDefault();
 
     var spec = input.spec;
-    var next = stepValue(Number(input.value) || 0,
+    var next = stepValue(window.parseEngineering(input.value) || 0,
                          event.key === "ArrowUp" ? 1 : -1,
                          event.shiftKey);
     next = Math.min(spec.max, Math.max(spec.min, next));
@@ -383,13 +388,15 @@
       var shell = el("div", "input-shell");
       var input = document.createElement("input");
       input.id = "param-" + spec.key;
-      input.type = "number";
-      input.step = "any";
+      // Text, not number: engineers write "10k" and "2.2u", and a number
+      // input refuses the letters before the parser can read them. The
+      // echo beside the label shows what the entry was read as.
+      input.type = "text";
       input.value = String(preset && preset[spec.key] !== undefined
         ? preset[spec.key]
         : spec.default);
-      input.inputMode = "decimal";
       input.autocomplete = "off";
+      input.spellcheck = false;
       input.addEventListener("input", onEdit);
       input.addEventListener("keydown", function (event) {
         onArrowKey(event, input);
@@ -457,6 +464,11 @@
     show(bodePanel, isAc);
     if (isAc) {
       lastBode = result ? bodeData(result, animate) : {};
+      // The held design's response rides under the live curve.
+      if (heldDesign && heldDesign.circuit === current.id
+          && heldDesign.bode) {
+        lastBode.ghost = heldDesign.bode;
+      }
       window.drawBode(id("bode"), lastBode);
       lastBode = Object.assign({}, lastBode, { animate: false });
     }
@@ -604,6 +616,8 @@
     show(errorEl, false);
   }
 
+  id("error-dismiss").addEventListener("click", dismissError);
+
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && !errorEl.classList.contains("hidden")) {
       dismissError();
@@ -620,6 +634,7 @@
   function hideNetlist() {
     netlistShown = false;
     show(netlistView, false);
+    show(netlistCopy, false);
     netlistToggle.textContent = "View netlist";
   }
 
@@ -648,6 +663,8 @@
       .catch(function (error) {
         netlistView.textContent = String(error.message || error);
         show(netlistView, true);
+        // An error message is not a netlist: no copy button for it.
+        show(netlistCopy, false);
         netlistShown = true;
         netlistToggle.textContent = "Hide netlist";
       });
@@ -696,6 +713,8 @@
     // An edited sizing outdates anything measured at the old one.
     show(id("pin-row"), false);
     show(id("triage-line"), false);
+    show(id("ab-block"), false);
+    biasReset();
     panels.forEach(function (panel) {
       if (panel.onValuesEdited) {
         panel.onValuesEdited();
@@ -705,16 +724,23 @@
 
   async function run(event) {
     if (isStatic) {
-      return;
+      return null;
     }
     if (event) {
       event.preventDefault();
     }
     if (!validate()) {
       // The inline messages already say what to fix; do not also shout.
-      return;
+      return null;
     }
 
+    // The measurement belongs to the circuit AND the values it was
+    // started with. If the user switches tabs or keeps typing while
+    // ngspice works, the response is dropped or paired with what was
+    // actually simulated, never with the form's newer text.
+    var ranCircuit = current.id;
+    var ranParams = values();
+    var measured = null;
     setPending(true);
     captionState.textContent = 'Measuring';
     tickStart(captionState);
@@ -723,7 +749,7 @@
       var response = await fetch("/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ circuit: current.id, params: values() })
+        body: JSON.stringify({ circuit: ranCircuit, params: ranParams })
       });
 
       var payload = null;
@@ -733,6 +759,9 @@
         payload = null;
       }
 
+      if (current.id !== ranCircuit) {
+        return null;
+      }
       if (!response.ok) {
         showError(messageFor(response, payload));
       } else if (!payload || typeof payload[current.readout.headline.key] !== "number") {
@@ -740,22 +769,481 @@
       } else {
         dismissError();
         lastResult = payload;
+        lastResultCircuit = ranCircuit;
+        lastResultParams = ranParams;
+        measured = payload;
         renderResult(payload);
         redraw(payload, true);
+        biasOffer();
+        historyRecord(ranParams,
+                      present(payload[current.readout.headline.key],
+                              current.readout.headline));
+        abRender();
       }
     } catch (networkError) {
-      showError("Could not reach the Faradaem server. Start it with python " +
-                "server.py and run again.");
+      if (current.id === ranCircuit) {
+        showError("Could not reach the Faradaem server. Start it with python " +
+                  "server.py and run again.");
+      }
     } finally {
       setPending(false);
-      tickStop(captionState, lastResult ? "" : captionState.textContent
-               .replace(/ \u00b7 \d+ s$/, ""));
-      if (!lastResult) {
-        benchSet("sim", "idle");
+      if (current.id === ranCircuit) {
+        // This run's own outcome decides the cleanup, never a remembered
+        // success: a failed run must not leave the bench claiming work.
+        tickStop(captionState, measured ? "" : "Run to measure.");
+        if (!measured) {
+          benchSet("sim", "idle");
+        }
+      } else {
+        tickStop(captionState, null);
       }
+    }
+    return measured;
+  }
+
+
+  /* ---- two designs side by side -------------------------------------------
+   * Hold the measured design as A and keep working: every later
+   * measurement renders the delta table against it, knob by knob and
+   * number by number, and A's frequency response stays under the live
+   * curve as a ghost. The spreadsheet engineers keep by hand, kept by
+   * the page instead. */
+
+  var heldDesign = null;
+
+  function abDelta(a, b) {
+    if (typeof a !== "number" || typeof b !== "number" || a === 0) {
+      return "—";
+    }
+    var percent = ((b - a) / Math.abs(a)) * 100;
+    if (Math.abs(percent) < 0.05) {
+      return "same";
+    }
+    return (percent >= 0 ? "+" : "") + percent.toFixed(1) + "%";
+  }
+
+  function abRender() {
+    var block = id("ab-block");
+    if (!heldDesign || heldDesign.circuit !== current.id || !lastResult
+        || lastResultCircuit !== current.id) {
+      show(block, false);
+      return;
+    }
+    id("ab-head").textContent =
+      "Against design A, held at " + heldDesign.headline;
+    var host = id("ab-table");
+    clear(host);
+    var table = el("table", "sheet-table");
+    var head = el("tr");
+    ["", "A, held", "B, on the bench", "change"].forEach(function (text) {
+      head.appendChild(el("th", null, text));
+    });
+    table.appendChild(head);
+
+    // B is the design that was measured, never the form's newer text.
+    var now = lastResultParams || values();
+    current.params.forEach(function (spec) {
+      var a = heldDesign.params[spec.key];
+      var b = now[spec.key];
+      if (a === undefined) {
+        return;
+      }
+      var row = el("tr");
+      row.appendChild(el("td", null, spec.label || spec.key));
+      row.appendChild(el("td", "num",
+        window.formatEngineering(a, spec.unit || "")));
+      row.appendChild(el("td", "num",
+        window.formatEngineering(b, spec.unit || "")));
+      row.appendChild(el("td", "num delta", abDelta(a, b)));
+      table.appendChild(row);
+    });
+
+    [current.readout.headline].concat(current.readout.stats || [])
+      .forEach(function (metric) {
+        var a = heldDesign.measured[metric.key];
+        var b = lastResult[metric.key];
+        if (typeof a !== "number" || typeof b !== "number") {
+          return;
+        }
+        var row = el("tr", "is-summary");
+        row.appendChild(el("td", null, metric.label));
+        row.appendChild(el("td", "num", present(a, metric)));
+        row.appendChild(el("td", "num", present(b, metric)));
+        row.appendChild(el("td", "num delta", abDelta(a, b)));
+        table.appendChild(row);
+      });
+    host.appendChild(table);
+    id("ab-note").textContent = current.analysis === "ac"
+      ? "A's frequency response is the faint trace on the plot. Both "
+        + "columns were measured on this machine."
+      : "Both columns were measured on this machine.";
+    show(block, true);
+  }
+
+  id("ab-hold").addEventListener("click", function () {
+    if (!lastResult) {
+      return;
+    }
+    var slim = {};
+    [current.readout.headline].concat(current.readout.stats || [])
+      .forEach(function (metric) {
+        if (typeof lastResult[metric.key] === "number") {
+          slim[metric.key] = lastResult[metric.key];
+        }
+      });
+    heldDesign = {
+      circuit: current.id,
+      params: lastResultParams || values(),
+      measured: slim,
+      headline: present(lastResult[current.readout.headline.key],
+                        current.readout.headline),
+      bode: lastResult.freq ? { freq: lastResult.freq,
+                                mag_db: lastResult.mag_db,
+                                phase_deg: lastResult.phase_deg } : null
+    };
+    abRender();
+  });
+
+  id("ab-release").addEventListener("click", function () {
+    heldDesign = null;
+    abRender();
+    if (lastResult) {
+      redraw(lastResult, false);
+    }
+  });
+
+  /* ---- a design as one file -----------------------------------------------
+   * "Send me your setup" answered with a file: circuit, sizing, what it
+   * measured here, and where it came from. Importing selects the circuit,
+   * loads the sizing, and measures it again on this machine, because the
+   * numbers a design shows must come from the simulator in front of you,
+   * never from the sender's. */
+
+  function exportDesign() {
+    var payload = {
+      faradaem_design: 1,
+      app_version: getComputedStyle(document.documentElement)
+        .getPropertyValue("--app-version").replace(/"/g, "").trim(),
+      circuit: current.id,
+      name: current.name,
+      params: values(),
+      measured: null,
+      exported_utc: new Date().toISOString()
+    };
+    // Measured numbers travel only with the sizing they were measured
+    // on: same circuit, same values. An edited form exports its sizing
+    // with measured null, which is the truth about it.
+    if (lastResult && lastResultCircuit === current.id
+        && JSON.stringify(lastResultParams) === JSON.stringify(values())) {
+      var slim = {};
+      var keys = [current.readout.headline.key];
+      (current.readout.stats || []).forEach(function (stat) {
+        keys.push(stat.key);
+      });
+      keys.forEach(function (key) {
+        if (typeof lastResult[key] === "number") {
+          slim[key] = lastResult[key];
+        }
+      });
+      payload.measured = slim;
+    }
+    var url = URL.createObjectURL(new Blob(
+      [JSON.stringify(payload, null, 1)], { type: "application/json" }));
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = current.id + "-design.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function shareNote(text) {
+    var note = id("share-note");
+    note.textContent = text;
+    show(note, Boolean(text));
+  }
+
+  function importDesign(file) {
+    file.text().then(function (text) {
+      var payload;
+      try {
+        payload = JSON.parse(text);
+      } catch (parseError) {
+        shareNote("That file is not a Faradaem design: it did not parse "
+          + "as JSON.");
+        return;
+      }
+      if (!payload || payload.faradaem_design !== 1
+          || !known(payload.circuit) || !payload.params) {
+        shareNote("That file is not a Faradaem design, or names a circuit "
+          + "this catalogue does not have.");
+        return;
+      }
+      if (payload.circuit !== current.id) {
+        select(payload.circuit);
+      }
+      Object.keys(payload.params).forEach(function (key) {
+        if (inputs[key]) {
+          inputs[key].value = String(payload.params[key]);
+        }
+      });
+      onEdit();
+      shareNote("Imported " + (payload.name || payload.circuit)
+        + (payload.exported_utc
+           ? ", exported " + payload.exported_utc.slice(0, 10) : "")
+        + ". Measuring it here now.");
+      run();
+    });
+  }
+
+  id("design-export").addEventListener("click", exportDesign);
+  id("design-import").addEventListener("click", function () {
+    id("design-import-file").click();
+  });
+  id("design-import-file").addEventListener("change", function () {
+    var file = this.files && this.files[0];
+    if (file) {
+      importDesign(file);
+    }
+    this.value = "";
+  });
+
+  /* ---- long jobs report back ----------------------------------------------
+   * Corners, Monte Carlo, the datasheet and the design search take
+   * minutes; people switch tabs and forget. The first time a long job
+   * starts, the browser asks once whether it may say "done"; after that,
+   * a finished job notifies only when the tab is hidden. */
+
+  window.FaradaemNotify = {
+    ask: function () {
+      if (window.Notification && Notification.permission === "default") {
+        try {
+          Notification.requestPermission();
+        } catch (ignored) { /* an old browser without the promise form */ }
+      }
+    },
+    done: function (body) {
+      if (window.Notification && Notification.permission === "granted"
+          && document.hidden) {
+        try {
+          new Notification("Faradaem", { body: body });
+        } catch (ignored) { /* notification construction can throw on some platforms */ }
+      }
+    }
+  };
+
+  /* ---- run history --------------------------------------------------------
+   * Every measured sizing this session is a place you can walk back to:
+   * "what did I have before lunch" answered with the arrow chips. Walking
+   * restores the values into the form; measuring again is your click,
+   * because a restore must never spend a simulation on its own. */
+
+  var runHistory = {};
+  var runHistoryAt = {};
+
+  function historyList() {
+    if (!runHistory[current.id]) {
+      runHistory[current.id] = [];
+    }
+    return runHistory[current.id];
+  }
+
+  function historyRender() {
+    var list = historyList();
+    var at = runHistoryAt[current.id];
+    if (typeof at !== "number" || at >= list.length) {
+      at = list.length - 1;
+      runHistoryAt[current.id] = at;
+    }
+    show(id("history-row"), list.length > 1);
+    if (list.length < 2) {
+      return;
+    }
+    var entry = list[at];
+    id("history-pos").textContent = (at + 1) + " of " + list.length
+      + (entry && entry.headline ? " · " + entry.headline : "");
+    id("history-prev").disabled = at <= 0;
+    id("history-next").disabled = at >= list.length - 1;
+  }
+
+  function historyRecord(params, headline) {
+    var list = historyList();
+    var snapshot = JSON.stringify(params);
+    if (list.length && JSON.stringify(list[list.length - 1].params)
+        === snapshot) {
+      // The same sizing measured again is one place, not two.
+      runHistoryAt[current.id] = list.length - 1;
+      historyRender();
+      return;
+    }
+    list.push({ params: params, headline: headline });
+    if (list.length > 50) {
+      list.shift();
+    }
+    runHistoryAt[current.id] = list.length - 1;
+    historyRender();
+  }
+
+  function historyGo(direction) {
+    var list = historyList();
+    var at = runHistoryAt[current.id] + direction;
+    if (at < 0 || at >= list.length) {
+      return;
+    }
+    runHistoryAt[current.id] = at;
+    var entry = list[at];
+    Object.keys(entry.params).forEach(function (key) {
+      if (inputs[key]) {
+        inputs[key].value = String(entry.params[key]);
+      }
+    });
+    onEdit();
+    historyRender();
+  }
+
+  id("history-prev").addEventListener("click", function () { historyGo(-1); });
+  id("history-next").addEventListener("click", function () { historyGo(1); });
+
+  /* ---- bias annotations --------------------------------------------------
+   * What an engineer pencils onto a printed schematic: Id, gm, Vgs, Vds,
+   * Vdsat and headroom beside every device. One simulation fetches all of
+   * it at the bench's own operating point; hovering a transistor shows its
+   * numbers. Edited values outdate the annotations, so they clear. */
+
+  var biasChip = id("bias-chip");
+  var biasData = null;
+  var biasTip = null;
+  // Bumped by every reset: a bias response landing after an edit or a
+  // circuit switch describes an operating point the page no longer
+  // shows, and is dropped.
+  var biasSeq = 0;
+
+  function biasReset() {
+    biasSeq += 1;
+    biasData = null;
+    tickStop(biasChip, null);
+    show(biasChip, false);
+    biasChip.disabled = false;
+    biasChip.textContent = "Annotate bias (1 simulation)";
+    id("schematic").classList.remove("bias-armed");
+    if (biasTip) {
+      show(biasTip, false);
     }
   }
 
+  function biasOffer() {
+    if (current.pdk && !isStatic) {
+      show(biasChip, true);
+    }
+  }
+
+  function biasRow(label, value, unit) {
+    var row = "<span class=\"k\">" + label + "</span><span class=\"v\">";
+    if (typeof value === "number" && isFinite(value)) {
+      row += window.formatEngineering(value, unit);
+    } else {
+      row += "not exposed";
+    }
+    return row + "</span>";
+  }
+
+  function biasTipHtml(name, slot) {
+    var html = "<strong>" + name + "</strong><div class=\"bias-grid\">";
+    html += biasRow("Id", slot.id, "A");
+    html += biasRow("gm", slot.gm, "S");
+    html += biasRow("Vgs", slot.vgs, "V");
+    html += biasRow("Vds", slot.vds, "V");
+    html += biasRow("Vdsat", slot.vdsat, "V");
+    var headroom = slot.headroom;
+    html += "<span class=\"k\">headroom</span><span class=\"v ";
+    if (typeof headroom === "number" && isFinite(headroom)) {
+      html += (headroom < 0 ? "is-bad" : (headroom < 0.1 ? "is-thin" : "is-ok"));
+      html += "\">" + (headroom * 1000).toFixed(0) + " mV";
+      html += headroom < 0 ? " (out of saturation)" : "";
+    } else {
+      html += "\">not exposed";
+    }
+    return html + "</span></div>";
+  }
+
+  function biasShow(group) {
+    var name = group.getAttribute("data-device");
+    if (!biasData || biasData.circuit !== current.id
+        || !biasData.devices[name]) {
+      return;
+    }
+    if (!biasTip) {
+      biasTip = el("div", "bias-tip hidden");
+      id("schematic").parentNode.appendChild(biasTip);
+    }
+    biasTip.innerHTML = biasTipHtml(name, biasData.devices[name]);
+    var host = id("schematic").parentNode.getBoundingClientRect();
+    var box = group.getBoundingClientRect();
+    biasTip.style.left = Math.max(4, box.right - host.left + 8) + "px";
+    biasTip.style.top = Math.max(4, box.top - host.top - 4) + "px";
+    show(biasTip, true);
+  }
+
+  function biasFetch() {
+    var seq = biasSeq;
+    biasChip.disabled = true;
+    biasChip.textContent = "Measuring bias";
+    tickStart(biasChip);
+    fetch("/api/bias", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ circuit: current.id, params: values() })
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          return { ok: response.ok, payload: payload };
+        });
+      })
+      .then(function (got) {
+        if (seq !== biasSeq) {
+          // An edit or a switch reset the annotations while this
+          // measured; its answer describes a page that is gone.
+          return;
+        }
+        tickStop(biasChip, null);
+        if (!got.ok) {
+          biasChip.disabled = false;
+          biasChip.textContent = "Annotate bias (1 simulation)";
+          showError((got.payload && got.payload.error)
+                    || "The bias measurement failed. Run it again.");
+          return;
+        }
+        biasData = { circuit: got.payload.circuit,
+                     devices: got.payload.devices };
+        biasChip.textContent = "Bias measured. Hover a device.";
+        biasChip.disabled = true;
+        id("schematic").classList.add("bias-armed");
+      })
+      .catch(function () {
+        if (seq !== biasSeq) {
+          return;
+        }
+        tickStop(biasChip, null);
+        biasChip.disabled = false;
+        biasChip.textContent = "Annotate bias (1 simulation)";
+        showError("Could not reach the Faradaem server for the bias run.");
+      });
+  }
+
+  biasChip.addEventListener("click", biasFetch);
+  id("schematic").addEventListener("mouseover", function (event) {
+    var group = event.target.closest && event.target.closest("g[data-device]");
+    if (group) {
+      biasShow(group);
+    }
+  });
+  id("schematic").addEventListener("mouseout", function (event) {
+    if (biasTip && event.target.closest
+        && event.target.closest("g[data-device]")) {
+      show(biasTip, false);
+    }
+  });
 
   /* ---- design to spec ---------------------------------------------------- */
 
@@ -778,19 +1266,21 @@
   var designJob = null;
   var designTimer = null;
   var designResult = null;
-
-  /* "generate" runs the whole story on its own: seed, confirm, iterate if
-   * short, apply. "manual" leaves apply to the user. */
-  var designMode = "manual";
+  var designStarted = null;
 
   function designIdle() {
     if (designTimer) {
       clearTimeout(designTimer);
       designTimer = null;
     }
+    if (designJob) {
+      // Leaving a live search behind, on a circuit switch or a panel
+      // reset: stop it server-side too, or it keeps spending simulations
+      // nobody is watching.
+      stopDesign();
+    }
     designJob = null;
     designResult = null;
-    designMode = "manual";
     designGenerate.disabled = false;
     designGenerateLabel.textContent = "Generate design from specs";
     designStart.disabled = false;
@@ -825,11 +1315,12 @@
       var shell = el("div", "input-shell");
       var input = document.createElement("input");
       input.id = "goal-" + item.key;
-      input.type = "number";
-      input.step = "any";
+      // Text for the same reason the parameter fields are: "5meg" and
+      // "150u" are how targets get written.
+      input.type = "text";
       input.value = String(item.default);
-      input.inputMode = "decimal";
       input.autocomplete = "off";
+      input.spellcheck = false;
       shell.appendChild(input);
       if (item.unit) {
         var unit = el("span", "unit", item.unit);
@@ -879,13 +1370,40 @@
       return;
     }
     fetch("/api/design/status?job=" + encodeURIComponent(designJob))
-      .then(function (response) { return response.json(); })
-      .then(function (snapshot) {
+      .then(function (response) {
+        return response.json().then(function (snapshot) {
+          return { ok: response.ok, snapshot: snapshot };
+        });
+      })
+      .then(function (got) {
         if (!designJob) {
           return;
         }
-        designEvals.textContent =
+        if (!got.ok) {
+          // The job is gone: the server restarted, or pruned it. Say so
+          // and stop asking, instead of rendering undefined forever.
+          var gone = (got.snapshot && got.snapshot.error)
+            || "The search's job is gone. Start it again.";
+          designJob = null;
+          designIdle();
+          designShowError(gone);
+          return;
+        }
+        var snapshot = got.snapshot;
+        var evalsText =
           snapshot.evals + " / " + snapshot.max_evals + " simulations";
+        // A real estimate from this search's own pace, not a guess.
+        if (snapshot.status === "running" && designStarted
+            && snapshot.evals >= 2) {
+          var pace = (Date.now() - designStarted) / snapshot.evals;
+          var left = Math.round(
+            pace * (snapshot.max_evals - snapshot.evals) / 1000);
+          if (left >= 2) {
+            evalsText += " · about " + (left >= 90
+              ? Math.round(left / 60) + " min" : left + " s") + " left at worst";
+          }
+        }
+        designEvals.textContent = evalsText;
         renderDesignBest(snapshot);
 
         if (snapshot.status === "running") {
@@ -893,13 +1411,19 @@
           designTimer = setTimeout(pollDesign, 1200);
           return;
         }
+        window.FaradaemNotify.done(
+          snapshot.status === "done"
+            ? (snapshot.feasible
+               ? "The design search finished: every target holds."
+               : "The design search finished: the spec was not met.")
+            : "The design search " + snapshot.status + ".");
 
         designState.textContent =
           snapshot.status === "done"
             ? (snapshot.feasible ? "Spec met" : "Finished")
             : snapshot.status === "stopped" ? "Stopped" : "Failed";
         designStart.disabled = false;
-        designStartLabel.textContent = "Optimize from current values";
+        designStartLabel.textContent = "Optimize from the values on the page";
         designGenerate.disabled = false;
         designGenerateLabel.textContent = "Generate design from specs";
         show(designStop, false);
@@ -909,21 +1433,29 @@
             "The search failed. Check the console running server.py.");
           return;
         }
-        id("design-state").textContent = snapshot.feasible
-          ? "Finished: every target holds"
-          : "Finished: the spec was not met";
+        if (snapshot.status === "done") {
+          id("design-state").textContent = snapshot.feasible
+            ? "Finished: every target holds"
+            : "Finished: the spec was not met";
+        }
         if (snapshot.reason) {
           designReason.textContent = snapshot.reason;
           show(designReason, true);
         }
         if (snapshot.best && snapshot.best.params) {
           designResult = snapshot.best.params;
-          // The search finishes its own story: report exactly what it
-          // changed against the values that were on the page, load the
-          // winning sizing, and run the confirming simulation so the
-          // schematic and the numbers show the generated circuit.
+          // Report exactly what the search changed against the values
+          // that were on the page.
           renderDesignChanges(values(), designResult);
-          applyDesign();
+          if (snapshot.status === "done" && snapshot.feasible) {
+            // A finished search that met the spec puts its answer on the
+            // bench and measures it: the 1.12.2 contract.
+            applyDesign();
+          } else {
+            // A stopped or unmet search only offers its best point. The
+            // user's own values stay until they choose.
+            show(designApply, true);
+          }
         }
       })
       .catch(function () {
@@ -941,7 +1473,7 @@
       labels[goal.key] = goal.label;
     });
     Object.keys(designInputs).forEach(function (key) {
-      var value = Number(designInputs[key].value);
+      var value = window.parseEngineering(designInputs[key].value);
       if (!isFinite(value) || value <= 0) {
         bad = labels[key] || key;
       }
@@ -977,7 +1509,6 @@
     show(designReason, false);
     show(designApply, false);
     designResult = null;
-    designMode = mode === "generate" ? "generate" : "manual";
 
     var targets = collectTargets();
     if (targets === null) {
@@ -992,6 +1523,8 @@
     clear(designBest);
     show(designProgress, true);
     show(designStop, true);
+    designStarted = Date.now();
+    window.FaradaemNotify.ask();
 
     fetch("/api/design", {
       method: "POST",
@@ -1096,6 +1629,7 @@
     if (!designResult) {
       return;
     }
+    show(designApply, false);
     Object.keys(designResult).forEach(function (key) {
       if (inputs[key]) {
         inputs[key].value = String(designResult[key]);
@@ -1114,6 +1648,7 @@
     if (!current.design || !current.design.seeded || !validate()) {
       return;
     }
+    var genCircuit = current.id;
     show(designError, false);
     show(designReason, false);
     show(designApply, false);
@@ -1144,6 +1679,11 @@
               ? payload.error
               : "The server refused the seed request.");
           }
+          if (current.id !== genCircuit) {
+            // The seed belongs to the circuit it was asked for; the page
+            // has moved on.
+            return null;
+          }
           // The generated circuit appears in the form and the schematic.
           Object.keys(payload.params).forEach(function (key) {
             if (inputs[key]) {
@@ -1155,8 +1695,25 @@
           return run();
         });
       })
-      .then(function () {
-        if (lastResult && meetsTargets(lastResult, targets)) {
+      .then(function (confirmed) {
+        if (current.id !== genCircuit) {
+          // The user moved on mid-confirmation. Iterating would start a
+          // search on whatever circuit is on the page now, which nobody
+          // asked for.
+          return;
+        }
+        // Judged on this run's own measurement: a failed confirming run
+        // must not be papered over by whatever succeeded earlier, and it
+        // must not launch a search either.
+        if (!confirmed) {
+          designGenerate.disabled = false;
+          designStart.disabled = false;
+          designGenerateLabel.textContent = "Generate design from specs";
+          designShowError("The confirming run did not finish, so nothing "
+            + "was searched. Fix the error above and generate again.");
+          return;
+        }
+        if (meetsTargets(confirmed, targets)) {
           designGenerate.disabled = false;
           designStart.disabled = false;
           designGenerateLabel.textContent = "Generate design from specs";
@@ -1186,8 +1743,10 @@
   var adviseForm = id("advise-form");
   var adviseInput = id("advise-input");
   var adviseLog = id("advise-log");
+  var adviseNow = id("advise-now");
   var adviseProvider = id("advise-provider");
   var adviseSend = id("advise-send");
+  var adviseStop = id("advise-stop");
   var adviseSendLabel = id("advise-send-label");
   var adviseReset = id("advise-reset");
   var adviseHint = id("advise-hint");
@@ -1197,6 +1756,15 @@
   var adviseTimer = null;
   var adviseRendered = 0;
   var adviseProviders = [];
+  // The last tool card of this turn that met every target. When the
+  // strategist finishes its turn, this is the design that goes on the
+  // bench; until then, nothing touches the form.
+  var adviseWinner = null;
+  // Which circuit this turn has already put on the page, or null. The
+  // first sizing the strategist touches switches the schematic to the
+  // topology under design; the candidates after it do not, so a
+  // forty-evaluation search moves the page twice: start and finish.
+  var adviseTurnPreviewed = null;
 
   function adviseShowError(message) {
     adviseError.textContent = message;
@@ -1206,6 +1774,12 @@
   function adviseSetBusy(busy) {
     adviseSend.disabled = busy;
     adviseSendLabel.textContent = busy ? "Working" : (adviseJob ? "Reply" : "Send");
+    // A working strategist can be stopped; an idle one has nothing to stop.
+    show(adviseStop, busy && Boolean(adviseJob));
+    if (!busy) {
+      adviseStop.disabled = false;
+      adviseStop.textContent = "Stop";
+    }
   }
 
   function adviseMessage(role, text, extraClass) {
@@ -1264,6 +1838,55 @@
     run();
   }
 
+  /* Put the circuit under design on the page without spending a
+     simulation: the schematic redraws from the sizing, and the measured
+     numbers stay empty until a real run fills them. */
+  function previewFromCard(circuitId, params) {
+    if (!known(circuitId)) {
+      return;
+    }
+    if (circuitId !== current.id) {
+      select(circuitId);
+    }
+    Object.keys(params).forEach(function (key) {
+      if (inputs[key]) {
+        inputs[key].value = String(params[key]);
+      }
+    });
+    onEdit();
+  }
+
+  /* The ask panel finishes its own story, the same contract the design
+     panel keeps: when the strategist ends its turn, the last sizing that
+     met every target lands in the form, the schematic redraws from it,
+     and the bench measures it again. Intermediates stay as cards with
+     their own load buttons; only the turn's end touches the form, so a
+     search that tries forty candidates moves the schematic once. */
+  function adviseFinish() {
+    if (adviseWinner) {
+      var winner = adviseWinner;
+      adviseWinner = null;
+      applyFromCard(winner.circuit, winner.params);
+      adviseMessage("Bench", "The winning sizing is on the bench: the form "
+        + "holds it, the schematic is drawn from it, and it is being "
+        + "measured again now.");
+      return;
+    }
+    // A turn can end without a search verdict: the seed already met the
+    // spec, so no card carries "feasible". The sizing it previewed is
+    // already in the form; measuring the form is always honest, so the
+    // bench fills in rather than sitting at a dash under a conversation
+    // that says the targets are met. Only while the page still shows
+    // the circuit the turn previewed: a user who browsed elsewhere
+    // mid-turn is not interrupted with a measurement of the wrong page.
+    if (adviseTurnPreviewed && adviseTurnPreviewed === current.id
+        && !isStatic) {
+      adviseMessage("Bench", "Measuring the sizing the strategist left "
+        + "on the bench.");
+      run();
+    }
+  }
+
   function adviseCard(event) {
     var block = el("div", "advise-msg");
     var card = el("div", "advise-card" + (event.ok ? "" : " is-failed"));
@@ -1293,28 +1916,83 @@
           applyFromCard(circuitId, params);
         });
         card.appendChild(apply);
+        // Only a card that says the spec is met can be the turn's answer.
+        // A card without a verdict is an exploration, not a claim.
+        if (event.display.feasible === true) {
+          adviseWinner = { circuit: circuitId, params: params };
+        }
+        // The first sizing of the turn shows the user what is being
+        // designed: the schematic switches to the working topology now
+        // rather than after minutes of silence.
+        if (!adviseTurnPreviewed) {
+          adviseTurnPreviewed = circuitId;
+          previewFromCard(circuitId, params);
+        }
       }
     }
     block.appendChild(card);
     adviseLog.appendChild(block);
   }
 
-  function renderAdviseEvents(events) {
-    for (; adviseRendered < events.length; adviseRendered++) {
-      var event = events[adviseRendered];
+  function renderAdviseEvents(events, first) {
+    // The server sends a window onto the full log with its absolute
+    // start position, so a long conversation cannot shift under the
+    // renderer's index.
+    var start = first || 0;
+    for (var index = 0; index < events.length; index++) {
+      if (start + index < adviseRendered) {
+        continue;
+      }
+      var event = events[index];
       if (event.kind === "user") {
+        // A new turn owes nothing to the last one: neither its winner
+        // nor its preview may leak into this turn's ending.
+        adviseTurnPreviewed = null;
+        adviseWinner = null;
         adviseMessage("You", event.text);
-      } else if (event.kind === "text" || event.kind === "done") {
+      } else if (event.kind === "text") {
         adviseMessage(providerLabel(), event.text);
+      } else if (event.kind === "done") {
+        adviseMessage(providerLabel(), event.text);
+        adviseFinish();
       } else if (event.kind === "question") {
         adviseMessage(providerLabel(), event.text, "is-question");
       } else if (event.kind === "tool") {
         adviseCard(event);
       } else if (event.kind === "error") {
+        // A turn that ended in an error or a stop produced no answer: a
+        // later turn's "done" must not apply what this one left behind.
+        adviseWinner = null;
+        adviseTurnPreviewed = null;
         adviseMessage(providerLabel(), event.message, "is-error");
       }
     }
+    adviseRendered = Math.max(adviseRendered, start + events.length);
     adviseLog.scrollTop = adviseLog.scrollHeight;
+  }
+
+  /* The search's heartbeat: one line, updated in place, so a minute of
+     iterating reads as work instead of silence. */
+  function renderAdviseNow(now) {
+    if (!now) {
+      show(adviseNow, false);
+      return;
+    }
+    var text = "Searching: simulation " + (now.evals || "?");
+    if (now.error) {
+      text += ", candidate could not be measured";
+    } else if (typeof now.score === "number" && now.margins) {
+      var binding = null;
+      Object.keys(now.margins).forEach(function (key) {
+        if (binding === null || now.margins[key] < now.margins[binding]) {
+          binding = key;
+        }
+      });
+      text += ", worst margin " + (now.score >= 0 ? "+" : "")
+        + (now.score * 100).toFixed(1) + "% on " + binding;
+    }
+    adviseNow.textContent = text;
+    show(adviseNow, true);
   }
 
   function pollAdvise() {
@@ -1322,18 +2000,37 @@
       return;
     }
     fetch("/api/advise/status?job=" + encodeURIComponent(adviseJob))
-      .then(function (response) { return response.json(); })
-      .then(function (snapshot) {
+      .then(function (response) {
+        return response.json().then(function (snapshot) {
+          return { ok: response.ok, snapshot: snapshot };
+        });
+      })
+      .then(function (got) {
         if (!adviseJob) {
           return;
         }
-        renderAdviseEvents(snapshot.events);
+        if (!got.ok) {
+          // The session is gone: the server restarted or evicted it.
+          adviseMessage(providerLabel(),
+            (got.snapshot && got.snapshot.error)
+            || "The session is gone. Start over.", "is-error");
+          adviseSetBusy(false);
+          renderAdviseNow(null);
+          show(adviseReset, true);
+          return;
+        }
+        var snapshot = got.snapshot;
+        renderAdviseEvents(snapshot.events, snapshot.first);
+        renderAdviseNow(snapshot.status === "running" ? snapshot.now : null);
         if (snapshot.status === "running") {
           adviseTimer = setTimeout(pollAdvise, 1000);
           return;
         }
         adviseSetBusy(false);
         show(adviseReset, true);
+        window.FaradaemNotify.done(snapshot.status === "question"
+          ? "The strategist has a question for you."
+          : "The strategist finished its turn.");
         if (snapshot.status === "question") {
           adviseInput.focus();
         }
@@ -1376,6 +2073,8 @@
               : "The server refused the request.");
           }
           adviseJob = payload.job;
+          adviseSetBusy(true);
+          window.FaradaemNotify.ask();
           pollAdvise();
         });
       })
@@ -1392,6 +2091,9 @@
     }
     adviseJob = null;
     adviseRendered = 0;
+    adviseWinner = null;
+    adviseTurnPreviewed = null;
+    show(adviseNow, false);
     clear(adviseLog);
     show(adviseLog, false);
     show(adviseReset, false);
@@ -1428,6 +2130,21 @@
 
   adviseForm.addEventListener("submit", sendAdvise);
   adviseReset.addEventListener("click", resetAdvise);
+  adviseStop.addEventListener("click", function () {
+    if (!adviseJob) {
+      return;
+    }
+    adviseStop.disabled = true;
+    adviseStop.textContent = "Stopping";
+    fetch("/api/advise/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: adviseJob })
+    }).catch(function () {
+      adviseStop.disabled = false;
+      adviseStop.textContent = "Stop";
+    });
+  });
   adviseInput.addEventListener("keydown", function (event) {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
@@ -1720,7 +2437,32 @@
     renderPresets();
     renderInputs(memory[current.id]);
     renderDesignPanel();
-    // The mentor's answers were about the previous circuit.
+    // A run still measuring the previous circuit owns the caption's
+    // ticker; the new circuit starts from "Run to measure."
+    tickStop(captionState, "Run to measure.");
+    // The mentor's answers were about the previous circuit, and a mentor
+    // job still polling for it would render them onto this one. The
+    // job itself stops server-side too: abandoned, it would hold the
+    // circuit's one-job lock and burn simulations nobody reads.
+    biasReset();
+    if (blameJob) {
+      fetch("/api/workbench/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job: blameJob })
+      }).catch(function () {});
+    }
+    blameJob = null;
+    if (mentorTimer) {
+      clearTimeout(mentorTimer);
+      mentorTimer = null;
+    }
+    mentorButtons(false);
+    historyRender();
+    // The comparison table pairs the held design with the LAST measured
+    // result, which after a switch belongs to another circuit: hide it
+    // until this circuit measures again.
+    show(id("ab-block"), false);
     show(id("pin-row"), false);
     show(id("triage-line"), false);
     show(id("blame-out"), false);
@@ -1867,7 +2609,7 @@
     var targets = {};
     var any = false;
     Object.keys(designInputs).forEach(function (key) {
-      var value = Number(designInputs[key].value);
+      var value = window.parseEngineering(designInputs[key].value);
       if (isFinite(value) && value > 0) {
         targets[key] = value;
         any = true;
@@ -1877,24 +2619,46 @@
   }
 
   function mentorFail(error) {
+    // The failed action's ticker must die with it, or it keeps writing
+    // over whatever status the next mentor run puts here.
+    tickStop(mentorState, null);
     show(mentorState, false);
     mentorError.textContent = String(error.message || error);
     show(mentorError, true);
   }
 
+  /* One mentor run at a time: the buttons disable while one works, so a
+     double click cannot trip the server's one-job-per-circuit refusal. */
+  function mentorButtons(disabled) {
+    ["triage-run", "blame-run", "sweep-run"].forEach(function (name) {
+      var button = id(name);
+      if (button) {
+        button.disabled = disabled;
+      }
+    });
+  }
+
   id("triage-run").addEventListener("click", function () {
+    var asked = current.id;
     show(mentorError, false);
+    mentorButtons(true);
     mentorState.textContent = "Measuring once";
     show(mentorState, true);
     tickStart(mentorState);
     fetch("/api/triage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ circuit: current.id, params: values(),
+      body: JSON.stringify({ circuit: asked, params: values(),
                              targets: mentorTargets() })
     })
       .then(function (response) {
         return response.json().then(function (payload) {
+          if (current.id !== asked) {
+            // The verdict is about a circuit no longer on the page.
+            tickStop(mentorState, null);
+            show(mentorState, false);
+            return;
+          }
           if (!response.ok) {
             throw new Error(payload.error || "Refused.");
           }
@@ -1908,35 +2672,85 @@
           show(line, true);
         });
       })
-      .catch(mentorFail);
+      .catch(mentorFail)
+      .then(function () { mentorButtons(false); });
   });
 
   var blameJob = null;
+  var mentorTimer = null;
 
   function pollMentorJob(kind, onDone) {
-    fetch("/api/workbench/status?job=" + blameJob)
-      .then(function (r) { return r.json(); })
-      .then(function (snap) {
-        if (snap.status === "running") {
-          mentorState.textContent = "Running: " + snap.stage + " · " +
-            Math.round(snap.seconds) + " s";
-          setTimeout(function () { pollMentorJob(kind, onDone); }, 1200);
-          return;
-        }
-        if (snap.status === "failed") {
-          mentorFail(new Error(snap.error || "The run failed."));
-          return;
-        }
-        show(mentorState, false);
-        onDone(snap);
-      })
-      .catch(function () {
-        setTimeout(function () { pollMentorJob(kind, onDone); }, 2500);
-      });
+    var job = blameJob;
+    var misses = 0;
+
+    function tick() {
+      if (job !== blameJob) {
+        return;
+      }
+      fetch("/api/workbench/status?job=" + job)
+        .then(function (r) {
+          return r.json().then(function (snap) {
+            return { ok: r.ok, snap: snap };
+          });
+        })
+        .then(function (got) {
+          if (job !== blameJob) {
+            return;
+          }
+          if (!got.ok) {
+            // The job is gone: the server restarted or evicted it. Stop
+            // asking and say so, instead of rendering nothing forever.
+            blameJob = null;
+            mentorButtons(false);
+            mentorFail(new Error((got.snap && got.snap.error)
+              || "The run's job is gone. Start it again."));
+            return;
+          }
+          var snap = got.snap;
+          misses = 0;
+          if (snap.status === "running") {
+            mentorState.textContent = "Running: " + snap.stage + " · " +
+              Math.round(snap.seconds) + " s";
+            mentorTimer = setTimeout(tick, 1200);
+            return;
+          }
+          blameJob = null;
+          mentorButtons(false);
+          if (snap.status === "failed") {
+            mentorFail(new Error(snap.error || "The run failed."));
+            return;
+          }
+          if (snap.status === "stopped") {
+            mentorFail(new Error("Stopped before it finished."));
+            return;
+          }
+          show(mentorState, false);
+          window.FaradaemNotify.done(
+            (kind === "blame" ? "The sensitivity run" : "The bias sweep")
+            + " finished.");
+          onDone(snap);
+        })
+        .catch(function () {
+          if (job !== blameJob) {
+            return;
+          }
+          misses += 1;
+          if (misses >= 4) {
+            blameJob = null;
+            mentorButtons(false);
+            mentorFail(new Error("Could not reach the Faradaem server."));
+            return;
+          }
+          mentorTimer = setTimeout(tick, 2500);
+        });
+    }
+
+    tick();
   }
 
   function startMentorJob(kind, onDone) {
     show(mentorError, false);
+    mentorButtons(true);
     mentorState.textContent = "Starting";
     show(mentorState, true);
     fetch("/api/workbench", {
@@ -1954,7 +2768,10 @@
           pollMentorJob(kind, onDone);
         });
       })
-      .catch(mentorFail);
+      .catch(function (error) {
+        mentorButtons(false);
+        mentorFail(error);
+      });
   }
 
   id("blame-run").addEventListener("click", function () {

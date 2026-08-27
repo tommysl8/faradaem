@@ -323,6 +323,11 @@
     polyline(group, [[x, y], [railX, y], [railX, sourceY]]);
     polyline(group, [[x + 9, y - 5], [x, y], [x + 9, y + 5]]);
 
+    if (options.name) {
+      // The instance name ties this symbol to the deck's X-card, so the
+      // bias annotations know which measured device they belong to.
+      group.setAttribute("data-device", options.name);
+    }
     return tagSymbol(group, "nmos", [
       [gateX - lead, y],                // gate
       [railX, y - half - 14],           // drain
@@ -366,6 +371,9 @@
     polyline(group, [[x, y], [railX, y], [railX, sourceY]]);
     polyline(group, [[railX - 9, y - 5], [railX, y], [railX - 9, y + 5]]);
 
+    if (options.name) {
+      group.setAttribute("data-device", options.name);
+    }
     return tagSymbol(group, "pmos", [
       [gateX - lead, y],                // gate
       [railX, y - half - 14],           // source
@@ -1019,7 +1027,7 @@
 
     // Components.
     resistor(svg, { x: g.xRail, y1: g.rdTop, y2: g.rdBottom, peaks: 6 });
-    nmos(svg, { x: g.chanX, y: g.yDev });
+    nmos(svg, { x: g.chanX, y: g.yDev, name: "M1" });
     capacitor(svg, {
       x: g.xCL, y1: g.yOut, y2: g.yBottom, centre: g.capCentre
     });
@@ -1113,7 +1121,7 @@
     isource(svg, { cx: 122, cy: 180 });
     wire(svg, 122, 202, 122, 306);
     wire(svg, 122, 306, 122, 314);
-    nmos(svg, { x: 96, y: bY });
+    nmos(svg, { x: 96, y: bY, name: "M8" });
     wire(svg, 122, 306, 60, 306);
     wire(svg, 60, 306, 60, bY);
     nodeDot(svg, { x: 122, y: 306 });
@@ -1131,8 +1139,8 @@
     label(svg, { x: 262, y: 340, text: "M5", size: 11 });
 
     // PMOS mirror.
-    pmos(svg, { x: 200, y: pY });
-    pmos(svg, { x: 300, y: pY });
+    pmos(svg, { x: 200, y: pY, name: "M3" });
+    pmos(svg, { x: 300, y: pY, name: "M4" });
     wire(svg, 226, yVdd, 226, 82);
     wire(svg, 326, yVdd, 326, 82);
     label(svg, { x: 158, y: 116, text: "M3", anchor: "end", size: 11 });
@@ -1152,9 +1160,9 @@
     nodeDot(svg, { x: 226, y: 180 });
 
     // The pair. M2 is mirrored so its gate faces outward.
-    nmos(svg, { x: 200, y: nY });
+    nmos(svg, { x: 200, y: nY, name: "M1" });
     var flipped = add(svg, "g", { transform: "translate(600 0) scale(-1 1)" });
-    nmos(flipped, { x: 300, y: nY });
+    nmos(flipped, { x: 300, y: nY, name: "M2" });
     label(svg, { x: 158, y: 262, text: "M1", anchor: "end", size: 11 });
     label(svg, { x: 266, y: 236, text: "M2", anchor: "end", size: 11 });
 
@@ -1163,7 +1171,7 @@
     wire(svg, 274, 278, 274, 292);
     wire(svg, 226, 292, 274, 292);
     wire(svg, 250, 292, 250, 314);
-    nmos(svg, { x: 224, y: bY });
+    nmos(svg, { x: 224, y: bY, name: "M5" });
     label(svg, { value: true, x: 258, y: 308, size: 11,
                  text: "W " + formatEngineering(values.wpair, "m") });
 
@@ -1242,7 +1250,7 @@
     isource(svg, { cx: 122, cy: 180 });
     wire(svg, 122, 202, 122, 306);
     wire(svg, 122, 306, 122, 314);
-    nmos(svg, { x: 96, y: bY });
+    nmos(svg, { x: 96, y: bY, name: "M8" });
     // Diode tie, routed left so it clears the source circle entirely.
     wire(svg, 122, 306, 60, 306);
     wire(svg, 60, 306, 60, bY);
@@ -1266,8 +1274,8 @@
 
     // ---- first stage ----
     // PMOS mirror above the pair: M3 diode on the left, M4 on the right.
-    pmos(svg, { x: 200, y: pY });
-    pmos(svg, { x: 300, y: pY });
+    pmos(svg, { x: 200, y: pY, name: "M3" });
+    pmos(svg, { x: 300, y: pY, name: "M4" });
     wire(svg, 226, yVdd, 226, 82);
     wire(svg, 326, yVdd, 326, 82);
     label(svg, { x: 158, y: 116, text: "M3", anchor: "end", size: 11 });
@@ -1288,9 +1296,9 @@
     nodeDot(svg, { x: 226, y: 180 });
 
     // The pair. M2 is mirrored so its gate faces the second stage.
-    nmos(svg, { x: 200, y: nY });
+    nmos(svg, { x: 200, y: nY, name: "M1" });
     var flipped = add(svg, "g", { transform: "translate(600 0) scale(-1 1)" });
-    nmos(flipped, { x: 300, y: nY });
+    nmos(flipped, { x: 300, y: nY, name: "M2" });
     label(svg, { x: 158, y: 262, text: "M1", anchor: "end", size: 11 });
     label(svg, { x: 266, y: 236, text: "M2", anchor: "end", size: 11 });
 
@@ -1299,7 +1307,7 @@
     wire(svg, 274, 278, 274, 292);
     wire(svg, 226, 292, 274, 292);
     wire(svg, 250, 292, 250, 314);
-    nmos(svg, { x: 224, y: bY });
+    nmos(svg, { x: 224, y: bY, name: "M5" });
     label(svg, { value: true, x: 258, y: 320, size: 11,
                  text: "W " + formatEngineering(values.wpair, "m") });
 
@@ -1324,9 +1332,9 @@
     label(svg, { x: 334, y: 158, text: "d2", size: 11, node: true });
 
     // ---- second stage ----
-    pmos(svg, { x: 560, y: pY });
+    pmos(svg, { x: 560, y: pY, name: "M6" });
     wire(svg, 586, yVdd, 586, 82);
-    nmos(svg, { x: 560, y: bY });
+    nmos(svg, { x: 560, y: bY, name: "M7" });
     wire(svg, 586, 158, 586, 314);
     label(svg, { x: 518, y: 112, text: "M6", anchor: "end", size: 11 });
     label(svg, { value: true, x: 600, y: 104, size: 11,
@@ -1419,7 +1427,7 @@
     label(svg, { value: true, x: 66, y: 76, anchor: "end",
                  text: formatEngineering(values.ibias, "A"), size: 11 });
     wire(svg, 74, 140, 74, 458);
-    nmos(svg, { x: 48, y: 496 });
+    nmos(svg, { x: 48, y: 496, name: "M8" });
     label(svg, { x: 40, y: 460, text: "M8", anchor: "end", size: 11 });
 
     // nbias: one bus above the row, dropping onto each gate from outside
@@ -1434,7 +1442,7 @@
                  size: 11, node: true });
 
     // The second bias branch: M14 mirrors nbias, M13 turns it into pbias.
-    pmos(svg, { x: 140, y: 96 });
+    pmos(svg, { x: 140, y: 96, name: "M13" });
     wire(svg, 166, yVdd, 166, 58);
     label(svg, { x: 176, y: 92, text: "M13", size: 11 });
     // Diode tie, routed left of the body; the riser clears the Ib circle.
@@ -1444,12 +1452,12 @@
     nodeDot(svg, { x: 166, y: 152 });
     label(svg, { x: 174, y: 146, text: "pbias", size: 11, node: true });
     wire(svg, 166, 152, 166, 458);
-    nmos(svg, { x: 140, y: 496 });
+    nmos(svg, { x: 140, y: 496, name: "M14" });
     label(svg, { x: 174, y: 484, text: "M14", size: 11 });
 
     // The input pair, folding left and right.
-    nmos(svg, { x: 236, y: 310 });
-    nmos(svg, { x: 336, y: 310 });
+    nmos(svg, { x: 236, y: 310, name: "M1" });
+    nmos(svg, { x: 336, y: 310, name: "M2" });
     label(svg, { x: 254, y: 258, text: "M1", anchor: "end", size: 11 });
     label(svg, { value: true, x: 254, y: 272, anchor: "end", size: 11,
                  text: "W " + formatEngineering(values.wpair, "m") });
@@ -1465,13 +1473,13 @@
     label(svg, { x: 304, y: 406, text: "tail", anchor: "end",
                  size: 11, node: true });
     wire(svg, 312, 412, 312, 458);
-    nmos(svg, { x: 286, y: 496 });
+    nmos(svg, { x: 286, y: 496, name: "M5" });
     label(svg, { x: 320, y: 484, text: "M5", size: 11 });
 
     // Top of the branches: the folding sources M3, M4 off pbias. The gate
     // tie hangs below the row and crosses the left drain column once.
-    pmos(svg, { x: 444, y: 96 });
-    pmos(svg, { x: 564, y: 96 });
+    pmos(svg, { x: 444, y: 96, name: "M3" });
+    pmos(svg, { x: 564, y: 96, name: "M4" });
     wire(svg, 470, yVdd, 470, 58);
     wire(svg, 590, yVdd, 590, 58);
     label(svg, { x: 400, y: 84, text: "M3", anchor: "end", size: 11 });
@@ -1500,8 +1508,8 @@
 
     // The PMOS cascodes M6, M7, gates tied below the row on the external
     // pcasc reference.
-    pmos(svg, { x: 444, y: 252 });
-    pmos(svg, { x: 564, y: 252 });
+    pmos(svg, { x: 444, y: 252, name: "M6" });
+    pmos(svg, { x: 564, y: 252, name: "M7" });
     label(svg, { x: 400, y: 240, text: "M6", anchor: "end", size: 11 });
     label(svg, { x: 602, y: 240, text: "M7", size: 11 });
     label(svg, { value: true, x: 602, y: 260, size: 11,
@@ -1531,8 +1539,8 @@
 
     // The NMOS cascodes M9, M10, gates tied below the row on the external
     // ncasc reference.
-    nmos(svg, { x: 444, y: 382 });
-    nmos(svg, { x: 564, y: 382 });
+    nmos(svg, { x: 444, y: 382, name: "M9" });
+    nmos(svg, { x: 564, y: 382, name: "M10" });
     label(svg, { x: 400, y: 366, text: "M9", anchor: "end", size: 11 });
     label(svg, { x: 602, y: 370, text: "M10", size: 11 });
     wire(svg, 408, 382, 390, 382);
@@ -1550,8 +1558,8 @@
     // The mirror M11, M12 under them, programmed from casc1. The gate net
     // comes down between the pair and the branch, feeds M11 at gate level,
     // and tees across to M12 through the channel above the row.
-    nmos(svg, { x: 444, y: 496 });
-    nmos(svg, { x: 564, y: 496 });
+    nmos(svg, { x: 444, y: 496, name: "M11" });
+    nmos(svg, { x: 564, y: 496, name: "M12" });
     label(svg, { x: 400, y: 484, text: "M11", anchor: "end", size: 11 });
     label(svg, { x: 598, y: 484, text: "M12", size: 11 });
     wire(svg, 372, 322, 470, 322);
@@ -1582,6 +1590,43 @@
   window.drawOpampTwoStage = drawOpampTwoStage;
   window.drawOta5t = drawOta5t;
   window.drawFoldedCascode = drawFoldedCascode;
+  /* The inverse direction: read a number the way an engineer writes one.
+   * "10k", "2.2u", "4.7 pF", "1meg", "30 MHz", "1.8V" all parse; the
+   * engineering prefix is case-sensitive where it must be (M is mega, m is
+   * milli) and forgiving where it can be (K and k are both kilo, u and the
+   * Greek mu are both micro, and SPICE's "meg" is honoured). A trailing
+   * unit is accepted and ignored, because the field already says its unit.
+   * Returns NaN for anything it cannot read, never a guess. */
+  var PARSE_SCALES = {
+    T: 1e12, G: 1e9, M: 1e6, k: 1e3, K: 1e3,
+    m: 1e-3, u: 1e-6, "µ": 1e-6, n: 1e-9, p: 1e-12, f: 1e-15
+  };
+
+  function parseEngineering(text) {
+    if (typeof text === "number") {
+      return text;
+    }
+    var raw = String(text == null ? "" : text).trim();
+    if (raw === "") {
+      return NaN;
+    }
+    var match = raw.match(
+      /^([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*(meg|MEG|Meg|[TGMkKmunµpf])?\s*([a-zA-ZΩ°/%]{0,4})$/
+    );
+    if (!match) {
+      return NaN;
+    }
+    var value = Number(match[1]);
+    var prefix = match[2];
+    if (prefix === "meg" || prefix === "Meg" || prefix === "MEG") {
+      value *= 1e6;
+    } else if (prefix) {
+      value *= PARSE_SCALES[prefix];
+    }
+    return value;
+  }
+
   window.formatEngineering = formatEngineering;
+  window.parseEngineering = parseEngineering;
   window.FaradaemSymbols = symbols;
 })(window, document);

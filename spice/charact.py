@@ -64,6 +64,10 @@ def characterize(circuit_id, params,
         "circuit": circuit_id,
         "name": circuit["name"],
         "sizing": values,
+        # Each parameter's unit from the registry, so the stored document
+        # can print "10.00 kΩ" instead of a bare prefix.
+        "sizing_units": {spec["key"]: spec.get("unit") or ""
+                         for spec in circuit["params"]},
         "provenance": ledger.provenance(),
         "when_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "sections": {},
@@ -270,6 +274,10 @@ def listing(circuit_id=None):
             "sections_ran": [key for key, sec in found["sections"].items()
                              if sec.get("ran")],
         })
+    # Newest first across every circuit. The filename sort above groups
+    # by circuit id (the ident leads with it), which read as an ordering
+    # nobody asked for.
+    rows.sort(key=lambda row: row.get("when_utc") or "", reverse=True)
     return rows
 
 

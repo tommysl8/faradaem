@@ -77,8 +77,12 @@ def start(circuit_id, params, kind, targets=None):
     with LOCK:
         stuck = running_job(circuit_id)
         if stuck is not None:
+            # The registry token is not a word a user should have to read.
+            names = {"charact": "characterization", "blame": "sensitivity run",
+                     "sweep": "bias sweep", "autopsy": "corner autopsy"}
             raise Busy("A %s for this circuit is already running. Wait "
-                       "for it or stop it first." % stuck["kind"])
+                       "for it or stop it first."
+                       % names.get(stuck["kind"], stuck["kind"]))
         JOBS[job["job"]] = job
         if len(JOBS) > MAX_JOBS:
             done = [k for k, j in JOBS.items() if j["status"] != "running"]
@@ -219,8 +223,17 @@ def notebook_page(offset=0, limit=20):
             "sims": sum(1 for r in records if r.get("kind") == "sim"),
             "circuits": circuits_seen,
             "arms": arms,
-            "results": [{"arm": r.get("arm"), "status": r.get("status")}
-                        for r in results],
+            # A result names itself however its writer did: the comparison
+            # arms carry arm/status, the studies carry what/verdict. A row
+            # with neither says nothing and is left out, because a chip
+            # reading "run: null" is noise wearing a badge.
+            "results": [
+                {"arm": r.get("arm") or r.get("what"),
+                 "status": r.get("status") or r.get("verdict")}
+                for r in results
+                if (r.get("arm") or r.get("what"))
+                and (r.get("status") or r.get("verdict"))
+            ],
             "started_utc": (records[0].get("when_utc")
                             if records else None),
             "git": (provenance.get("git") or {}).get("commit"),

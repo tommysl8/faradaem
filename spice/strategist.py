@@ -82,7 +82,21 @@ clean comparison stand in for a finished chip.
 - When the design is done, summarise what was asked, what was measured, and \
 what trade-offs were made. Keep it short and plain.
 - The user sees your text and, separately, cards for every tool result. Do \
-not paste raw tool JSON into your prose."""
+not paste raw tool JSON into your prose.
+- You are one panel of a workbench page. The page draws a live schematic, \
+with measured values on it, of whichever circuit and sizing are loaded in \
+its form, and it has panels for the frequency response, the step, \
+rejection, corners and layout. Every card of yours that carries a sizing \
+has a button that loads it into that form, and when you finish a turn with \
+a design that met every target, the page loads it by itself: the schematic \
+redraws and the bench measures it again. Never say you cannot show a \
+schematic. If the user asks to see the circuit, run the flow so a design \
+lands on the bench, or point at a card's load button; the page does the \
+drawing.
+- A complete request is permission to proceed. Do not offer menus of ways \
+you could begin, and do not ask whether to start: start. The only question \
+you ask mid-flow is the one the rules above allow, whether a target should \
+be relaxed, and you ask it only after a measurement shows the conflict."""
 
 #: The exact circuit ids, baked into the schemas so the model cannot guess.
 _CIRCUIT_IDS = list(circuits.CIRCUIT_ORDER)
@@ -326,11 +340,13 @@ def _full_params(circuit_id, given):
     return params
 
 
-def run_tool(name, arguments, on_progress=None):
+def run_tool(name, arguments, on_progress=None, should_stop=None):
     """Execute one tool call against the real machinery.
 
     Returns (payload, display): payload goes back to the model, display is
-    the JSON-ready version the UI renders as a card.
+    the JSON-ready version the UI renders as a card. should_stop, when
+    given, reaches into the long tools (the design search), so a user's
+    stop lands mid-search instead of waiting out the whole budget.
     """
     if name == "list_circuits":
         # What a model needs to choose and drive a circuit: what it is, the
@@ -388,6 +404,7 @@ def run_tool(name, arguments, on_progress=None):
             arguments.get("targets") or {},
             DESIGN_BUDGET,
             on_eval=on_progress,
+            should_stop=should_stop,
         )
         best = result["best"]
         # The iterator reports only the tunables it moved. The winning design

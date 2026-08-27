@@ -28,10 +28,34 @@ it.
 import re
 
 from . import circuits, pvt, runner
+from .errors import NoFloorplanError
+
+
+def _kinds_of(circuit_id, values, instances):
+    """Each device's channel kind, best effort.
+
+    Circuits with a drawable core declare their devices; a circuit
+    without one (the NFET amp) still has transistors in its deck, and
+    the model name says which channel each is. The kind is informational
+    here, so a missing core must not refuse the measurement.
+    """
+    try:
+        return {name: item["kind"] for name, item
+                in circuits.circuit_devices(circuit_id, values).items()}
+    except NoFloorplanError:
+        return {name: ("p" if "pfet" in model else "n")
+                for name, model in instances.items()}
 
 _PRINT = re.compile(
-    r"@m\.x(?P<device>\w+)\.m(?P<model>\w+)\[(?P<what>vds|vdsat)\]"
+    r"@m\.x(?P<device>\w+)\.m(?P<model>\w+)\[(?P<what>vds|vdsat|vgs|gm|id)\]"
     r"\s*=\s*(?P<value>[-+0-9.eE]+)")
+
+#: What the corner autopsy reads: the two numbers headroom is made of.
+CORNER_WHATS = ("vds", "vdsat")
+
+#: What the bias annotation reads: the whole picture an engineer pencils
+#: onto a schematic. One simulation for all of it.
+BIAS_WHATS = ("vds", "vdsat", "vgs", "gm", "id")
 
 #: An X-card in the deck: instance name, then nets, then the model.
 _XCARD = re.compile(r"^X(?P<name>\w+)\s+.*?(?P<model>sky130_fd_pr__\w+)",
@@ -47,7 +71,7 @@ def _instances(netlist_head):
             for m in _XCARD.finditer(netlist_head)}
 
 
-def _op_deck(circuit_id, values):
+def _op_deck(circuit_id, values, whats=CORNER_WHATS):
     """The bench deck with its control block swapped for op prints.
 
     The bench netlist already biases the circuit exactly as it is
@@ -63,8 +87,8 @@ def _op_deck(circuit_id, values):
     lines = [".control", "op"]
     for name, model in instances.items():
         vector = "@m.x%s.m%s" % (name.lower(), model.lower())
-        lines.append("print %s[vds]" % vector)
-        lines.append("print %s[vdsat]" % vector)
+        for what in whats:
+            lines.append("print %s[%s]" % (vector, what))
     lines.extend(["quit", ".endc", ".end", ""])
     return head + "\n".join(lines), instances
 
@@ -89,8 +113,7 @@ def run(circuit_id, params, on_progress=None, should_stop=None):
     values = circuits.defaults(circuit_id)
     values.update(params or {})
     deck_text, instances = _op_deck(circuit_id, values)
-    kinds = {name: item["kind"] for name, item
-             in circuits.circuit_devices(circuit_id, values).items()}
+    kinds = _kinds_of(circuit_id, values, instances)
 
     rows = []
     for condition in pvt.PVT_CONDITIONS:
@@ -131,6 +154,46 @@ def run(circuit_id, params, on_progress=None, should_stop=None):
         "rows": rows,
         "sims": len(rows),
         "tightest": tightest(rows),
+    }
+
+
+def bias(circuit_id, params):
+    """The whole bias picture at the typical condition, one simulation.
+
+    What an engineer pencils beside every device on a printed schematic:
+    drain current, transconductance, the gate and drain voltages, the
+    saturation voltage the model computed, and the headroom between
+    them. Measured at the operating point of the same deck the bench
+    measures, never derived. A vector the model does not expose comes
+    back None and the device is listed in "missing", because a blank
+    that reads as zero is how annotations lie.
+    """
+    pvt.require_supported(circuit_id)
+    values = circuits.defaults(circuit_id)
+    values.update(params or {})
+    deck_text, instances = _op_deck(circuit_id, values, whats=BIAS_WHATS)
+    kinds = _kinds_of(circuit_id, values, instances)
+
+    stdout = runner.run_netlist(deck_text, timeout_s=runner.PDK_TIMEOUT_S)
+    measured = _parse(stdout)
+    devices = {}
+    for name in instances:
+        slot = measured.get(name, {})
+        devices[name] = {
+            "kind": kinds.get(name),
+            "vds": slot.get("vds"),
+            "vdsat": slot.get("vdsat"),
+            "vgs": slot.get("vgs"),
+            "gm": slot.get("gm"),
+            "id": slot.get("id"),
+            "headroom": headroom_of(slot, kinds.get(name)),
+        }
+    return {
+        "circuit": circuit_id,
+        "devices": devices,
+        "device_order": list(instances),
+        "missing": [name for name in instances if name not in measured],
+        "sims": 1,
     }
 
 

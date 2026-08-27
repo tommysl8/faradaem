@@ -67,8 +67,10 @@
     }
 
     function labelFor(key) {
+      // A key the readout does not name still reads as words, never as
+      // an identifier with underscores in a table meant for people.
       var spec = specFor(key);
-      return (spec && spec.label) || key;
+      return (spec && spec.label) || key.replace(/_/g, " ");
     }
 
     /* ---- the document -------------------------------------------------- */
@@ -306,9 +308,31 @@
     /* ---- the run -------------------------------------------------------- */
 
     function poll() {
-      fetch("/api/workbench/status?job=" + job)
-        .then(function (r) { return r.json(); })
-        .then(function (snap) {
+      var polled = job;
+      fetch("/api/workbench/status?job=" + polled)
+        .then(function (r) {
+          return r.json().then(function (snap) {
+            return { ok: r.ok, snap: snap };
+          });
+        })
+        .then(function (got) {
+          if (polled !== job) {
+            // The circuit changed under this poll; its answer is not
+            // about the page any more.
+            return;
+          }
+          if (!got.ok) {
+            job = null;
+            runButton.disabled = false;
+            show(stopButton, false);
+            markTab("datasheet", true);
+            errorLine.textContent = (got.snap && got.snap.error)
+              || "The job is gone. Start it again.";
+            show(errorLine, true);
+            show(stateLine, false);
+            return;
+          }
+          var snap = got.snap;
           if (snap.status === "running") {
             // The server's own clock: the ticker would fight the stage
             // text for the same node.
@@ -317,6 +341,7 @@
             timer = setTimeout(poll, 1200);
             return;
           }
+          job = null;
           runButton.disabled = false;
           show(stopButton, false);
           if (snap.status === "failed") {
@@ -327,7 +352,19 @@
             show(stateLine, false);
             return;
           }
+          if (snap.status === "stopped") {
+            // A stopped run must not wear the finished dot: what was
+            // stored is a partial document and the line says so.
+            stateLine.textContent = "Stopped after " + snap.sims +
+              " simulations. The stored document is partial.";
+            refreshStored();
+            return;
+          }
           markTab("datasheet");
+          if (window.FaradaemNotify) {
+            window.FaradaemNotify.done("The datasheet is written: "
+              + snap.sims + " simulations.");
+          }
           stateLine.textContent = "Measured, " + snap.sims +
             " simulations observed at the simulator boundary.";
           if (snap.result) {
@@ -336,7 +373,11 @@
           }
           refreshStored();
         })
-        .catch(function () { timer = setTimeout(poll, 2500); });
+        .catch(function () {
+          if (polled === job) {
+            timer = setTimeout(poll, 2500);
+          }
+        });
     }
 
     runButton.addEventListener("click", function () {
@@ -345,6 +386,9 @@
       show(stopButton, true);
       stateLine.textContent = "Starting";
       show(stateLine, true);
+      if (window.FaradaemNotify) {
+        window.FaradaemNotify.ask();
+      }
       fetch("/api/workbench", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -719,6 +763,16 @@
       render: function (circuit) {
         current = circuit;
         if (timer) { clearTimeout(timer); timer = null; }
+        if (job) {
+          // Walking away from a running characterization stops it
+          // server-side too; abandoned, it would hold the circuit's
+          // one-job lock and burn simulations nobody reads.
+          fetch("/api/workbench/stop", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ job: job })
+          }).catch(function () {});
+        }
         job = null;
         shownDoc = null;
         clear(docEl);

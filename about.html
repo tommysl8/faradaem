@@ -90,6 +90,32 @@
           </p>
         </section>
 
+        <section class="section prose">
+          <h2>The studies</h2>
+          <p>
+            Analog design runs on folklore: which topology can reach which spec, whether
+            the corner suite covers reality, what experience is worth, why a chip missed
+            its prediction. Each belief is held because someone experienced said so.
+            Faradaem's studies put them to measurement, one at a time, with every
+            simulation counted and written to the ledger.
+          </p>
+          <p>
+            The atlas charts what a circuit can be made to do: a grid over two spec axes,
+            the same design search at every point, and the measured frontier between "met,
+            here is the sizing" and "not found within budget". It never says impossible.
+            The adversary replaces the signoff checkmark with a budgeted attack across
+            corners, supply, temperature and mismatch; a design that holds earns
+            "survived N adversarial simulations", and N is the strength of the claim.
+            Forensics runs the simulator backwards, searching for the condition that
+            reproduces an observed set of numbers, and proves itself on blind trials
+            whose answer it was never told. The learning curve prices experience: every
+            spec is solved cold and again warm from the ledger's accumulated attempts,
+            and the difference is reported in simulations. And the arena opens the
+            four-way comparison's rules to any method that can be written as a function,
+            budgeted and scored where it cannot cheat.
+          </p>
+        </section>
+
         <section class="section">
           <h2 class="section-label">Roadmap</h2>
           <ul class="roadmap">
@@ -115,7 +141,8 @@
             <li class="done"><span class="mark">[x]</span><span class="ver">V1.10</span><span>the compensation network drawn, layout versus schematic by KLayout's engine, and the wires priced in ohms</span></li>
             <li class="done"><span class="mark">[x]</span><span class="ver">V1.11</span><span>matched pairs drawn common centroid with dummies and guard rings, the loop closed on the drawn circuit, and the four-way comparison the plan asks for</span></li>
             <li class="done"><span class="mark">[x]</span><span class="ver">V1.12</span><span>the workbench around the numbers: the self-writing datasheet, pinned numbers, compare, blame, the corner autopsy, the tapeout packet, the notebook, and the doctor</span></li>
-            <li><span class="mark">[ ]</span><span class="ver">V2.0</span><span>the full sign-off rule deck, device sizes compared, and real extraction, which need Magic, Netgen or KLayout</span></li>
+            <li class="done"><span class="mark">[x]</span><span class="ver">V1.13</span><span>the studies: the capability atlas, signoff as a budgeted attack, forensics that run the simulator backwards, warm starts priced against cold ones, and the arena's open rules</span></li>
+            <li><span class="mark">[ ]</span><span class="ver">V2.0</span><span>a real parasitic extraction in place of the priced wires, a second circuit family, and silicon through Tiny Tapeout</span></li>
           </ul>
         </section>
 
@@ -162,6 +189,7 @@
     <div class="foot-inner">
       <span>ngspice is the source of truth. Every number here came out of a simulation.</span>
       <nav class="foot-links" aria-label="Footer">
+        <a href="/notebook">Notebook</a>
         <a href="/manual">Manual</a>
         <a href="/about">About</a>
         <a href="/changelog">Changelog</a>

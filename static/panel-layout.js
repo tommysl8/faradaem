@@ -35,9 +35,18 @@
     var layoutCaption = id("layout-caption");
 
     var lastLayout = null;
+    // The sizing the drawn layout was built from. The foundry deck must
+    // check the drawing on the page, not whatever the form says now.
+    var lastLayoutParams = null;
+    // Bumped by every panel reset: a layout or deck response arriving
+    // after an edit or a circuit switch describes a drawing the page no
+    // longer shows, and is dropped.
+    var layoutSeq = 0;
 
     function renderLayoutPanel() {
+      layoutSeq += 1;
       lastLayout = null;
+      lastLayoutParams = null;
       layoutRun.disabled = false;
       show(layoutProgress, false);
       show(layoutError, false);
@@ -207,8 +216,10 @@
         }
       }
 
-      note.textContent = "Still not checked: the device sizes against the "
-        + "schematic, and a real parasitic extraction.";
+      note.textContent = "Device sizes are compared against the schematic "
+        + "to 2% by the engine. Still not checked: a real parasitic "
+        + "extraction; the drawn wires are priced as lumped capacitance "
+        + "and resistance, not solved as fields.";
       show(block, true);
     }
 
@@ -229,18 +240,25 @@
         window.FaradaemBench.set("lvs", "run");
       }
 
+      var drawnParams = values();
+      var seq = layoutSeq;
       fetch("/api/layout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ circuit: current.id, params: values() })
+        body: JSON.stringify({ circuit: current.id, params: drawnParams })
       })
         .then(function (response) {
           return response.json().then(function (payload) {
+            if (seq !== layoutSeq) {
+              // The page moved on while this drew.
+              return;
+            }
             if (!response.ok) {
               throw new Error(payload && payload.error
                 ? payload.error : "The server refused the request.");
             }
             lastLayout = payload;
+            lastLayoutParams = drawnParams;
             tickStop(layoutState, "Measured");
             markTab("layout");
             if (window.FaradaemBench) {
@@ -267,6 +285,9 @@
           });
         })
         .catch(function (error) {
+          if (seq !== layoutSeq) {
+            return;
+          }
           layoutRun.disabled = false;
           show(layoutProgress, false);
           tickStop(layoutState, "Running");
@@ -315,6 +336,7 @@
        runset's answer verbatim: this page checks nothing itself. */
     function runSignoff() {
       var button = id("layout-signoff");
+      var seq = layoutSeq;
       button.disabled = true;
       layoutState.textContent = "Running the SKY130 runset, about a minute";
       show(layoutProgress, true);
@@ -327,10 +349,18 @@
       fetch("/api/signoff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ circuit: current.id, params: values() })
+        // The sizing the drawing was built from, never the form's
+        // current text: the deck answers for the geometry on the page.
+        body: JSON.stringify({ circuit: current.id,
+                               params: lastLayoutParams || values() })
       })
         .then(function (response) {
           return response.json().then(function (payload) {
+            if (seq !== layoutSeq) {
+              // The deck's answer is about a drawing the page replaced.
+              button.disabled = false;
+              return;
+            }
             if (!response.ok) {
               throw new Error(payload && payload.error
                 ? payload.error : "The server refused the request.");
@@ -345,6 +375,12 @@
             }
 
             var list = id("layout-verify-list");
+            // One deck verdict at a time: a rerun replaces its row
+            // instead of stacking a history of them.
+            var prior = list.querySelector('[data-verdict="deck"]');
+            if (prior) {
+              prior.remove();
+            }
             var broken = payload.violations || {};
             verdict(list, payload.clean,
               "Design rules, the foundry's deck",
@@ -356,10 +392,17 @@
               Object.keys(broken).sort().map(function (rule) {
                 return rule + ": " + broken[rule];
               }));
+            if (list.lastElementChild) {
+              list.lastElementChild.setAttribute("data-verdict", "deck");
+            }
             show(id("layout-verify"), true);
           });
         })
         .catch(function (error) {
+          if (seq !== layoutSeq) {
+            button.disabled = false;
+            return;
+          }
           button.disabled = false;
           show(layoutProgress, false);
           tickStop(layoutState, "Measured");
@@ -378,6 +421,16 @@
       render: function (circuit) {
         current = circuit;
         renderLayoutPanel();
+      },
+      // An edited sizing outdates the drawing, both verdicts, and the
+      // bench lights that reported them.
+      onValuesEdited: function () {
+        renderLayoutPanel();
+        if (window.FaradaemBench) {
+          window.FaradaemBench.set("drc", "idle");
+          window.FaradaemBench.set("lvs", "idle");
+          window.FaradaemBench.set("signoff", "idle");
+        }
       },
       refit: function () {
         if (lastLayout && !layoutFigure.classList.contains("hidden")) {

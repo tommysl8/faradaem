@@ -117,6 +117,8 @@
         current = circuit;
         renderSheetPanel();
       },
+      // An edited sizing outdates the measured sheet.
+      onValuesEdited: renderSheetPanel,
       refit: function () {
         if (lastSheet && !sheetFigure.classList.contains("hidden")) {
           var last = lastSheet;

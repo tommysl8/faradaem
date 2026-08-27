@@ -40,8 +40,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import doctor as doctor_checks
 import workbench
-from spice import (charact, circuits, design, llm, packet, pins, pvt,
-                   signoff, strategist, triage)
+from spice import (autopsy, charact, circuits, design, llm, packet, pins,
+                   pvt, signoff, strategist, triage)
 from spice.runner import NgspiceNotFoundError, NgspiceRunError, PdkNotFoundError
 
 #: Errors from a simulation attempt that map to HTTP 500 rather than a crash.
@@ -428,12 +428,18 @@ def validate_advise_message(payload):
 
 
 def _advise_snapshot(job):
+    events = job["events"]
     return {
         "job": job["job"],
         "provider": job["provider"],
         "model": job["model"],
         "status": job["status"],
-        "events": job["events"][-80:],
+        "events": events[-80:],
+        # Where the slice starts in the full log, so the client can render
+        # by absolute position. Without it, a log past eighty events
+        # shifted under the client's index and the conversation froze.
+        "first": max(0, len(events) - 80),
+        "now": job.get("now"),
     }
 
 
@@ -449,21 +455,46 @@ def _advise_worker(job, client):
     """One strategist pass over the job's current conversation."""
 
     def on_event(event):
+        # Progress is a heartbeat, not history: it lives in one transient
+        # field the page polls, never in the event log. Appended, a forty
+        # evaluation search would flood the log window and freeze the
+        # conversation the user is trying to read.
+        if event.get("kind") == "progress":
+            entry = event.get("entry") or {}
+            with ADVISE_LOCK:
+                job["now"] = {
+                    "tool": event.get("tool"),
+                    "evals": entry.get("evals"),
+                    "score": entry.get("score"),
+                    "margins": entry.get("margins"),
+                    "error": entry.get("error"),
+                }
+            return
         with ADVISE_LOCK:
+            job["now"] = None
             job["events"].append(event)
+
+    def run_tool_stoppable(name, arguments, on_progress=None):
+        # The stop must reach inside a running search, not only between
+        # tool calls: a forty-simulation search is where the waiting is.
+        return strategist.run_tool(name, arguments, on_progress,
+                                   should_stop=job["stop"].is_set)
 
     try:
         state = strategist.advise(
             client, job["messages"], on_event,
             should_stop=job["stop"].is_set,
+            run_tool_fn=run_tool_stoppable,
         )
         with ADVISE_LOCK:
             job["status"] = state
+            job["now"] = None
     except Exception as exc:  # noqa: BLE001 - boundary of a worker thread
         traceback.print_exc()
         with ADVISE_LOCK:
             job["events"].append({"kind": "error", "message": str(exc)})
             job["status"] = "error"
+            job["now"] = None
 
 
 def start_advise_job(provider, message):
@@ -494,6 +525,8 @@ def continue_advise_job(job, message):
         job["events"].append({"kind": "user", "text": message})
         job["messages"].append({"role": "user", "text": message})
         job["status"] = "running"
+        # A stop pressed last turn must not kill this one at birth.
+        job["stop"].clear()
     threading.Thread(target=_advise_worker, args=(job, client), daemon=True).start()
 
 
@@ -716,8 +749,12 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._handle_advise_start()
         elif path == "/api/advise/reply":
             self._handle_advise_reply()
+        elif path == "/api/advise/stop":
+            self._handle_advise_stop()
         elif path == "/api/step":
             self._handle_step()
+        elif path == "/api/bias":
+            self._handle_bias()
         elif path == "/api/datasheet":
             self._handle_datasheet()
         elif path == "/api/layout":
@@ -802,6 +839,28 @@ class FaradaemHandler(BaseHTTPRequestHandler):
 
         try:
             self._send_json(200, circuits.run_step(circuit_id, params))
+        except INPUT_ERRORS as exc:
+            self._send_json(400, {"error": str(exc)})
+        except SIMULATION_ERRORS as exc:
+            self._send_json(500, {"error": str(exc)})
+
+    def _handle_bias(self):
+        """Per-device operating point at the typical condition: what the
+        schematic annotations draw. One simulation, synchronous."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+
+        try:
+            circuit_id, params = validate_api_request(payload)
+        except ValidationError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
+        try:
+            self._send_json(200, autopsy.bias(circuit_id, params))
+        except pvt.PvtError as exc:
+            self._send_json(400, {"error": str(exc)})
         except INPUT_ERRORS as exc:
             self._send_json(400, {"error": str(exc)})
         except SIMULATION_ERRORS as exc:
@@ -984,6 +1043,23 @@ class FaradaemHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
             return
         self._send_json(200, {"job": job_id})
+
+    def _handle_advise_stop(self):
+        """Stop a running strategist turn. The stop lands between tool
+        calls and inside a running search, and the turn ends as
+        "stopped"; the conversation survives and can be continued."""
+        payload = self._read_json_body()
+        if payload is _BAD_BODY:
+            return
+        job_id = payload.get("job") if isinstance(payload, dict) else None
+        with ADVISE_LOCK:
+            job = ADVISE_JOBS.get(job_id or "")
+        if job is None:
+            self._send_json(404, {"error": "Unknown advise session "
+                                           + repr(job_id) + "."})
+            return
+        job["stop"].set()
+        self._send_json(200, {"job": job_id, "stopping": True})
 
     def _handle_workbench_start(self):
         """One background job: charact, blame, sweep, or autopsy.

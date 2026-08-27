@@ -29,7 +29,10 @@ schematic, with the verification done by the simulator rather than asserted by a
 - [x] **V1.8** the nets routed, so the interconnect is measured off drawn metal
 - [x] **V1.9** contacts, local interconnect and implants
 - [x] **V1.10** gate contacts, two metal layers, taps, and layout versus schematic
-- [ ] **V2.0** the full sign-off rule deck, device sizes compared, and real extraction
+- [x] **V1.11** matched pairs drawn common centroid, the loop closed on the drawn circuit, and the four-way comparison
+- [x] **V1.12** the workbench: the self-writing datasheet, pins, blame, the corner autopsy, the tapeout packet, the notebook, and the doctor
+- [x] **V1.13** the studies: the capability atlas, signoff as a budgeted attack, forensics, warm starts priced against cold, and the arena
+- [ ] **V2.0** a real parasitic extraction in place of the priced wires, a second circuit family, and silicon through Tiny Tapeout
 
 0.1.5 expanded the circuit library to five circuits behind a data-driven registry
 (`spice/circuits.py`): DC divider, RC low-pass, RC high-pass, series RLC band-pass, and an
@@ -161,6 +164,12 @@ The integration test drives real ngspice. It skips with a clear message on machi
 | `doctor.py` | Every dependency checked at once, with the exact fix for anything missing. |
 | `spice/lvs.py` | Layout versus schematic: what the drawing connects, worked out from the geometry, compared against the netlist that was simulated. |
 | `compare.py` | The research harness: four ways to the same spec, measured head to head. |
+| `spice/atlas.py` | The capability atlas: a grid over two spec axes, the shipped search at every cell, and the measured frontier of what was met within budget. |
+| `spice/adversary.py` | Signoff as an attack: a budget spent trying to break the design across corners, supply, temperature and mismatch. The verdict carries its simulation count. |
+| `spice/forensics.py` | The simulator run backwards: which condition explains an observed set of numbers, searched over a declared hypothesis space and validated on blind trials. |
+| `spice/priors.py` | Warm starts harvested from the ledger at zero simulations, and the learning curve that prices experience in simulations saved. |
+| `spice/arena.py` | The referee: any design method as one callable, run under the comparison's rules with the budget enforced at the subprocess. |
+| `study.py` | The studies' command line: atlas, adversary, forensics, curve and arena, each end to end with every simulation in the ledger. |
 | `tools/make_brand.py` | The mark: the AE ligature lifted out of a font file and baked into the favicon, the touch icon and the Open Graph card, all from one geometry. |
 | `tools/build_static.py` | The published site: the pages, the assets and the catalogue, for a host that cannot run a simulator. |
 | `tests/` | Netlist, parser, validation, routing, optimizer, manual-accuracy and real-ngspice integration tests. |
